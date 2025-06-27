@@ -1,0 +1,7 @@
+.zed
+.vscode
+/target
+/tmp/*
+tmp_test.rs
+
+!/tmp/aries-src
