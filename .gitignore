@@ -1,7 +1,5 @@
 .zed
 .vscode
 /target
-/tmp/*
+/tmp
 tmp_test.rs
-
-!/tmp/aries-src

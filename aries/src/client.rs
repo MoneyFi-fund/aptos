@@ -20,7 +20,7 @@ use aptos_sdk::{
     },
 };
 use serde::Deserialize;
-use serde_json::{Value, de};
+use serde_json::Value;
 use tokio::runtime::Handle;
 use url::Url;
 
@@ -663,27 +663,21 @@ impl Client {
             .get_loan_amount(&profile, &reserve.token_address)
             .await?;
 
-        let bor_price = self.get_price(&reserve.token_address).await?;
+        let price = self.get_price(&reserve.token_address).await?;
         let total_power = self.get_total_borrow_power(profile).await?;
-        let mut ltv = reserve.reserve_config.loan_to_value;
+        let total_borrowed_value = self.get_total_borrowed_value(profile).await?;
+        dbg!(total_power, total_borrowed_value);
         let borrow_factor = reserve.reserve_config.borrow_factor;
 
-        let emode = profile.emode.clone();
-        if emode.eq(&reserve.emode) {
-            let emode_config = self.get_emode_config(&emode.unwrap()).await?;
-            ltv = emode_config.loan_to_value;
-        }
+        let mut avail_borrow = (total_power
+            .checked_sub(total_borrowed_value)
+            .unwrap_or_default()
+            * borrow_factor as u128
+            / 100
+            / price as u128)
+            .checked_sub(10_u128.pow(5)) // TODO: decimals - 1, get decimals from coin info
+            .unwrap_or_default();
 
-        let max_borrow_value = total_power * ltv as u128 / 100;
-        let borrowed_value = borrowed_amount * bor_price as u128;
-        let mut avail_borrow = if max_borrow_value > borrowed_value {
-            (max_borrow_value - borrowed_value - 10_u128.pow(BORROW_DECIMALS - 1))
-                * borrow_factor as u128
-                / 100
-                / bor_price as u128
-        } else {
-            0
-        };
         let max_borrow = reserve.get_max_borrowable();
         if avail_borrow > max_borrow as u128 {
             avail_borrow = max_borrow as u128;
@@ -703,14 +697,17 @@ impl Client {
             .get_deposited_amount(&profile, &reserve.token_address)
             .await?;
 
-        let total_power = self.get_total_borrow_power(profile).await?;
+        let mut avail_withdraw = deposited_amount;
         let total_borrowed = self.get_total_borrowed_value(profile).await?;
-        let avail_value = total_power.checked_sub(total_borrowed).unwrap_or_default();
+        if total_borrowed > 0 {
+            let total_power = self.get_total_borrow_power(profile).await?;
+            let avail_value = total_power.checked_sub(total_borrowed).unwrap_or_default();
 
-        let price = self.get_price(&reserve.token_address).await?;
-        // TODO: liq threshold
-        let avail_withdraw = (avail_value / price as u128) as u64;
-        let avail_withdraw = avail_withdraw.min(deposited_amount);
+            let price = self.get_price(&reserve.token_address).await?;
+            // TODO: liq threshold
+            avail_withdraw = (avail_value / price as u128) as u64;
+            avail_withdraw = avail_withdraw.min(deposited_amount);
+        }
 
         Ok((avail_withdraw, deposited_amount))
     }
