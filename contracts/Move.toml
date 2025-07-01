@@ -1,0 +1,19 @@
+[package]
+name = "moneyfi"
+version = "1.0.0"
+authors = []
+
+[addresses]
+moneyfi = "4a73a150f73921a14ecb57c67f74c1a2dcc61d49ce2d700a176ac5cc0bd024fd"
+
+[dev-addresses]
+
+[dependencies]
+Aries = { local = "./deps/aries" }
+
+[dependencies.AptosFramework]
+git = "https://github.com/aptos-labs/aptos-framework.git"
+rev = "mainnet"
+subdir = "aptos-framework"
+
+[dev-dependencies]
