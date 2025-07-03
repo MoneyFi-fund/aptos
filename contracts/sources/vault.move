@@ -35,6 +35,7 @@ module moneyfi::vault {
     const E_WALLET_ACCOUNT_EXISTS: u64 = 3;
     const E_WALLET_ACCOUNT_NOT_EXISTS: u64 = 4;
 
+
     // -- Structs
     struct Config has key {
         paused: bool,
@@ -51,10 +52,12 @@ module moneyfi::vault {
         extend_ref: ExtendRef
     }
 
+    #[resource_group_member(group = aptos_framework::object::ObjectGroup)]
     struct WalletAccount has key {
         wallet_id: vector<u8>,
         assets: Table<address, u64>,
-        distributed_assets: Table<address, u64>
+        distributed_assets: Table<address, u64>,
+        extend_ref: ExtendRef,
     }
 
     // -- init
@@ -80,13 +83,15 @@ module moneyfi::vault {
             object::create_named_object(
                 data_object_signer, get_wallet_account_object_seed(wallet_id)
             );
-
+        let wallet_signer =
+            &object::generate_signer_from_constructor_ref(constructor_ref);
         move_to(
-            data_object_signer,
+            wallet_signer,
             WalletAccount {
                 wallet_id: wallet_id,
                 assets: table::new<address, u64>(),
-                distributed_assets: table::new<address, u64>()
+                distributed_assets: table::new<address, u64>(),
+                extend_ref: object::generate_extend_ref(constructor_ref),
             }
         );
 
@@ -95,7 +100,7 @@ module moneyfi::vault {
 
     public entry fun deposit<T>(
         sender: &signer, wallet_id: vector<u8>, amount: u64
-    ) {
+    ) acquires Config  {
         assert!(amount > 0);
         let wallet_account_addr = get_wallet_account_object_address(wallet_id);
         assert!(object::object_exists<WalletAccount>(wallet_account_addr));
@@ -106,20 +111,21 @@ module moneyfi::vault {
     // -- Views
 
     #[view]
-    public fun get_wallet_account_object_address(wallet_id: vector<u8>): address {
+    public fun get_wallet_account_object_address(wallet_id: vector<u8>): address acquires Config {
+        config = borrow_global<Config>(@moneyfi);
+        data_object_addr = object::object_address(&config.data_object);
         object::create_object_address(
-            &@moneyfi, get_wallet_account_object_seed(wallet_id)
+            &data_object_addr, get_wallet_account_object_seed(wallet_id)
         )
     }
 
-    // #[view]
-    // public fun get_wallet_account(wallet_id: vector<u8>): WalletAccount acquires Config, WalletAccount {
-    //     let config = borrow_global<Config>(@moneyfi);
-    //     let addr = get_wallet_account_object_address(wallet_id);
-    //     let acc = borrow_global<WalletAccount>(addr);
-
-    //     // TODO
-    // }
+    #[view]
+    public fun get_wallet_account(wallet_id: vector<u8>): Object<WalletAccount> acquires Config { 
+        let addr = get_wallet_account_object_address(wallet_id);
+        assert!(object::object_exists<WalletAccount>(addr), E_WALLET_ACCOUNT_NOT_EXISTS);
+        object::address_to_object<WalletAccount>(addr)
+        // TODO
+    }
 
     // -- Public
 

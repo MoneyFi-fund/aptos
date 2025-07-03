@@ -6,7 +6,8 @@ module moneyfi::access_control {
 
     // -- Roles
     const ROLE_ADMIN: u8 = 1;
-    const ROLE_OPERATOR: u8 = 2;
+    const ROLE_DELEGATE: u8 = 2;
+    const ROLE_OPERATOR: u8 = 3;
 
     // -- Error Codes
     const E_ALREADY_INITIALIZED: u64 = 1;
@@ -34,7 +35,7 @@ module moneyfi::access_control {
 
     public entry fun set_role(sender: &signer, addr: address, role: u8) acquires RoleRegistry {
         assert!(
-            role == ROLE_ADMIN || role == ROLE_OPERATOR,
+            role == ROLE_ADMIN || role == ROLE_OPERATOR || role == ROLE_DELEGATE,
             E_INVALID_PARAM
         );
         assert!(is_admin(sender), E_NOT_AUTHORIZED);
@@ -93,6 +94,12 @@ module moneyfi::access_control {
         let addr = signer::address_of(sender);
 
         has_role(addr, ROLE_OPERATOR)
+    }
+
+    public fun is_delegate(sender: &signer): bool acquires RoleRegistry {
+        let addr = signer::address_of(sender);
+
+        has_role(addr, ROLE_DELEGATE)
     }
 
     // -- Private
