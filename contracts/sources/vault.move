@@ -66,7 +66,7 @@ module moneyfi::vault {
 
     public entry fun create_wallet_account(
         sender: &signer, wallet_id: vector<u8>
-    ) {
+    ) acquires Config {
         assert!(access_control::is_operator(sender));
         let addr = get_wallet_account_object_address(wallet_id);
         assert!(!object::object_exists<WalletAccount>(addr), E_WALLET_ACCOUNT_EXISTS);
@@ -112,14 +112,14 @@ module moneyfi::vault {
         )
     }
 
-    #[view]
-    public fun get_wallet_account(wallet_id: vector<u8>): WalletAccount acquires WalletAccount {
-        let config = borrow_global<Config>(@moneyfi);
-        let addr = get_wallet_account_object_address(wallet_id);
-        let acc = borrow_global<WalletAccount>(addr);
+    // #[view]
+    // public fun get_wallet_account(wallet_id: vector<u8>): WalletAccount acquires Config, WalletAccount {
+    //     let config = borrow_global<Config>(@moneyfi);
+    //     let addr = get_wallet_account_object_address(wallet_id);
+    //     let acc = borrow_global<WalletAccount>(addr);
 
-        *acc
-    }
+    //     // TODO
+    // }
 
     // -- Public
 
