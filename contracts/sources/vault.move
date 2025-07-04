@@ -24,7 +24,6 @@ module moneyfi::vault {
     use moneyfi::access_control;
 
     // -- Constants
-    const WALLET_ACCOUNT_SEED: vector<u8> = b"WALLET_ACCOUNT";
     const LP_TOKEN_NAME: vector<u8> = b"MoneyFi USD";
     const LP_TOKEN_SYMBOL: vector<u8> = b"MUSD";
     const LP_TOKEN_DECIMALS: u8 = 18;
@@ -32,16 +31,6 @@ module moneyfi::vault {
     // -- Errors
     const E_ALREADY_INITIALIZED: u64 = 1;
     const E_PAUSED: u64 = 2;
-    const E_WALLET_ACCOUNT_EXISTS: u64 = 3;
-    const E_WALLET_ACCOUNT_NOT_EXISTS: u64 = 4;
-
-    // -- Structs
-    struct Config has key {
-        paused: bool,
-        data_object: Object<ObjectCore>,
-        data_object_extend_ref: ExtendRef
-        // ...
-    }
 
     struct LPToken has key {
         token: Object<Metadata>,
@@ -51,19 +40,6 @@ module moneyfi::vault {
         extend_ref: ExtendRef
     }
 
-    #[resource_group_member(group = aptos_framework::object::ObjectGroup)]
-    struct WalletAccount has key {
-        wallet_id: vector<u8>,
-        wallet_address: Option<address>,
-        assets: Table<address, u64>,
-        distributed_assets: Table<address, u64>,
-        extend_ref: ExtendRef
-    }
-
-    struct WalletAccountObject has key {
-        wallet_account: Object<WalletAccount>
-    }
-
     // -- init
     fun init_module(sender: &signer) {
         initialize(sender);
@@ -71,98 +47,12 @@ module moneyfi::vault {
 
     // -- Entries
 
-    public entry fun create_wallet_account(
-        sender: &signer, wallet_id: vector<u8>
-    ) acquires Config {
-        access_control::must_be_operator(sender);
-        let addr = get_wallet_account_object_address(wallet_id);
-        assert!(!object::object_exists<WalletAccount>(addr), E_WALLET_ACCOUNT_EXISTS);
-
-        let config = borrow_global<Config>(@moneyfi);
-        let data_object_signer =
-            &object::generate_signer_for_extending(&config.data_object_extend_ref);
-
-        let constructor_ref =
-            &object::create_named_object(
-                data_object_signer, get_wallet_account_object_seed(wallet_id)
-            );
-        let wallet_signer = &object::generate_signer(constructor_ref);
-        move_to(
-            wallet_signer,
-            WalletAccount {
-                wallet_id: wallet_id,
-                wallet_address: option::none<address>(),
-                assets: table::new<address, u64>(),
-                distributed_assets: table::new<address, u64>(),
-                extend_ref: object::generate_extend_ref(constructor_ref)
-            }
-        );
-
-        // TODO: dispatch event
-    }
 
     /// Connect user wallet to a WalletAccount
-    public entry fun connect_wallet(
-        sender: &signer, wallet_id: vector<u8>, signature: vector<u8>
-    ) acquires Config, WalletAccount {
-        let wallet_address = signer::address_of(sender);
-        let wallet_account_addr = get_wallet_account_object_address(wallet_id);
-        assert!(object::object_exists<WalletAccount>(wallet_account_addr));
-        assert!(!exists<WalletAccountObject>(wallet_address));
 
-        // TODO: verify signature
-
-        let wallet_account = borrow_global_mut<WalletAccount>(wallet_account_addr);
-        if (option::is_none(&wallet_account.wallet_address)) {
-            wallet_account.wallet_address = option::some(wallet_address);
-        };
-
-        move_to(
-            sender,
-            WalletAccountObject {
-                wallet_account: object::address_to_object(wallet_account_addr)
-            }
-        );
-    }
-
-    public entry fun deposit(
-        sender: &signer, token_address: address, amount: u64
-    ) acquires WalletAccountObject {
-        assert!(amount > 0);
-        let wallet_addr = signer::address_of(sender);
-        let wallet_account = borrow_global<WalletAccountObject>(wallet_addr);
-
-        let metadata = object::address_to_object<Metadata>(token_address);
-        primary_fungible_store::transfer(
-            sender,
-            metadata,
-            object::object_address(&wallet_account.wallet_account),
-            amount
-        );
-
-        // TODO: mint LP, dispatch event
-    }
 
     // -- Views
 
-    #[view]
-    public fun get_wallet_account_object_address(wallet_id: vector<u8>): address acquires Config {
-        let config = borrow_global<Config>(@moneyfi);
-        let data_object_addr = object::object_address(&config.data_object);
-        object::create_object_address(
-            &data_object_addr, get_wallet_account_object_seed(wallet_id)
-        )
-    }
-
-    #[view]
-    public fun get_wallet_account(wallet_id: vector<u8>): Object<WalletAccount> acquires Config {
-        let addr = get_wallet_account_object_address(wallet_id);
-        assert!(
-            object::object_exists<WalletAccount>(addr), E_WALLET_ACCOUNT_NOT_EXISTS
-        );
-
-        object::address_to_object<WalletAccount>(addr)
-    }
 
     // -- Public
 
@@ -170,19 +60,19 @@ module moneyfi::vault {
 
     fun initialize(sender: &signer) {
         let addr = signer::address_of(sender);
-        assert!(!exists<Config>(addr), E_ALREADY_INITIALIZED);
+        // assert!(!exists<Config>(addr), E_ALREADY_INITIALIZED);
 
-        // init default config
-        let constructor_ref = &object::create_sticky_object(@moneyfi);
+        // // init default config
+        // let constructor_ref = &object::create_sticky_object(@moneyfi);
 
-        move_to(
-            sender,
-            Config {
-                paused: false,
-                data_object: object::object_from_constructor_ref(constructor_ref),
-                data_object_extend_ref: object::generate_extend_ref(constructor_ref)
-            }
-        );
+        // move_to(
+        //     sender,
+        //     Config {
+        //         paused: false,
+        //         data_object: object::object_from_constructor_ref(constructor_ref),
+        //         data_object_extend_ref: object::generate_extend_ref(constructor_ref)
+        //     }
+        // );
 
         init_lp_token(sender);
     }
@@ -217,9 +107,5 @@ module moneyfi::vault {
             }
         );
 
-    }
-
-    fun get_wallet_account_object_seed(wallet_id: vector<u8>): vector<u8> {
-        bcs::to_bytes(&string_utils::format2(&b"{}_{}", WALLET_ACCOUNT_SEED, wallet_id))
     }
 }

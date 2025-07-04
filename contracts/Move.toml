@@ -4,7 +4,7 @@ version = "1.0.0"
 authors = []
 
 [addresses]
-moneyfi = "_"
+moneyfi = "0x123"
 
 [dev-addresses]
 
@@ -34,5 +34,19 @@ rev = "main"
 [dependencies.dex.addr_subst]
 deployer = "0x0a17d67299376daed705bffd20d29cbdb3fac1fc8cf0f604c9c2fed0271bcf41"
 dex_contract = "0x12"
+
+[dependencies.executor]
+git = "https://github.com/wormholelabs-xyz/example-messaging-executor.git"
+rev = "aptos"
+subdir = "aptos/executor"
+[dependencies.executor.addr_subst]
+executor = "0xccc"
+
+[dependencies.executor_requests]
+git = "https://github.com/wormholelabs-xyz/example-messaging-executor.git"
+rev = "aptos"
+subdir = "aptos/executor_requests"
+[dependencies.executor_requests.addr_subst]
+executor_requests = "0xddd"
 
 [dev-dependencies]
