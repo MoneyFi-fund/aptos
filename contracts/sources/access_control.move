@@ -5,14 +5,17 @@ module moneyfi::access_control {
     use aptos_std::table::{Self, Table};
 
     // -- Roles
+
+    /// Only admin can manage roles
     const ROLE_ADMIN: u8 = 1;
-    const ROLE_DELEGATE: u8 = 2;
-    const ROLE_OPERATOR: u8 = 3;
+    /// Operator is wallet that owned by backend service
+    const ROLE_OPERATOR: u8 = 2;
+    const ROLE_DELEGATOR: u8 = 3;
 
     // -- Error Codes
     const E_ALREADY_INITIALIZED: u64 = 1;
     const E_NOT_AUTHORIZED: u64 = 2;
-    const E_INVALID_PARAM: u64 = 3;
+    const E_INVALID_ROLE: u64 = 3;
 
     struct RoleRegistry has key {
         accounts: vector<address>,
@@ -35,10 +38,12 @@ module moneyfi::access_control {
 
     public entry fun set_role(sender: &signer, addr: address, role: u8) acquires RoleRegistry {
         assert!(
-            role == ROLE_ADMIN || role == ROLE_OPERATOR || role == ROLE_DELEGATE,
-            E_INVALID_PARAM
+            role == ROLE_ADMIN
+                || role == ROLE_OPERATOR
+                || role == ROLE_DELEGATOR,
+            E_INVALID_ROLE
         );
-        assert!(is_admin(sender), E_NOT_AUTHORIZED);
+        must_be_admin(sender);
 
         let registry = borrow_global_mut<RoleRegistry>(@moneyfi);
         if (!table::contains(&registry.roles, addr)) {
@@ -51,7 +56,8 @@ module moneyfi::access_control {
     }
 
     public entry fun revoke(sender: &signer, addr: address) acquires RoleRegistry {
-        assert!(is_admin(sender), E_NOT_AUTHORIZED);
+        must_be_admin(sender);
+
         let registry = borrow_global_mut<RoleRegistry>(@moneyfi);
         if (table::contains(&registry.roles, addr)) {
             table::remove(&mut registry.roles, addr);
@@ -84,22 +90,22 @@ module moneyfi::access_control {
 
     // -- Public
 
-    public fun is_admin(sender: &signer): bool acquires RoleRegistry {
+    public fun must_be_admin(sender: &signer) acquires RoleRegistry {
         let addr = signer::address_of(sender);
 
-        has_role(addr, ROLE_ADMIN)
+        assert!(has_role(addr, ROLE_ADMIN), E_NOT_AUTHORIZED)
     }
 
-    public fun is_operator(sender: &signer): bool acquires RoleRegistry {
+    public fun must_be_operator(sender: &signer) acquires RoleRegistry {
         let addr = signer::address_of(sender);
 
-        has_role(addr, ROLE_OPERATOR)
+        assert!(has_role(addr, ROLE_OPERATOR), E_NOT_AUTHORIZED)
     }
 
-    public fun is_delegate(sender: &signer): bool acquires RoleRegistry {
+    public fun must_be_delegator(sender: &signer) acquires RoleRegistry {
         let addr = signer::address_of(sender);
 
-        has_role(addr, ROLE_DELEGATE)
+        assert!(has_role(addr, ROLE_DELEGATOR), E_NOT_AUTHORIZED)
     }
 
     // -- Private

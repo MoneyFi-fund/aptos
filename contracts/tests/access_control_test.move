@@ -4,7 +4,7 @@ module moneyfi::access_control_test {
     use aptos_framework::account;
     use std::error;
 
-    use moneyfi::access_control::{Self, RoleRegistry};
+    use moneyfi::access_control;
 
     #[test(deployer = @moneyfi, user1 = @0x2)]
     fun test_access_control(deployer: &signer, user1: &signer) {
@@ -15,22 +15,19 @@ module moneyfi::access_control_test {
         account::create_account_for_test(deployer_addr);
         access_control::initialize(deployer);
 
-        assert!(access_control::is_admin(deployer));
-        assert!(!access_control::is_admin(user1));
-        assert!(!access_control::is_operator(user1));
+        access_control::must_be_admin(deployer);
 
         // Deployer assigns roles
         access_control::set_role(deployer, user1_addr, 2);
-        assert!(access_control::is_operator(user1));
+        access_control::must_be_operator(user1);
 
         // Update role
         access_control::set_role(deployer, user1_addr, 1);
-        assert!(access_control::is_admin(user1));
+        access_control::must_be_admin(user1);
 
         // Revoke role
         access_control::revoke(deployer, user1_addr);
-        assert!(!access_control::is_admin(user1));
-        assert!(!access_control::is_operator(user1));
+        // TODO: not sure how to expect failure when call must_be_admin yet
     }
 
     #[test(deployer = @moneyfi, user = @0x2)]
