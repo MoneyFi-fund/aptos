@@ -3,6 +3,7 @@
 NETWORK_URL="https://fullnode.mainnet.aptoslabs.com/"
 ARIES_ADDRESS="0x9770fa9c725cbd97eb50b2be5f7416efdfd1f1554beb0750d4dae4c64e860da3"
 AMNIS_ADDRESS="0x111ae3e5bc816a5e63c2da97d0aa3886519e0cd5e4b046659fa35796bd11542a"
+HYPERION_ADDRESS="0x8b4a2c4bb53857c718a04c020b98f8c2e1f99a68b0f57389a8bf5434cd22e05c"
 
 set -e
 
@@ -45,6 +46,7 @@ function download_package() {
 
 }
 
+### Aries
 download_package --account "$ARIES_ADDRESS" --package Aries --output-dir deps/aries
 download_package --account "$ARIES_ADDRESS" --package AriesConfig --output-dir deps/aries-config
 download_package --account "$ARIES_ADDRESS" --package Decimal --output-dir deps/decimal
@@ -53,3 +55,10 @@ download_package --account "$ARIES_ADDRESS" --package Oracle --output-dir deps/o
 sed -i '/^amnis/s/^/# /' deps/oracle/Move.toml
 
 # download_package --account "$AMNIS_ADDRESS" --package amnis --output-dir deps/amnis
+
+
+### Hyperion
+download_package --account "$HYPERION_ADDRESS" --package dex --output-dir deps/hyperion
+echo 'module dex_contract::rate_limitter {}' > deps/hyperion/sources/rate_limitter.move
+HYPERION_DEPLOYER_ADDRESS="0xd548f6e8ef91c57e7983b1051df686a3753f3d453d37ef781782450e61079fe9"
+sed -i 's/^\(dex_contract = \)"_"/\1"'$HYPERION_ADDRESS'"/; s/^\(deployer = \)"_"/\1"'$HYPERION_DEPLOYER_ADDRESS'"/' deps/hyperion/Move.toml
