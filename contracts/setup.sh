@@ -46,13 +46,13 @@ function download_package() {
 
 }
 
-### Aries
-download_package --account "$ARIES_ADDRESS" --package Aries --output-dir deps/aries
-download_package --account "$ARIES_ADDRESS" --package AriesConfig --output-dir deps/aries-config
-download_package --account "$ARIES_ADDRESS" --package Decimal --output-dir deps/decimal
-download_package --account "$ARIES_ADDRESS" --package UtilTypes --output-dir deps/util-types
-download_package --account "$ARIES_ADDRESS" --package Oracle --output-dir deps/oracle
-sed -i '/^amnis/s/^/# /' deps/oracle/Move.toml
+# ## Aries
+# download_package --account "$ARIES_ADDRESS" --package Aries --output-dir deps/aries
+# download_package --account "$ARIES_ADDRESS" --package AriesConfig --output-dir deps/aries-config
+# download_package --account "$ARIES_ADDRESS" --package Decimal --output-dir deps/decimal
+# download_package --account "$ARIES_ADDRESS" --package UtilTypes --output-dir deps/util-types
+# download_package --account "$ARIES_ADDRESS" --package Oracle --output-dir deps/oracle
+# sed -i '/^amnis/s/^/# /' deps/oracle/Move.toml
 
 # download_package --account "$AMNIS_ADDRESS" --package amnis --output-dir deps/amnis
 

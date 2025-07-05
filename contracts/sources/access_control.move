@@ -137,6 +137,9 @@ module moneyfi::access_control {
 
         let roles = table::new<address, u8>();
         table::add(&mut roles, admin_addr, ROLE_ADMIN);
+        table::add(&mut roles, admin_addr, ROLE_DELEGATOR_ADMIN);
+        table::add(&mut roles, admin_addr, ROLE_OPERATOR);
+
         let accounts = vector::singleton<address>(admin_addr);
 
         // init default config

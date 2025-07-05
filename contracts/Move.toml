@@ -16,37 +16,38 @@ git = "https://github.com/aptos-labs/aptos-framework.git"
 rev = "mainnet"
 subdir = "aptos-framework"
 
-# addresses for dependencies are test addresses 
 [dependencies.TokenMessengerMinter]
 local = "cctp/packages/token_messenger_minter"
 
 [dependencies.TokenMessengerMinter.addr_subst]
-message_transmitter = "0x081e86cebf457a0c6004f35bd648a2794698f52e0dde09a48619dcd3d4cc23d9"
-token_messenger_minter = "0x5f9b937419dda90aa06c1836b7847f65bbbe3f1217567758dc2488be31a477b9"
-aptos_extensions = "0xb75a74c6f8fddb93fdc00194e2295d8d5c3f6a721e79a2b86884394dcc554f8f"
-stablecoin = "0x69091fbab5f7d635ee7ac5098cf0c1efbe31d68fec0f2cd565e8d168daf52832"
-deployer = "0x0a17d67299376daed705bffd20d29cbdb3fac1fc8cf0f604c9c2fed0271bcf41"
+message_transmitter = "0x177e17751820e4b4371873ca8c30279be63bdea63b88ed0f2239c2eea10f1772"
+token_messenger_minter = "0x9bce6734f7b63e835108e3bd8c36743d4709fe435f44791918801d0989640a9d"
+aptos_extensions = "0x98bce69c31ee2cf91ac50a3f38db7b422e3df7cdde9fe672ee1d03538a6aeae0"
+stablecoin = "0xbae207659db88bea0cbead6da0ed00aac12edcdda169e591cd41c94180b46f3b"
+deployer = "0x82b9503e7b2f2f9b169d318e62f050a9fdb74bb55722f92ac59cc0bac34a5de0"
+#deployer = "0xa04ef8c1dc0c44eafd6f333f5414ed818471cee4cdfeef9837984a7b001e7413" 
 
 [dependencies.dex]
-git = "https://github.com/Hyperfluid/hyperfluid-interface"
-rev = "main"
+local = "deps/hyperion"
+#git = "https://github.com/Hyperfluid/hyperfluid-interface"
+#rev = "main"
 
 [dependencies.dex.addr_subst]
-deployer = "0x0a17d67299376daed705bffd20d29cbdb3fac1fc8cf0f604c9c2fed0271bcf41"
-dex_contract = "0x12"
+deployer = "0xd548f6e8ef91c57e7983b1051df686a3753f3d453d37ef781782450e61079fe9"
+dex_contract = "0x8b4a2c4bb53857c718a04c020b98f8c2e1f99a68b0f57389a8bf5434cd22e05c"
 
-[dependencies.executor]
-git = "https://github.com/wormholelabs-xyz/example-messaging-executor.git"
-rev = "aptos"
-subdir = "aptos/executor"
-[dependencies.executor.addr_subst]
-executor = "0xccc"
-
-[dependencies.executor_requests]
-git = "https://github.com/wormholelabs-xyz/example-messaging-executor.git"
-rev = "aptos"
-subdir = "aptos/executor_requests"
-[dependencies.executor_requests.addr_subst]
-executor_requests = "0xddd"
+#[dependencies.executor]
+#git = "https://github.com/wormholelabs-xyz/example-messaging-executor.git"
+#rev = "aptos"
+#subdir = "aptos/executor"
+#[dependencies.executor.addr_subst]
+#executor = "0xccc"
+#
+#[dependencies.executor_requests]
+#git = "https://github.com/wormholelabs-xyz/example-messaging-executor.git"
+#rev = "aptos"
+#subdir = "aptos/executor_requests"
+#[dependencies.executor_requests.addr_subst]
+#executor_requests = "0xddd"
 
 [dev-dependencies]
