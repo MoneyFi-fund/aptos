@@ -15,8 +15,10 @@ module moneyfi::hyperion {
     use dex_contract::i32::{Self, I32};
     use dex_contract::router_v3;
     use dex_contract::pool_v3;
+    use dex_contract::rewarder;
     use dex_contract::position_v3::{Self, Info};
 
+    const STRATEGY_ID: u8 = 1; // Hyperion strategy id
 
     //const FEE_RATE_VEC: vector<u64> = vector[100, 500, 3000, 10000]; fee_tier is [0, 1, 2, 3] for [0.01%, 0.05%, 0.3%, 1%] ??
     //-- Entries
@@ -39,6 +41,22 @@ module moneyfi::hyperion {
      #[view]
     public fun get_amount_by_liquidity(_position: Object<Info>): (u64, u64) {
         router_v3::get_amount_by_liquidity(_position)
+    }
+
+    #[view]
+    public fun get_pending_rewards(
+        _position: Object<Info>
+    ): vector<rewarder::PendingReward> {
+        pool_v3::get_pending_rewards(_position)
+    }
+
+    //public fun pending_rewards_unpack(info: &PendingReward): (Object<Metadata>, u64) {
+    //    (info.reward_fa, info.amount_owed)
+    //}
+    //
+    #[view]
+    public fun get_pending_fees(_position: Object<Info>): vector<u64> {
+        pool_v3::get_pending_fees(_position)
     }
 
     #[view]
@@ -134,11 +152,9 @@ module moneyfi::hyperion {
         );
    }
 
-   
-
     public fun claim_rewards(
         _user: &signer,
-        _position: Object<position_v3::Info>,
+        _position: Object<Info>,
         _receiver: address
     ) {
         router_v3::claim_rewards(
@@ -174,7 +190,7 @@ module moneyfi::hyperion {
 
     public fun add_liquidity(
         _lp: &signer,
-        _lp_object: Object<position_v3::Info>,
+        _lp_object: Object<Info>,
         _token_a: Object<Metadata>,
         _token_b: Object<Metadata>,
         _fee_tier: u8,

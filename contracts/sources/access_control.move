@@ -123,6 +123,14 @@ module moneyfi::access_control {
         let config = borrow_global<Config>(@moneyfi);
         object::object_address(&config.data_object)
     } 
+    
+    public fun is_operator(addr: address): bool acquires RoleRegistry {
+        let registry = borrow_global<RoleRegistry>(@moneyfi);
+
+        if (table::contains(&registry.roles, addr)) {
+            table::borrow(&registry.roles, addr) == &ROLE_OPERATOR
+        } else { false }
+    }
 
     // -- Private
 

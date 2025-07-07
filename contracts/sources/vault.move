@@ -1,12 +1,7 @@
 module moneyfi::vault {
-
-    use std::bcs;
     use std::signer;
-    use std::vector;
-    use std::string::{Self, String};
-    use std::option::{Self, Option};
-    use aptos_std::table::{Self, Table};
-    use aptos_std::string_utils;
+    use std::string::{Self};
+    use std::option::{Self};
     use aptos_framework::account;
     use aptos_framework::object::{Self, Object, ObjectCore, ExtendRef};
     // use aptos_framework::event;
