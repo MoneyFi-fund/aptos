@@ -1,0 +1,18 @@
+[package]
+name = "dex"
+version = "1.0.0"
+upgrade_policy = "compatible"
+authors = []
+
+[addresses]
+dex_contract = "_"
+
+
+[dev-addresses]
+dex_contract = "0xAA"
+deployer = "0xBB"
+
+[dependencies]
+AptosFramework = { git = "https://github.com/aptos-labs/aptos-framework.git", subdir = "aptos-framework", rev = "mainnet" }
+
+[dev-dependencies]
