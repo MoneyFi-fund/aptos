@@ -11,6 +11,7 @@ function download_package() {
     local DIR=""
     local PKG=""
     local ACCOUNT=""
+	local RENAME_PKG=""
 
     while [[ $# -gt 0 ]]; do
         case "$1" in
@@ -26,6 +27,10 @@ function download_package() {
                 ACCOUNT="$2"
                 shift 2
                 ;;
+			--rename)
+				RENAME_PKG="$2"
+				shift 2
+				;;
             *)  echo "Error: Unknown option: $1" >&2
                 exit 1
                 shift
@@ -44,6 +49,10 @@ function download_package() {
     mv "$DIR/build/$PKG/sources" "$DIR"
     mv "$DIR/build/$PKG/Move.toml" "$DIR"
 
+	if [[ -n "$RENAME_PKG" ]]; then
+		mv "$DIR/build/$PKG" "$DIR/build/$RENAME_PKG"
+		sed -i "s/^name = \"$PKG\"/name = \"$RENAME_PKG\"/" "$DIR/Move.toml"
+	fi
 }
 
 # ## Aries
@@ -58,7 +67,5 @@ function download_package() {
 
 
 ### Hyperion
-download_package --account "$HYPERION_ADDRESS" --package dex --output-dir deps/hyperion
-echo 'module dex_contract::rate_limitter {}' > deps/hyperion/sources/rate_limitter.move
-HYPERION_DEPLOYER_ADDRESS="0xd548f6e8ef91c57e7983b1051df686a3753f3d453d37ef781782450e61079fe9"
-sed -i 's/^\(dex_contract = \)"_"/\1"'$HYPERION_ADDRESS'"/; s/^\(deployer = \)"_"/\1"'$HYPERION_DEPLOYER_ADDRESS'"/' deps/hyperion/Move.toml
+download_package --account "$HYPERION_ADDRESS" --package dex --output-dir deps/hyperion --rename hyperion
+git checkout deps/hyperion
