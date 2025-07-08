@@ -4,12 +4,14 @@ version = "1.0.0"
 authors = []
 
 [addresses]
-moneyfi = "0xcafe"
+moneyfi = "_"
+hyperion = "0x8b4a2c4bb53857c718a04c020b98f8c2e1f99a68b0f57389a8bf5434cd22e05c"
 
 [dev-addresses]
 
 [dependencies]
 # Aries = { local = "./deps/aries" }
+hyperion = { local = "./deps/hyperion" }
 
 [dependencies.AptosFramework]
 git = "https://github.com/aptos-labs/aptos-framework.git"
