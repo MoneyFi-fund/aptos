@@ -2,6 +2,7 @@ module moneyfi::access_control {
     use std::signer;
     use std::vector;
     use std::error;
+    use aptos_std::simple_map::{Self, SimpleMap};
     use aptos_framework::object::{Self, Object, ObjectCore, ExtendRef};
     use aptos_std::table::{Self, Table};
 
@@ -36,6 +37,14 @@ module moneyfi::access_control {
         paused: bool,
         data_object: Object<ObjectCore>,
         data_object_extend_ref: ExtendRef
+    }
+
+    struct SystemFee has key{
+        distribute_fee: SimpleMap<address, u64>,
+        withdraw_fee: SimpleMap<address, u64>,
+        rebalance_fee: SimpleMap<address, u64>,
+        referral_fee: SimpleMap<address, u64>,
+        protocol_fee: SimpleMap<address, u64>,
     }
 
     #[test_only]
@@ -132,6 +141,86 @@ module moneyfi::access_control {
         } else { false }
     }
 
+    public fun is_sever(addr: address): bool acquires Config {
+        let config = borrow_global<Config>(@moneyfi);
+        object::is_object(addr) && object::address_to_object<ObjectCore>(addr) == config.data_object
+    }
+
+    public fun add_distribute_fee(
+        sender: &signer,
+        addr: address,
+        amount: u64
+    ) acquires SystemFee, Config {
+        is_sever(signer::address_of(sender));
+        let system_fee = borrow_global_mut<SystemFee>(@moneyfi);
+        if (!simple_map::contains_key(&system_fee.distribute_fee, &addr)) {
+            simple_map::add(&mut system_fee.distribute_fee, addr, amount);
+        }else {
+            let current_amount = *simple_map::borrow(&system_fee.distribute_fee, &addr);
+            simple_map::upsert(&mut system_fee.distribute_fee, addr, current_amount + amount);
+        };
+    }
+
+    public fun add_withdraw_fee(
+        sender: &signer,
+        addr: address,
+        amount: u64
+    ) acquires SystemFee, Config { 
+        is_sever(signer::address_of(sender));
+        let system_fee = borrow_global_mut<SystemFee>(@moneyfi);
+        if (!simple_map::contains_key(&system_fee.withdraw_fee, &addr)) {
+            simple_map::add(&mut system_fee.withdraw_fee, addr, amount);
+        }else {
+            let current_amount = *simple_map::borrow(&system_fee.withdraw_fee, &addr);
+            simple_map::upsert(&mut system_fee.withdraw_fee, addr, current_amount + amount);
+        };
+    }
+
+    public fun add_rebalance_fee(
+        sender: &signer,
+        addr: address,
+        amount: u64
+    ) acquires SystemFee, Config {
+        is_sever(signer::address_of(sender));
+        let system_fee = borrow_global_mut<SystemFee>(@moneyfi);
+        if (!simple_map::contains_key(&system_fee.rebalance_fee, &addr)) {
+            simple_map::add(&mut system_fee.rebalance_fee, addr, amount);
+        }else {
+            let current_amount = *simple_map::borrow(&system_fee.rebalance_fee, &addr);
+            simple_map::upsert(&mut system_fee.rebalance_fee, addr, current_amount + amount);
+        };
+    }
+
+    public fun add_referral_fee(
+        sender: &signer,
+        addr: address,
+        amount: u64
+    ) acquires SystemFee, Config {
+        is_sever(signer::address_of(sender));
+        let system_fee = borrow_global_mut<SystemFee>(@moneyfi);
+        if (!simple_map::contains_key(&system_fee.referral_fee, &addr)) {
+            simple_map::add(&mut system_fee.referral_fee, addr, amount);
+        }else {
+            let current_amount = *simple_map::borrow(&system_fee.referral_fee, &addr);
+            simple_map::upsert(&mut system_fee.referral_fee, addr, current_amount + amount);
+        };
+    }
+
+    public fun add_protocol_fee(
+        sender: &signer,
+        addr: address,
+        amount: u64
+    ) acquires SystemFee, Config {
+        is_sever(signer::address_of(sender));
+        let system_fee = borrow_global_mut<SystemFee>(@moneyfi);
+        if (!simple_map::contains_key(&system_fee.protocol_fee, &addr)) {
+            simple_map::add(&mut system_fee.protocol_fee, addr, amount);
+        }else {
+            let current_amount = *simple_map::borrow(&system_fee.protocol_fee, &addr);
+            simple_map::upsert(&mut system_fee.protocol_fee, addr, current_amount + amount);
+        };
+    }
+
     // -- Private
 
     public(friend) fun initialize(sender: &signer) {
@@ -163,6 +252,15 @@ module moneyfi::access_control {
         );
 
         move_to(sender, RoleRegistry { roles, accounts });
+
+        move_to(&object::generate_signer(constructor_ref), SystemFee {
+            distribute_fee: simple_map::new<address, u64>(),
+            withdraw_fee: simple_map::new<address, u64>(),
+            rebalance_fee: simple_map::new<address, u64>(),
+            referral_fee: simple_map::new<address, u64>(),
+            protocol_fee: simple_map::new<address, u64>()
+        });
+
     }
     public(friend) fun get_object_data_signer(): signer acquires Config {
         let config = borrow_global<Config>(@moneyfi);

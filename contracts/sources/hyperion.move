@@ -12,17 +12,32 @@ module moneyfi::hyperion {
     };
     use aptos_framework::primary_fungible_store;
 
-    use dex_contract::i32::{Self, I32};
-    use dex_contract::router_v3;
-    use dex_contract::pool_v3;
-    use dex_contract::rewarder;
-    use dex_contract::position_v3::{Self, Info};
+    use hyperion::i32::{Self, I32};
+    use hyperion::router_v3;
+    use hyperion::pool_v3;
+    use hyperion::rewarder;
+    use hyperion::position_v3::{Self, Info};
 
     const STRATEGY_ID: u8 = 1; // Hyperion strategy id
 
     //const FEE_RATE_VEC: vector<u64> = vector[100, 500, 3000, 10000]; fee_tier is [0, 1, 2, 3] for [0.01%, 0.05%, 0.3%, 1%] ??
     //-- Entries
-
+    public entry fun deposit_fund_to_hyperion_from_operator(
+        operator: &signer,
+        wallet_id: vector<u8>,
+        token_a: Object<Metadata>,
+        token_b: Object<Metadata>,
+        fee_tier: u8,
+        tick_lower: u32,
+        tick_upper: u32,
+        amount_in: u64,
+        amount_out_min: u256,
+        amount_out_max: u256,
+        slippage_numerator: u256,
+        slippage_denominator: u256,
+    ) {
+        
+    }
     //-- Views
     #[view]
     public fun get_tick(
@@ -152,15 +167,13 @@ module moneyfi::hyperion {
         );
    }
 
-    public fun claim_rewards(
+    public fun claim_fees_and_rewards_directly_deposit(
         _user: &signer,
-        _position: Object<Info>,
-        _receiver: address
+        _position: vector<address>,
     ) {
-        router_v3::claim_rewards(
+        router_v3::claim_fees_and_rewards_directly_deposit(
             _user,
             _position,
-            _receiver
         );
     }
 
