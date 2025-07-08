@@ -547,6 +547,21 @@ module moneyfi::wallet_account {
 
         simple_map::add(&mut wallet.position_opened, position, pos);
 
+        // Update distributed_assets when opening position
+        let i = 0;
+        while (i < vector::length(&assets)) {
+            let asset = *vector::borrow(&assets, i);
+            let amount = *vector::borrow(&amounts, i);
+            
+            if (simple_map::contains_key(&wallet.distributed_assets, &asset)) {
+                let current_distributed = simple_map::borrow(&wallet.distributed_assets, &asset);
+                simple_map::upsert(&mut wallet.distributed_assets, asset, *current_distributed + amount);
+            } else {
+                simple_map::upsert(&mut wallet.distributed_assets, asset, amount);
+            };
+            i = i + 1;
+        };
+
         event::emit(OpenPositionEvent {
             wallet_id: wallet.wallet_id,
             position,
@@ -571,6 +586,29 @@ module moneyfi::wallet_account {
         let wallet = borrow_global_mut<WalletAccount>(addr);
         assert!(simple_map::contains_key(&wallet.position_opened, &position), error::not_found(E_POSITION_NOT_EXISTS));
 
+        // Get position assets before removing to update distributed_assets
+        let position_data = simple_map::borrow(&wallet.position_opened, &position);
+        let (position_assets, position_amounts) = simple_map::to_vec_pair<address, u64>(position_data.assets);
+        
+        // Update distributed_assets when closing position
+        let i = 0;
+        while (i < vector::length(&position_assets)) {
+            let asset = *vector::borrow(&position_assets, i);
+            let amount = *vector::borrow(&position_amounts, i);
+            
+            if (simple_map::contains_key(&wallet.distributed_assets, &asset)) {
+                let current_distributed = simple_map::borrow(&wallet.distributed_assets, &asset);
+                if (*current_distributed >= amount) {
+                    if (*current_distributed == amount) {
+                        simple_map::remove(&mut wallet.distributed_assets, &asset);
+                    } else {
+                        simple_map::upsert(&mut wallet.distributed_assets, asset, *current_distributed - amount);
+                    }
+                }
+            };
+            i = i + 1;
+        };
+
         simple_map::remove(&mut wallet.position_opened, &position);
 
         event::emit(ClosePositionEvent {
@@ -579,7 +617,6 @@ module moneyfi::wallet_account {
             timestamp: timestamp::now_seconds(),
         });
     }
-
 
     //INTERNAL: ONLY CALLED BY DATA OBJECT SIGNER
     // Upgrade position opened object in the WalletAccount
@@ -614,6 +651,15 @@ module moneyfi::wallet_account {
                 amount
             };
             simple_map::upsert(assets_map, asset, updated);
+            
+            // Update distributed_assets when upgrading position
+            if (simple_map::contains_key(&wallet.distributed_assets, &asset)) {
+                let current_distributed = simple_map::borrow(&wallet.distributed_assets, &asset);
+                simple_map::upsert(&mut wallet.distributed_assets, asset, *current_distributed + amount);
+            } else {
+                simple_map::upsert(&mut wallet.distributed_assets, asset, amount);
+            };
+            
             i = i + 1;
         };
 

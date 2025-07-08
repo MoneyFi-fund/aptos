@@ -6,6 +6,7 @@ authors = []
 [addresses]
 moneyfi = "0xcafe"
 hyperion = "0x8b4a2c4bb53857c718a04c020b98f8c2e1f99a68b0f57389a8bf5434cd22e05c"
+stablecoin = "0xbae207659db88bea0cbead6da0ed00aac12edcdda169e591cd41c94180b46f3b"
 
 [dev-addresses]
 
@@ -27,7 +28,6 @@ local = "cctp/packages/token_messenger_minter"
 message_transmitter = "0x177e17751820e4b4371873ca8c30279be63bdea63b88ed0f2239c2eea10f1772"
 token_messenger_minter = "0x9bce6734f7b63e835108e3bd8c36743d4709fe435f44791918801d0989640a9d"
 aptos_extensions = "0x98bce69c31ee2cf91ac50a3f38db7b422e3df7cdde9fe672ee1d03538a6aeae0"
-stablecoin = "0xbae207659db88bea0cbead6da0ed00aac12edcdda169e591cd41c94180b46f3b"
 deployer = "0x82b9503e7b2f2f9b169d318e62f050a9fdb74bb55722f92ac59cc0bac34a5de0"
 #deployer = "0xa04ef8c1dc0c44eafd6f333f5414ed818471cee4cdfeef9837984a7b001e7413"
 

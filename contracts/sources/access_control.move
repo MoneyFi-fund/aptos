@@ -7,10 +7,9 @@ module moneyfi::access_control {
     use aptos_std::table::{Self, Table};
 
     friend moneyfi::wallet_account;
-    friend moneyfi::vault;
+    friend moneyfi::hyperion;
 
     // -- Roles
-
     /// Only admin can manage roles
     const ROLE_ADMIN: u8 = 1;
     /// Operator is wallet that owned by backend service
