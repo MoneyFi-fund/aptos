@@ -1,23 +1,16 @@
 module moneyfi::hyperion {
     use std::signer;
     use std::vector;
-    use std::string::{Self, String};
-    use std::option::{Self, Option};
     use std::error;
     use aptos_framework::object::{Self, Object};
-    use aptos_framework::fungible_asset::{
-        Self,
-        FungibleAsset,
-        Metadata
-    };
     use aptos_framework::primary_fungible_store;
     use aptos_framework::timestamp;
-
-    use hyperion::i32::{Self, I32};
-    use hyperion::router_v3;
-    use hyperion::pool_v3;
-    use hyperion::rewarder;
-    use hyperion::position_v3::{Self, Info};
+    use aptos_framework::fungible_asset::Metadata;
+    use dex_contract::i32::{Self, I32};
+    use dex_contract::router_v3;
+    use dex_contract::pool_v3;
+    use dex_contract::rewarder;
+    use dex_contract::position_v3::{Self, Info};
 
     use moneyfi::access_control;
     use moneyfi::wallet_account;

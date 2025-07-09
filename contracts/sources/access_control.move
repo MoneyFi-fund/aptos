@@ -4,7 +4,8 @@ module moneyfi::access_control {
     use std::error;
     use aptos_std::simple_map::{Self, SimpleMap};
     use aptos_framework::object::{Self, Object, ObjectCore, ExtendRef};
-    use aptos_std::table::{Self, Table};
+    use aptos_framework::fungible_asset::{Self, Metadata};
+    use aptos_framework::primary_fungible_store;
 
     friend moneyfi::wallet_account;
     friend moneyfi::hyperion;
@@ -24,7 +25,7 @@ module moneyfi::access_control {
     // -- Structs
     struct RoleRegistry has key {
         accounts: vector<address>,
-        roles: Table<address, u8>
+        roles: SimpleMap<address, vector<u8>>
     }
 
     struct Item has drop {
@@ -44,6 +45,7 @@ module moneyfi::access_control {
         rebalance_fee: SimpleMap<address, u64>,
         referral_fee: SimpleMap<address, u64>,
         protocol_fee: SimpleMap<address, u64>,
+        fee_to: address,
     }
 
     #[test_only]
@@ -65,21 +67,77 @@ module moneyfi::access_control {
         must_be_admin(sender);
 
         let registry = borrow_global_mut<RoleRegistry>(@moneyfi);
-        if (!table::contains(&registry.roles, addr)) {
+        if (!simple_map::contains_key(&registry.roles, &addr)) {
             vector::push_back(&mut registry.accounts, addr);
+            simple_map::add(&mut registry.roles, addr, vector::empty<u8>());
         };
 
-        table::upsert(&mut registry.roles, addr, role);
+        let roles = simple_map::borrow_mut(&mut registry.roles, &addr);
+        if (!vector::contains(roles, &role)) {
+            vector::push_back(roles, role);
+        };
 
         // TODO: dispatch event
     }
 
-    public entry fun revoke(sender: &signer, addr: address) acquires RoleRegistry {
+    public entry fun claim_fees(
+        sender: &signer,
+        asset: Object<Metadata>,
+        amount: u64
+    ) acquires SystemFee, Config, RoleRegistry {
+        must_be_delegator(sender);
+        let system_fee = borrow_global<SystemFee>(@moneyfi);
+        let object_signer = get_object_data_signer();
+        primary_fungible_store::transfer(
+            &object_signer,
+            asset,
+            system_fee.fee_to,
+            amount
+        );
+        //Event
+
+    }
+
+    public entry fun set_fee_to(sender: &signer, addr: address) acquires SystemFee, RoleRegistry {
+        must_be_admin(sender);
+        let system_fee = borrow_global_mut<SystemFee>(@moneyfi);
+        system_fee.fee_to = addr;
+    }
+
+    public entry fun revoke_role(sender: &signer, addr: address, role: u8) acquires RoleRegistry {
         must_be_admin(sender);
 
         let registry = borrow_global_mut<RoleRegistry>(@moneyfi);
-        if (table::contains(&registry.roles, addr)) {
-            table::remove(&mut registry.roles, addr);
+        if (simple_map::contains_key(&registry.roles, &addr)) {
+            let roles = simple_map::borrow_mut(&mut registry.roles, &addr);
+            let (found, index) = vector::index_of(roles, &role);
+            if (found) {
+                vector::remove(roles, index);
+            };
+
+            // If no roles left, remove the address completely
+            if (vector::is_empty(roles)) {
+                simple_map::remove(&mut registry.roles, &addr);
+                let (found, index) = vector::index_of(&registry.accounts, &addr);
+                if (found) {
+                    vector::remove(&mut registry.accounts, index);
+                };
+            };
+
+            // TODO: dispatch event
+        }
+    }
+
+    public entry fun revoke_all_roles(sender: &signer, addr: address) acquires RoleRegistry {
+        must_be_admin(sender);
+
+        let registry = borrow_global_mut<RoleRegistry>(@moneyfi);
+        if (simple_map::contains_key(&registry.roles, &addr)) {
+            simple_map::remove(&mut registry.roles, &addr);
+            let (found, index) = vector::index_of(&registry.accounts, &addr);
+            if (found) {
+                vector::remove(&mut registry.accounts, index);
+            };
 
             // TODO: dispatch event
         }
@@ -96,15 +154,31 @@ module moneyfi::access_control {
         let i = 0;
         while (i < len) {
             let addr = *vector::borrow(&registry.accounts, i);
-            if (table::contains(&registry.roles, addr)) {
-                let role = *table::borrow(&registry.roles, addr);
-                let item = Item { account: addr, role };
-                vector::push_back(&mut items, item);
+            if (simple_map::contains_key(&registry.roles, &addr)) {
+                let roles = simple_map::borrow(&registry.roles, &addr);
+                let role_len = vector::length(roles);
+                let j = 0;
+                while (j < role_len) {
+                    let role = *vector::borrow(roles, j);
+                    let item = Item { account: addr, role };
+                    vector::push_back(&mut items, item);
+                    j = j + 1;
+                };
             };
             i = i + 1;
         };
 
         items
+    }
+
+    #[view]
+    public fun get_user_roles(addr: address): vector<u8> acquires RoleRegistry {
+        let registry = borrow_global<RoleRegistry>(@moneyfi);
+        if (simple_map::contains_key(&registry.roles, &addr)) {
+            *simple_map::borrow(&registry.roles, &addr)
+        } else {
+            vector::empty<u8>()
+        }
     }
 
     // -- Public
@@ -133,11 +207,7 @@ module moneyfi::access_control {
     } 
     
     public fun is_operator(addr: address): bool acquires RoleRegistry {
-        let registry = borrow_global<RoleRegistry>(@moneyfi);
-
-        if (table::contains(&registry.roles, addr)) {
-            table::borrow(&registry.roles, addr) == &ROLE_OPERATOR
-        } else { false }
+        has_role(addr, ROLE_OPERATOR)
     }
 
     public fun is_sever(addr: address): bool acquires Config {
@@ -150,7 +220,7 @@ module moneyfi::access_control {
         addr: address,
         amount: u64
     ) acquires SystemFee, Config {
-        is_sever(signer::address_of(sender));
+        assert!(is_sever(signer::address_of(sender)), error::permission_denied(E_NOT_AUTHORIZED));
         let system_fee = borrow_global_mut<SystemFee>(@moneyfi);
         if (!simple_map::contains_key(&system_fee.distribute_fee, &addr)) {
             simple_map::add(&mut system_fee.distribute_fee, addr, amount);
@@ -165,7 +235,7 @@ module moneyfi::access_control {
         addr: address,
         amount: u64
     ) acquires SystemFee, Config { 
-        is_sever(signer::address_of(sender));
+        assert!(is_sever(signer::address_of(sender)), error::permission_denied(E_NOT_AUTHORIZED));
         let system_fee = borrow_global_mut<SystemFee>(@moneyfi);
         if (!simple_map::contains_key(&system_fee.withdraw_fee, &addr)) {
             simple_map::add(&mut system_fee.withdraw_fee, addr, amount);
@@ -180,7 +250,7 @@ module moneyfi::access_control {
         addr: address,
         amount: u64
     ) acquires SystemFee, Config {
-        is_sever(signer::address_of(sender));
+        assert!(is_sever(signer::address_of(sender)), error::permission_denied(E_NOT_AUTHORIZED));
         let system_fee = borrow_global_mut<SystemFee>(@moneyfi);
         if (!simple_map::contains_key(&system_fee.rebalance_fee, &addr)) {
             simple_map::add(&mut system_fee.rebalance_fee, addr, amount);
@@ -195,7 +265,7 @@ module moneyfi::access_control {
         addr: address,
         amount: u64
     ) acquires SystemFee, Config {
-        is_sever(signer::address_of(sender));
+        assert!(is_sever(signer::address_of(sender)), error::permission_denied(E_NOT_AUTHORIZED));
         let system_fee = borrow_global_mut<SystemFee>(@moneyfi);
         if (!simple_map::contains_key(&system_fee.referral_fee, &addr)) {
             simple_map::add(&mut system_fee.referral_fee, addr, amount);
@@ -210,7 +280,7 @@ module moneyfi::access_control {
         addr: address,
         amount: u64
     ) acquires SystemFee, Config {
-        is_sever(signer::address_of(sender));
+        assert!(is_sever(signer::address_of(sender)), error::permission_denied(E_NOT_AUTHORIZED));
         let system_fee = borrow_global_mut<SystemFee>(@moneyfi);
         if (!simple_map::contains_key(&system_fee.protocol_fee, &addr)) {
             simple_map::add(&mut system_fee.protocol_fee, addr, amount);
@@ -231,10 +301,12 @@ module moneyfi::access_control {
                 object::owner(object::address_to_object<ObjectCore>(addr))
             } else { addr };
 
-        let roles = table::new<address, u8>();
-        table::add(&mut roles, admin_addr, ROLE_ADMIN);
-        table::add(&mut roles, admin_addr, ROLE_DELEGATOR_ADMIN);
-        table::add(&mut roles, admin_addr, ROLE_OPERATOR);
+        let roles = simple_map::new<address, vector<u8>>();
+        let admin_roles = vector::empty<u8>();
+        vector::push_back(&mut admin_roles, ROLE_ADMIN);
+        vector::push_back(&mut admin_roles, ROLE_DELEGATOR_ADMIN);
+        vector::push_back(&mut admin_roles, ROLE_OPERATOR);
+        simple_map::add(&mut roles, admin_addr, admin_roles);
 
         let accounts = vector::singleton<address>(admin_addr);
 
@@ -252,15 +324,16 @@ module moneyfi::access_control {
 
         move_to(sender, RoleRegistry { roles, accounts });
 
-        move_to(&object::generate_signer(constructor_ref), SystemFee {
+        move_to(sender, SystemFee {
             distribute_fee: simple_map::new<address, u64>(),
             withdraw_fee: simple_map::new<address, u64>(),
             rebalance_fee: simple_map::new<address, u64>(),
             referral_fee: simple_map::new<address, u64>(),
-            protocol_fee: simple_map::new<address, u64>()
+            protocol_fee: simple_map::new<address, u64>(),
+            fee_to: admin_addr,
         });
-
     }
+
     public(friend) fun get_object_data_signer(): signer acquires Config {
         let config = borrow_global<Config>(@moneyfi);
         object::generate_signer_for_extending(&config.data_object_extend_ref)
@@ -269,8 +342,9 @@ module moneyfi::access_control {
     fun has_role(addr: address, role: u8): bool acquires RoleRegistry {
         let registry = borrow_global<RoleRegistry>(@moneyfi);
 
-        if (table::contains(&registry.roles, addr)) {
-            table::borrow(&registry.roles, addr) == &role
+        if (simple_map::contains_key(&registry.roles, &addr)) {
+            let roles = simple_map::borrow(&registry.roles, &addr);
+            vector::contains(roles, &role)
         } else { false }
     }
 }

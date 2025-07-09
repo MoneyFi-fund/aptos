@@ -4,7 +4,6 @@ module moneyfi::wallet_account {
     use std::vector;
     use std::error;
     use std::option::{Self, Option};
-    use aptos_std::table::{Self, Table};
     use aptos_std::string_utils;
     use aptos_std::simple_map::{Self, SimpleMap};
     use aptos_std::math64;
