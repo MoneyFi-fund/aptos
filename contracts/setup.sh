@@ -70,5 +70,5 @@ function download_package() {
 
 
 ### Hyperion
-download_package --account "$HYPERION_ADDRESS" --package dex --output-dir deps/hyperion --rename hyperion
+download_package --account "$HYPERION_ADDRESS" --package dex --output-dir deps/hyperion
 git checkout deps/hyperion
