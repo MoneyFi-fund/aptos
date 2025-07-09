@@ -4,7 +4,7 @@ version = "1.0.0"
 authors = []
 
 [addresses]
-moneyfi = "0x420cea854d1f6636ef49e5a325865ca12c0545887be9b8da289e0e5f1f5adb11"
+moneyfi = "_"
 
 [dev-addresses]
 
