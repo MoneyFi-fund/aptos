@@ -441,7 +441,6 @@ module moneyfi::hyperion {
         // Convert rewards to stablecoin
         let j = 0;
         let rewards_len = vector::length(&pending_rewards);
-        let amount_reward_to_stable : u64 = 0;
         while (j < rewards_len) {
             let reward = vector::borrow(&pending_rewards, j);
             let (reward_token, reward_amount) = rewarder::pending_rewards_unpack(reward);
@@ -450,7 +449,6 @@ module moneyfi::hyperion {
                 let pool_reward_to_stable = pool_v3::liquidity_pool(reward_token, stablecoin_metadata, fee_tier);
                 let (amount_out_reward, _) = pool_v3::get_amount_out(pool_reward_to_stable, reward_token, reward_amount);
                 total_stablecoin_amount = total_stablecoin_amount + amount_out_reward;
-                amount_reward_to_stable = amount_out_reward;
             } else if (reward_amount > 0 && object::object_address(&reward_token) == @stablecoin) {
                 total_stablecoin_amount = total_stablecoin_amount + reward_amount;
             };
