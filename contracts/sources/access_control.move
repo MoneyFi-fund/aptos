@@ -39,7 +39,7 @@ module moneyfi::access_control {
         data_object_extend_ref: ExtendRef
     }
 
-    struct SystemFee has key{
+    struct SystemFee has key {
         distribute_fee: SimpleMap<address, u64>,
         withdraw_fee: SimpleMap<address, u64>,
         rebalance_fee: SimpleMap<address, u64>,
@@ -192,41 +192,47 @@ module moneyfi::access_control {
     public fun must_be_operator(sender: &signer) acquires RoleRegistry {
         let addr = signer::address_of(sender);
 
-        assert!(has_role(addr, ROLE_OPERATOR), error::permission_denied(E_NOT_AUTHORIZED))
+        assert!(
+            has_role(addr, ROLE_OPERATOR), error::permission_denied(E_NOT_AUTHORIZED)
+        )
     }
 
     public fun must_be_delegator(sender: &signer) acquires RoleRegistry {
         let addr = signer::address_of(sender);
 
-        assert!(has_role(addr, ROLE_DELEGATOR_ADMIN), error::permission_denied(E_NOT_AUTHORIZED))
+        assert!(
+            has_role(addr, ROLE_DELEGATOR_ADMIN),
+            error::permission_denied(E_NOT_AUTHORIZED)
+        )
     }
 
     public fun get_data_object_address(): address acquires Config {
         let config = borrow_global<Config>(@moneyfi);
         object::object_address(&config.data_object)
-    } 
-    
+    }
+
     public fun is_operator(addr: address): bool acquires RoleRegistry {
         has_role(addr, ROLE_OPERATOR)
     }
 
     public fun is_sever(addr: address): bool acquires Config {
         let config = borrow_global<Config>(@moneyfi);
-        object::is_object(addr) && object::address_to_object<ObjectCore>(addr) == config.data_object
+        object::is_object(addr)
+            && object::address_to_object<ObjectCore>(addr) == config.data_object
     }
 
     public fun add_distribute_fee(
-        sender: &signer,
-        addr: address,
-        amount: u64
+        sender: &signer, addr: address, amount: u64
     ) acquires SystemFee, Config {
         assert!(is_sever(signer::address_of(sender)), error::permission_denied(E_NOT_AUTHORIZED));
         let system_fee = borrow_global_mut<SystemFee>(@moneyfi);
         if (!simple_map::contains_key(&system_fee.distribute_fee, &addr)) {
             simple_map::add(&mut system_fee.distribute_fee, addr, amount);
-        }else {
+        } else {
             let current_amount = *simple_map::borrow(&system_fee.distribute_fee, &addr);
-            simple_map::upsert(&mut system_fee.distribute_fee, addr, current_amount + amount);
+            simple_map::upsert(
+                &mut system_fee.distribute_fee, addr, current_amount + amount
+            );
         };
     }
 
@@ -239,54 +245,56 @@ module moneyfi::access_control {
         let system_fee = borrow_global_mut<SystemFee>(@moneyfi);
         if (!simple_map::contains_key(&system_fee.withdraw_fee, &addr)) {
             simple_map::add(&mut system_fee.withdraw_fee, addr, amount);
-        }else {
+        } else {
             let current_amount = *simple_map::borrow(&system_fee.withdraw_fee, &addr);
-            simple_map::upsert(&mut system_fee.withdraw_fee, addr, current_amount + amount);
+            simple_map::upsert(
+                &mut system_fee.withdraw_fee, addr, current_amount + amount
+            );
         };
     }
 
     public fun add_rebalance_fee(
-        sender: &signer,
-        addr: address,
-        amount: u64
+        sender: &signer, addr: address, amount: u64
     ) acquires SystemFee, Config {
         assert!(is_sever(signer::address_of(sender)), error::permission_denied(E_NOT_AUTHORIZED));
         let system_fee = borrow_global_mut<SystemFee>(@moneyfi);
         if (!simple_map::contains_key(&system_fee.rebalance_fee, &addr)) {
             simple_map::add(&mut system_fee.rebalance_fee, addr, amount);
-        }else {
+        } else {
             let current_amount = *simple_map::borrow(&system_fee.rebalance_fee, &addr);
-            simple_map::upsert(&mut system_fee.rebalance_fee, addr, current_amount + amount);
+            simple_map::upsert(
+                &mut system_fee.rebalance_fee, addr, current_amount + amount
+            );
         };
     }
 
     public fun add_referral_fee(
-        sender: &signer,
-        addr: address,
-        amount: u64
+        sender: &signer, addr: address, amount: u64
     ) acquires SystemFee, Config {
         assert!(is_sever(signer::address_of(sender)), error::permission_denied(E_NOT_AUTHORIZED));
         let system_fee = borrow_global_mut<SystemFee>(@moneyfi);
         if (!simple_map::contains_key(&system_fee.referral_fee, &addr)) {
             simple_map::add(&mut system_fee.referral_fee, addr, amount);
-        }else {
+        } else {
             let current_amount = *simple_map::borrow(&system_fee.referral_fee, &addr);
-            simple_map::upsert(&mut system_fee.referral_fee, addr, current_amount + amount);
+            simple_map::upsert(
+                &mut system_fee.referral_fee, addr, current_amount + amount
+            );
         };
     }
 
     public fun add_protocol_fee(
-        sender: &signer,
-        addr: address,
-        amount: u64
+        sender: &signer, addr: address, amount: u64
     ) acquires SystemFee, Config {
         assert!(is_sever(signer::address_of(sender)), error::permission_denied(E_NOT_AUTHORIZED));
         let system_fee = borrow_global_mut<SystemFee>(@moneyfi);
         if (!simple_map::contains_key(&system_fee.protocol_fee, &addr)) {
             simple_map::add(&mut system_fee.protocol_fee, addr, amount);
-        }else {
+        } else {
             let current_amount = *simple_map::borrow(&system_fee.protocol_fee, &addr);
-            simple_map::upsert(&mut system_fee.protocol_fee, addr, current_amount + amount);
+            simple_map::upsert(
+                &mut system_fee.protocol_fee, addr, current_amount + amount
+            );
         };
     }
 
@@ -294,7 +302,10 @@ module moneyfi::access_control {
 
     public(friend) fun initialize(sender: &signer) {
         let addr = signer::address_of(sender);
-        assert!(!exists<RoleRegistry>(addr) && !exists<Config>(addr), E_ALREADY_INITIALIZED);
+        assert!(
+            !exists<RoleRegistry>(addr) && !exists<Config>(addr),
+            E_ALREADY_INITIALIZED
+        );
 
         let admin_addr =
             if (object::is_object(addr)) {
@@ -333,6 +344,7 @@ module moneyfi::access_control {
             fee_to: admin_addr,
         });
     }
+
 
     public(friend) fun get_object_data_signer(): signer acquires Config {
         let config = borrow_global<Config>(@moneyfi);
