@@ -579,6 +579,7 @@ module moneyfi::wallet_account {
         wallet_id: vector<u8>, 
         position: address
     ) acquires WalletAccount {
+        verify_wallet_position(wallet_id, position);
         let addr = get_wallet_account_object_address(wallet_id);
         assert!(signer::address_of(data_signer) == access_control::get_data_object_address(), error::permission_denied(E_NOT_OWNER));
         assert!(object::object_exists<WalletAccount>(addr), error::not_found(E_WALLET_ACCOUNT_NOT_EXISTS));
@@ -628,6 +629,7 @@ module moneyfi::wallet_account {
         assets_added: vector<address>,
         amounts_added: vector<u64>
     ) acquires WalletAccount {
+        verify_wallet_position(wallet_id, position);
         let addr = get_wallet_account_object_address(wallet_id);
         assert!(signer::address_of(data_signer) == access_control::get_data_object_address(), error::permission_denied(E_NOT_OWNER));
         assert!(object::object_exists<WalletAccount>(addr), error::not_found(E_WALLET_ACCOUNT_NOT_EXISTS));
@@ -681,6 +683,7 @@ module moneyfi::wallet_account {
         asset: address,
         amount: u64
     ) acquires WalletAccount {
+        verify_wallet_position(wallet_id, position);
         let addr = get_wallet_account_object_address(wallet_id);
         assert!(object::object_exists<WalletAccount>(addr), error::not_found(E_WALLET_ACCOUNT_NOT_EXISTS));
         let wallet_account_mut = borrow_global_mut<WalletAccount>(addr);
@@ -689,7 +692,7 @@ module moneyfi::wallet_account {
         let (user_amount, protocol_amount) = calculate_rewards(asset, amount);
 
         primary_fungible_store::transfer(
-            &get_wallet_account_signer_internal(wallet_id),
+            &get_wallet_account_signer_internal(wallet_account_mut),
             object::address_to_object<Metadata>(asset),
             access_control::get_data_object_address(),
             protocol_amount
@@ -744,6 +747,16 @@ module moneyfi::wallet_account {
         )
     }
 
+    fun verify_wallet_position(
+        wallet_id: vector<u8>,
+        position: address
+    ) acquires WalletAccount {
+        let addr = get_wallet_account_object_address(wallet_id);
+        assert!(object::object_exists<WalletAccount>(addr), error::not_found(E_WALLET_ACCOUNT_NOT_EXISTS));
+        let wallet_account = borrow_global<WalletAccount>(addr);
+        assert!(simple_map::contains_key(&wallet_account.position_opened, &position), error::not_found(E_POSITION_NOT_EXISTS));
+    }
+
     fun get_wallet_account_object_seed(wallet_id: vector<u8>): vector<u8> {
         bcs::to_bytes(&string_utils::format2(&b"{}_{}", WALLET_ACCOUNT_SEED, wallet_id))
     }
@@ -770,11 +783,8 @@ module moneyfi::wallet_account {
     }
 
     fun get_wallet_account_signer_internal(
-        wallet_id: vector<u8>
-    ): signer acquires WalletAccount {
-        let addr = get_wallet_account_object_address(wallet_id);
-        assert!(object::object_exists<WalletAccount>(addr), error::not_found(E_WALLET_ACCOUNT_NOT_EXISTS));
-        let wallet_account = borrow_global<WalletAccount>(addr);
+        wallet_account: &WalletAccount,
+    ): signer {
         object::generate_signer_for_extending(&wallet_account.extend_ref)
     }
 }
