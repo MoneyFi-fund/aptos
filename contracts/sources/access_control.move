@@ -2,10 +2,13 @@ module moneyfi::access_control {
     use std::signer;
     use std::vector;
     use std::error;
+    use std::option;
     use aptos_std::simple_map::{Self, SimpleMap};
     use aptos_framework::object::{Self, Object, ObjectCore, ExtendRef};
     use aptos_framework::fungible_asset::{Self, Metadata};
     use aptos_framework::primary_fungible_store;
+    use aptos_framework::aptos_coin::AptosCoin;
+    use aptos_framework::coin;
 
     friend moneyfi::wallet_account;
     friend moneyfi::hyperion;
@@ -36,7 +39,8 @@ module moneyfi::access_control {
     struct Config has key {
         paused: bool,
         data_object: Object<ObjectCore>,
-        data_object_extend_ref: ExtendRef
+        data_object_extend_ref: ExtendRef,
+        stablecoin_metadata: Object<Metadata>
     }
 
     struct SystemFee has key {
@@ -143,7 +147,20 @@ module moneyfi::access_control {
         }
     }
 
+    public entry fun set_stablecoin_metadata(
+        sender: &signer, metadata: Object<Metadata>
+    ) acquires Config, RoleRegistry {
+        must_be_delegator(sender);
+        let config = borrow_global_mut<Config>(@moneyfi);
+        config.stablecoin_metadata = metadata;
+    }
+
     // -- Views
+    #[view]
+    public fun get_stablecoin_metadata(): Object<Metadata> acquires Config {
+        let config = borrow_global<Config>(@moneyfi);
+        config.stablecoin_metadata
+    }
 
     #[view]
     public fun get_accounts(): vector<Item> acquires RoleRegistry {
@@ -323,13 +340,14 @@ module moneyfi::access_control {
 
         // init default config
         let constructor_ref = &object::create_sticky_object(@moneyfi);
-
+        let aptos_coin_metadata = coin::paired_metadata<AptosCoin>();
         move_to(
             sender,
             Config {
                 paused: false,
                 data_object: object::object_from_constructor_ref(constructor_ref),
-                data_object_extend_ref: object::generate_extend_ref(constructor_ref)
+                data_object_extend_ref: object::generate_extend_ref(constructor_ref),
+                stablecoin_metadata: option::destroy_some<Object<Metadata>>(aptos_coin_metadata),
             }
         );
 

@@ -19,5 +19,5 @@
 
 ### 3. Deployment
 
-- Deploy: `aptos move deploy-object --address-name moneyfi`
-- Upgrade: `aptos move upgrade-object --address-name moneyfi --object-address $DEPLOYED_ADDRESS`
+- Deploy: `aptos move create-object-and-publish-package --address-name moneyfi --included-artifacts none `
+- Upgrade: `aptos move upgrade-object-package --object-address $DEPLOYED_ADDRESS`
