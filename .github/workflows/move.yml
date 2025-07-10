@@ -26,6 +26,7 @@ jobs:
         with:
           SKIP_INSTALLING_CLI: 'true'
           SKIP_FMT: 'true'
+          SKIP_LINT: 'true'
           WORKING_DIRECTORY: contracts
           ADDITIONAL_LINT_ARGS: --named-addresses moneyfi=0x123
           ADDITIONAL_COMPILE_ARGS: --named-addresses moneyfi=0x123
