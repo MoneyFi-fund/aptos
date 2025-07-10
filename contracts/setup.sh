@@ -11,46 +11,47 @@ CWD=$(dirname $(realpath "$0"))
 cd "$CWD"
 
 function download_package() {
-    local DIR=""
-    local PKG=""
-    local ACCOUNT=""
+	local DIR=""
+	local PKG=""
+	local ACCOUNT=""
 	local RENAME_PKG=""
 
-    while [[ $# -gt 0 ]]; do
-        case "$1" in
-            --output-dir)
-                DIR="$2"
-                shift 2
-                ;;
-            --package)
-                PKG="$2"
-                shift 2
-                ;;
-            --account)
-                ACCOUNT="$2"
-                shift 2
-                ;;
-			--rename)
-				RENAME_PKG="$2"
-				shift 2
-				;;
-            *)  echo "Error: Unknown option: $1" >&2
-                exit 1
-                shift
-                ;;
-        esac
-    done
+	while [[ $# -gt 0 ]]; do
+		case "$1" in
+		--output-dir)
+			DIR="$2"
+			shift 2
+			;;
+		--package)
+			PKG="$2"
+			shift 2
+			;;
+		--account)
+			ACCOUNT="$2"
+			shift 2
+			;;
+		--rename)
+			RENAME_PKG="$2"
+			shift 2
+			;;
+		*)
+			echo "Error: Unknown option: $1" >&2
+			exit 1
+			shift
+			;;
+		esac
+	done
 
-    if [[ -z "$DIR" || -z "$PKG" || -z "$ACCOUNT" ]]; then
-        echo "Usage: download_package --output-dir <DIR> --package <PACKAGE> --account <ACCOUNT>" >&2
-        exit 1
-    fi
+	if [[ -z "$DIR" || -z "$PKG" || -z "$ACCOUNT" ]]; then
+		echo "Usage: download_package --output-dir <DIR> --package <PACKAGE> --account <ACCOUNT>" >&2
+		exit 1
+	fi
 
-    rm -rf "$DIR"
-    mkdir -p "$DIR/build"
-    aptos move download --url "$NETWORK_URL" --bytecode --output-dir "$DIR/build" --package "$PKG" --account "$ACCOUNT"
-    mv "$DIR/build/$PKG/sources" "$DIR"
-    mv "$DIR/build/$PKG/Move.toml" "$DIR"
+	rm -rf "$DIR"
+	mkdir -p "$DIR/build"
+	aptos move download --url "$NETWORK_URL" --bytecode --output-dir "$DIR/build" --package "$PKG" --account "$ACCOUNT"
+	mv "$DIR/build/$PKG/sources" "$DIR"
+	mv "$DIR/build/$PKG/Move.toml" "$DIR"
 
 	if [[ -n "$RENAME_PKG" ]]; then
 		mv "$DIR/build/$PKG" "$DIR/build/$RENAME_PKG"
@@ -67,7 +68,6 @@ function download_package() {
 # sed -i '/^amnis/s/^/# /' deps/oracle/Move.toml
 
 # download_package --account "$AMNIS_ADDRESS" --package amnis --output-dir deps/amnis
-
 
 ### Hyperion
 download_package --account "$HYPERION_ADDRESS" --package dex --output-dir deps/hyperion

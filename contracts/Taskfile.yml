@@ -1,0 +1,14 @@
+# https://taskfile.dev
+
+version: '3'
+
+tasks:
+  default:
+    cmds:
+      - aptos move compile --skip-fetch-latest-git-deps
+  test:
+    cmds:
+      - aptos move test --skip-fetch-latest-git-deps --ignore-compile-warnings
+  deploy:
+    cmds:
+      - aptos move deploy-object --skip-fetch-latest-git-deps --included-artifacts none --address-name moneyfi
