@@ -2,11 +2,11 @@ name: Rust
 
 on:
   push:
-    branches: ["develop"]
+    # branches: ["develop"]
     paths:
       - 'aries/**'
   pull_request:
-    branches: ["develop"]
+    # branches: ["develop"]
     paths:
       - 'aries/**'
 
