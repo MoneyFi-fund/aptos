@@ -6,11 +6,13 @@ on:
       - develop
     paths:
       - 'contracts/**'
+      - .github/workflows/move.yml
   pull_request:
     branches:
       - develop
     paths:
       - 'contracts/**'
+      - .github/workflows/move.yml
 
 jobs:
   test:
