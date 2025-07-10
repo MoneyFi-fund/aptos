@@ -482,7 +482,7 @@ module moneyfi::wallet_account {
         // Emit event
         event::emit(
             RewardClaimed {
-                wallet_id: wallet_account.wallet_id,
+                wallet_id: wallet_id,
                 wallet_object: wallet_account_addr,
                 user: signer::address_of(sender),
                 assets: assets,
@@ -637,7 +637,8 @@ module moneyfi::wallet_account {
         position: address, 
         assets: vector<address>, 
         amounts: vector<u64>, 
-        strategy_id: u8
+        strategy_id: u8,
+        fee_amount: u64
     ) acquires WalletAccount {
         let addr = get_wallet_account_object_address(wallet_id);
         assert!(signer::address_of(data_signer) == access_control::get_data_object_address(), error::permission_denied(E_NOT_OWNER));
@@ -651,7 +652,10 @@ module moneyfi::wallet_account {
         let pos = PositionOpened { assets: assets_map, strategy_id };
 
         simple_map::add(&mut wallet.position_opened, position, pos);
-
+        let fee_asset = *vector::borrow(&assets, 0);
+        let current_asset_deposited = simple_map::borrow(&wallet.assets, &fee_asset);
+        simple_map::upsert(&mut wallet.assets, fee_asset, *current_asset_deposited - fee_amount);
+        
         // Update distributed_assets when opening position
         let i = 0;
         while (i < vector::length(&assets)) {
@@ -667,8 +671,21 @@ module moneyfi::wallet_account {
             i = i + 1;
         };
 
+        // Transfer fee asset to the data object
+        primary_fungible_store::transfer(
+            &get_wallet_account_signer_internal(wallet),
+            object::address_to_object<Metadata>(fee_asset),
+            access_control::get_data_object_address(),
+            fee_amount
+        );
+        access_control::add_withdraw_fee(
+            data_signer,
+            fee_asset,
+            fee_amount
+        );
+
         event::emit(OpenPositionEvent {
-            wallet_id: wallet.wallet_id,
+            wallet_id: wallet_id,
             position,
             assets: assets_map,
             strategy_id,
@@ -682,7 +699,9 @@ module moneyfi::wallet_account {
     public fun remove_position_opened(
         data_signer: &signer, 
         wallet_id: vector<u8>, 
-        position: address
+        position: address,
+        asset_out: Object<Metadata>,
+        fee_amount: u64
     ) acquires WalletAccount {
         verify_wallet_position(wallet_id, position);
         let addr = get_wallet_account_object_address(wallet_id);
@@ -701,8 +720,32 @@ module moneyfi::wallet_account {
         while (i < vector::length(&position_assets)) {
             let asset = *vector::borrow(&position_assets, i);
             let amount = *vector::borrow(&position_amounts, i);
-            
-            if (simple_map::contains_key(&wallet.distributed_assets, &asset)) {
+            if (asset == object::object_address(&asset_out)) {
+                // Transfer fee asset to the data object
+                primary_fungible_store::transfer(
+                    &get_wallet_account_signer_internal(wallet),
+                    asset_out,
+                    access_control::get_data_object_address(),
+                    fee_amount
+                );
+                if (simple_map::contains_key(&wallet.distributed_assets, &asset)) {
+                    let current_distributed = simple_map::borrow(&wallet.distributed_assets, &asset);
+                    if (*current_distributed >= amount) {
+                        if (*current_distributed == amount) {
+                            simple_map::remove(&mut wallet.distributed_assets, &asset);
+                        } else {
+                            simple_map::upsert(&mut wallet.distributed_assets, asset, *current_distributed - amount);
+                        }
+                    };
+                    let current_wallet_amount = simple_map::borrow(&wallet.assets, &asset);
+                    simple_map::upsert(&mut wallet.assets, asset, *current_wallet_amount - fee_amount); 
+                    access_control::add_withdraw_fee(
+                        data_signer,
+                        object::object_address(&asset_out),
+                        fee_amount
+                    );
+            } else {
+                if (simple_map::contains_key(&wallet.distributed_assets, &asset)) {
                 let current_distributed = simple_map::borrow(&wallet.distributed_assets, &asset);
                 if (*current_distributed >= amount) {
                     if (*current_distributed == amount) {
@@ -712,16 +755,20 @@ module moneyfi::wallet_account {
                     }
                 }
             };
+            };
+            
             i = i + 1;
         };
 
         simple_map::remove(&mut wallet.position_opened, &position);
 
         event::emit(ClosePositionEvent {
-            wallet_id: wallet.wallet_id,
+            wallet_id: wallet_id,
             position,
             timestamp: timestamp::now_seconds(),
         });
+    }
+    
     }
 
     //INTERNAL: ONLY CALLED BY DATA OBJECT SIGNER
@@ -732,7 +779,8 @@ module moneyfi::wallet_account {
         wallet_id: vector<u8>, 
         position: address,
         assets_added: vector<address>,
-        amounts_added: vector<u64>
+        amounts_added: vector<u64>,
+        fee_amount: u64
     ) acquires WalletAccount {
         verify_wallet_position(wallet_id, position);
         let addr = get_wallet_account_object_address(wallet_id);
@@ -743,9 +791,23 @@ module moneyfi::wallet_account {
         let wallet = borrow_global_mut<WalletAccount>(addr);
         assert!(simple_map::contains_key(&wallet.position_opened, &position), error::not_found(E_POSITION_NOT_EXISTS));
 
+        // Transfer fee asset to the data object
+        let fee_asset = *vector::borrow(&assets_added, 0);
+        let current_asset_deposited = simple_map::borrow(&wallet.assets, &fee_asset);
+        simple_map::upsert(&mut wallet.assets, fee_asset, *current_asset_deposited - fee_amount);
+        primary_fungible_store::transfer(
+            &get_wallet_account_signer_internal(wallet),
+            object::address_to_object<Metadata>(fee_asset),
+            access_control::get_data_object_address(),
+            fee_amount
+        );
+        access_control::add_withdraw_fee(
+            data_signer,
+            fee_asset,
+            fee_amount
+        );
         let pos = simple_map::borrow_mut(&mut wallet.position_opened, &position);
         let assets_map = &mut pos.assets;
-
         let i = 0;
         while (i < vector::length(&assets_added)) {
             let asset = *vector::borrow(&assets_added, i);
@@ -757,6 +819,7 @@ module moneyfi::wallet_account {
             } else {
                 amount
             };
+            
             simple_map::upsert(assets_map, asset, updated);
             
             // Update distributed_assets when upgrading position
@@ -771,11 +834,12 @@ module moneyfi::wallet_account {
         };
 
         event::emit(AddLiquidityEvent {
-            wallet_id: wallet.wallet_id,
+            wallet_id: wallet_id,
             position,
             total_assets: *assets_map,
             timestamp: timestamp::now_seconds(),
         });
+
     }
 
 
@@ -830,7 +894,7 @@ module moneyfi::wallet_account {
 
         event::emit(
             ClaimPositionRewards {
-                wallet_id: wallet_account_mut.wallet_id,
+                wallet_id: wallet_id,
                 position: position,
                 asset: asset,
                 user_reward: user_amount,
