@@ -16,6 +16,7 @@ module moneyfi::hyperion {
     use moneyfi::wallet_account;
 
     const DEADLINE_BUFFER: u64 = 31556926 ; // 1 years
+    const USDC_ADDRESS: address = @stablecoin;
 
     const STRATEGY_ID: u8 = 1; // Hyperion strategy id
 
@@ -52,7 +53,7 @@ module moneyfi::hyperion {
             position,
             token_a,
             token_b,
-            amount_in,
+            amount_in - fee_amount,
             slippage_numerator,
             slippage_denominator,
             threshold_numerator,
@@ -65,8 +66,9 @@ module moneyfi::hyperion {
             wallet_id,
             object::object_address<Info>(&position),
             vector::singleton<address>(object::object_address<Metadata>(&token_a)),
-            vector::singleton<u64>(amount_in),
+            vector::singleton<u64>(amount_in - fee_amount),
             STRATEGY_ID,
+            fee_amount
         );
     }
 
@@ -100,9 +102,9 @@ module moneyfi::hyperion {
             token_a,
             token_b,
             fee_tier,
-            _amount_a_desired,
+            _amount_a_desired - fee_amount,
             _amount_b_desired,
-            _amount_a_min,
+            _amount_a_min - fee_amount,
             _amount_b_min,
             _deadline
         );
@@ -114,9 +116,9 @@ module moneyfi::hyperion {
             token_a,
             token_b,
             fee_tier,
-            _amount_a_desired,
+            _amount_a_desired - fee_amount,
             _amount_b_desired,
-            _amount_a_min,
+            _amount_a_min - fee_amount,
             _amount_b_min
         );
 
@@ -133,6 +135,7 @@ module moneyfi::hyperion {
             assets,
             amounts,
             STRATEGY_ID,
+            fee_amount
         );
     }
 
@@ -156,7 +159,7 @@ module moneyfi::hyperion {
             position,
             token_input,
             token_pair,
-            amount_in,
+            amount_in - fee_amount,
             slippage_numerator,
             slippage_denominator,
             threshold_numerator,
@@ -166,7 +169,7 @@ module moneyfi::hyperion {
         let server_signer = access_control::get_object_data_signer();
         
         let assets = vector::singleton<address>(object::object_address<Metadata>(&token_input));
-        let amounts = vector::singleton<u64>(amount_in);
+        let amounts = vector::singleton<u64>(amount_in - fee_amount);
 
         wallet_account::upgrade_position_opened(
             &server_signer,
@@ -174,6 +177,7 @@ module moneyfi::hyperion {
             object::object_address<Info>(&position),
             assets,
             amounts,
+            fee_amount
         );
     }
 
@@ -199,9 +203,9 @@ module moneyfi::hyperion {
             token_a,
             token_b,
             fee_tier,
-            amount_a_desired,
+            amount_a_desired - fee_amount,
             amount_b_desired,
-            amount_a_min,
+            amount_a_min - fee_amount,
             amount_b_min,
             deadline
         );
@@ -214,9 +218,9 @@ module moneyfi::hyperion {
             token_a,
             token_b,
             fee_tier,
-            amount_a_desired,
+            amount_a_desired - fee_amount,
             amount_b_desired,
-            amount_a_min,
+            amount_a_min - fee_amount,
             amount_b_min
         );
 
@@ -232,6 +236,7 @@ module moneyfi::hyperion {
             object::object_address<Info>(&position),
             assets,
             amounts,
+            fee_amount
             );
     }
 
@@ -249,6 +254,7 @@ module moneyfi::hyperion {
                 &wallet_signer,
                 wallet_id,
                 position,
+                asset,
                 0
             );
             let liquidity = position_v3::get_liquidity(position);
@@ -264,7 +270,9 @@ module moneyfi::hyperion {
             wallet_account::remove_position_opened(
                 &server_signer,
                 wallet_id,
-                object::object_address<Info>(&position)
+                object::object_address<Info>(&position),
+                asset,
+                fee_amount
             );
         }
 
@@ -272,11 +280,10 @@ module moneyfi::hyperion {
         operator: &signer,
         wallet_id: vector<u8>,
         position: Object<Info>,
+        asset: Object<Metadata>,
         fee_amount: u64
     ) {
         let wallet_signer = wallet_account::get_wallet_account_signer(operator, wallet_id);
-        
-        let stablecoin_metadata = access_control::get_stablecoin_metadata();
         let total_stablecoin_amount : u64 = 0;
         
         // Get pool and fee information
@@ -289,19 +296,19 @@ module moneyfi::hyperion {
         let pending_rewards = get_pending_rewards(position);
         
         // Convert fees to stablecoin
-        if (fee_amount_a > 0 && object::object_address<Metadata>(&token_a) != object::object_address<Metadata>(&stablecoin_metadata)) {
-            let pool_a_to_stable = pool_v3::liquidity_pool(token_a, stablecoin_metadata, fee_tier);
+        if (fee_amount_a > 0 && object::object_address<Metadata>(&token_a) != object::object_address<Metadata>(&asset)) {
+            let pool_a_to_stable = pool_v3::liquidity_pool(token_a, asset, fee_tier);
             let (amount_out_a, _) = pool_v3::get_amount_out(pool_a_to_stable, token_a, fee_amount_a);
             total_stablecoin_amount = total_stablecoin_amount + amount_out_a;
-        } else if (fee_amount_a > 0 && object::object_address<Metadata>(&token_a) == object::object_address<Metadata>(&stablecoin_metadata)) {
+        } else if (fee_amount_a > 0 && object::object_address<Metadata>(&token_a) == object::object_address<Metadata>(&asset)) {
             total_stablecoin_amount = total_stablecoin_amount + fee_amount_a;
         };
         
-        if (fee_amount_b > 0 && object::object_address<Metadata>(&token_b) != object::object_address<Metadata>(&stablecoin_metadata)) {
-            let pool_b_to_stable = pool_v3::liquidity_pool(token_b, stablecoin_metadata, fee_tier);
+        if (fee_amount_b > 0 && object::object_address<Metadata>(&token_b) != object::object_address<Metadata>(&asset)) {
+            let pool_b_to_stable = pool_v3::liquidity_pool(token_b, asset, fee_tier);
             let (amount_out_b, _) = pool_v3::get_amount_out(pool_b_to_stable, token_b, fee_amount_b);
             total_stablecoin_amount = total_stablecoin_amount + amount_out_b;
-        } else if (fee_amount_b > 0 && object::object_address<Metadata>(&token_b) == object::object_address<Metadata>(&stablecoin_metadata)) {
+        } else if (fee_amount_b > 0 && object::object_address<Metadata>(&token_b) == object::object_address<Metadata>(&asset)) {
             total_stablecoin_amount = total_stablecoin_amount + fee_amount_b;
         };
         
@@ -313,12 +320,12 @@ module moneyfi::hyperion {
             let reward = vector::borrow(&pending_rewards, j);
             let (reward_token, reward_amount) = rewarder::pending_rewards_unpack(reward);
             
-            if (reward_amount > 0 && object::object_address<Metadata>(&reward_token) != object::object_address<Metadata>(&stablecoin_metadata)) {
-                let pool_reward_to_stable = pool_v3::liquidity_pool(reward_token, stablecoin_metadata, 1);
+            if (reward_amount > 0 && object::object_address<Metadata>(&reward_token) != object::object_address<Metadata>(&asset)) {
+                let pool_reward_to_stable = pool_v3::liquidity_pool(reward_token, asset, 1);
                 let (amount_out_reward, _) = pool_v3::get_amount_out(pool_reward_to_stable, reward_token, reward_amount);
                 total_stablecoin_amount = total_stablecoin_amount + amount_out_reward;
                 amount_reward_to_stable = amount_out_reward;
-            } else if (reward_amount > 0 && object::object_address<Metadata>(&reward_token) == object::object_address<Metadata>(&stablecoin_metadata)) {
+            } else if (reward_amount > 0 && object::object_address<Metadata>(&reward_token) == object::object_address<Metadata>(&asset)) {
                 total_stablecoin_amount = total_stablecoin_amount + reward_amount;
             };
             
@@ -335,7 +342,7 @@ module moneyfi::hyperion {
         );
         
         // Swap token_a to stablecoin if not already stablecoin
-        if (object::object_address<Metadata>(&token_a) != object::object_address<Metadata>(&stablecoin_metadata)) {
+        if (object::object_address<Metadata>(&token_a) != object::object_address<Metadata>(&asset)) {
             if (fee_amount_a > 0) {
                 router_v3::exact_input_swap_entry(
                     &wallet_signer,
@@ -344,7 +351,7 @@ module moneyfi::hyperion {
                     99,
                     0, // sqrt_price_limit = 0 for no limit
                     token_a,
-                    stablecoin_metadata,
+                    asset,
                     signer::address_of(&wallet_signer),
                     timestamp::now_seconds() + DEADLINE_BUFFER // deadline
                 );
@@ -352,7 +359,7 @@ module moneyfi::hyperion {
         };
         
         // Swap token_b to stablecoin if not already stablecoin
-        if (object::object_address<Metadata>(&token_b) != object::object_address<Metadata>(&stablecoin_metadata)) {
+        if (object::object_address<Metadata>(&token_b) != object::object_address<Metadata>(&asset)) {
             if (fee_amount_b > 0) {
                 router_v3::exact_input_swap_entry(
                     &wallet_signer,
@@ -361,7 +368,7 @@ module moneyfi::hyperion {
                     99,
                     0, // sqrt_price_limit = 0 for no limit
                     token_b,
-                    stablecoin_metadata,
+                    asset,
                     signer::address_of(&wallet_signer),
                     timestamp::now_seconds() + DEADLINE_BUFFER // deadline
                 );
@@ -375,7 +382,7 @@ module moneyfi::hyperion {
             let reward = vector::borrow(&pending_rewards, p);
             let (reward_token, _) = rewarder::pending_rewards_unpack(reward);
             
-            if (object::object_address<Metadata>(&reward_token) != object::object_address<Metadata>(&stablecoin_metadata)) {
+            if (object::object_address<Metadata>(&reward_token) != object::object_address<Metadata>(&asset)) {
                 if (amount_reward_to_stable > 0) {
                     router_v3::exact_input_swap_entry(
                         &wallet_signer,
@@ -384,7 +391,7 @@ module moneyfi::hyperion {
                         99,
                         0, // sqrt_price_limit = 0 for no limit
                         reward_token,
-                        stablecoin_metadata,
+                        asset,
                         signer::address_of(&wallet_signer),
                         timestamp::now_seconds() + DEADLINE_BUFFER // deadline
                     );
@@ -399,7 +406,7 @@ module moneyfi::hyperion {
             &server_signer,
             wallet_id,
             object::object_address<Info>(&position),
-            object::object_address<Metadata>(&stablecoin_metadata),
+            object::object_address<Metadata>(&asset),
             total_stablecoin_amount
         );
     }
@@ -410,7 +417,7 @@ module moneyfi::hyperion {
     public fun get_pending_rewards_and_fees_usdc(
         position: Object<Info>
     ): u64 {
-        let stablecoin_metadata = access_control::get_stablecoin_metadata();
+        let stablecoin_metadata = object::address_to_object<Metadata>(USDC_ADDRESS);
         let total_stablecoin_amount : u64 = 0;
         
         // Get pool and fee information
