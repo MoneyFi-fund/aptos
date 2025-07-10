@@ -30,12 +30,14 @@ module moneyfi::hyperion {
         tick_lower: u32,
         tick_upper: u32,
         amount_in: u64,
-        amount_out_min: u256,
-        amount_out_max: u256,
         slippage_numerator: u256,
         slippage_denominator: u256,
+        threshold_numerator: u256,
+        threshold_denominator: u256,
+        fee_amount: u64
     ) {
         let wallet_signer = wallet_account::get_wallet_account_signer(operator,wallet_id);
+
         let position = pool_v3::open_position(
               &wallet_signer,
               token_a,
@@ -51,10 +53,10 @@ module moneyfi::hyperion {
             token_a,
             token_b,
             amount_in,
-            amount_out_min,
-            amount_out_max,
             slippage_numerator,
-            slippage_denominator
+            slippage_denominator,
+            threshold_numerator,
+            threshold_denominator
         );
 
         let server_signer = access_control::get_object_data_signer();
@@ -80,7 +82,8 @@ module moneyfi::hyperion {
         _amount_b_desired: u64,
         _amount_a_min: u64,
         _amount_b_min: u64,
-        _deadline: u64
+        _deadline: u64,
+        fee_amount: u64
     ) {
         let wallet_signer = wallet_account::get_wallet_account_signer(operator,wallet_id);
         let position = pool_v3::open_position(
@@ -140,10 +143,11 @@ module moneyfi::hyperion {
         token_input: Object<Metadata>,
         token_pair: Object<Metadata>,
         amount_in: u64,
-        amount_out_min: u256,
-        amount_out_max: u256,
         slippage_numerator: u256,
-        slippage_denominator: u256
+        slippage_denominator: u256,
+        threshold_numerator: u256,
+        threshold_denominator: u256,
+        fee_amount: u64
     ) {
         let wallet_signer = wallet_account::get_wallet_account_signer(operator, wallet_id);
         
@@ -153,10 +157,10 @@ module moneyfi::hyperion {
             token_input,
             token_pair,
             amount_in,
-            amount_out_min,
-            amount_out_max,
             slippage_numerator,
-            slippage_denominator
+            slippage_denominator,
+            threshold_numerator,
+            threshold_denominator
         );
         
         let server_signer = access_control::get_object_data_signer();
@@ -184,7 +188,8 @@ module moneyfi::hyperion {
         amount_b_desired: u64,
         amount_a_min: u64,
         amount_b_min: u64,
-        deadline: u64
+        deadline: u64,
+        fee_amount: u64
     ) {
         let wallet_signer = wallet_account::get_wallet_account_signer(operator, wallet_id);
         
@@ -236,13 +241,15 @@ module moneyfi::hyperion {
         position: Object<Info>,
         asset: Object<Metadata>,
         slippage_numerator: u256,
-        slippage_denominator: u256
+        slippage_denominator: u256,
+        fee_amount: u64
         ) {
             let wallet_signer = wallet_account::get_wallet_account_signer(operator, wallet_id);
             claim_fees_and_rewards_from_operator(
                 &wallet_signer,
                 wallet_id,
-                position
+                position,
+                0
             );
             let liquidity = position_v3::get_liquidity(position);
             router_v3::remove_liquidity_single(
@@ -264,7 +271,8 @@ module moneyfi::hyperion {
     public entry fun claim_fees_and_rewards_from_operator(
         operator: &signer,
         wallet_id: vector<u8>,
-        position: Object<Info>
+        position: Object<Info>,
+        fee_amount: u64
     ) {
         let wallet_signer = wallet_account::get_wallet_account_signer(operator, wallet_id);
         

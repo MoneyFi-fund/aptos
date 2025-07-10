@@ -26,7 +26,7 @@ module moneyfi::access_control_test {
         access_control::must_be_admin(user1);
 
         // Revoke role
-        access_control::revoke(deployer, user1_addr);
+        access_control::revoke_role(deployer, user1_addr, 1);
         // TODO: not sure how to expect failure when call must_be_admin yet
     }
 
