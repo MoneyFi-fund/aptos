@@ -623,13 +623,14 @@ module moneyfi::access_control {
         } else { false }
     }
 
-    fun check_asset_supported(asset: address) acquires Config{
+    public fun check_asset_supported(asset: address) acquires Config{
         let config = borrow_global<Config>(@moneyfi);
         assert!(vector::contains(&config.asset_supported, &asset), error::invalid_argument(E_ASSET_NOT_SUPPORTED));
     }
 
     #[test_only]
     friend moneyfi::access_control_test;
+    friend moneyfi::test_helpers;
     use std::string;
 
     #[test_only]

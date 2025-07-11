@@ -1,22 +1,16 @@
 #[test_only]
 module moneyfi::access_control_test {
     use std::signer;
-    use aptos_std::table;
     use aptos_framework::account;
-    use std::error;
     use aptos_framework::object::{Self, Object, ObjectCore, ExtendRef};
     use aptos_framework::fungible_asset::{Self, Metadata};
     use aptos_framework::primary_fungible_store;
     use moneyfi::access_control;
     use moneyfi::test_helpers; 
     use std::vector;
-    use std::debug; 
-    use std::option;
-    use std::string;
     use aptos_framework::timestamp::{Self};
 
     fun set_up(deployer: &signer, aptos_framework: &signer) {
-        0x1; 
         let deployer_addr = signer::address_of(deployer);
 
         // Simulate module deployment

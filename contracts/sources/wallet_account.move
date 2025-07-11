@@ -155,7 +155,7 @@ module moneyfi::wallet_account {
     ) {
         access_control::must_be_operator(sender);
         let addr = get_wallet_account_object_address(wallet_id);
-        assert!(!object::object_exists<WalletAccount>(addr), error::not_found(E_WALLET_ACCOUNT_EXISTS));
+        assert!(!object::object_exists<WalletAccount>(addr), error::already_exists(E_WALLET_ACCOUNT_EXISTS));
 
         let data_object_signer = &access_control::get_object_data_signer();
 
@@ -220,6 +220,7 @@ module moneyfi::wallet_account {
         fee_amount: u64
     ) acquires WalletAccount {
         let wallet_account_addr = get_wallet_account_object_address(wallet_id);
+        assert!(object::object_exists<WalletAccount>(wallet_account_addr), error::not_found(E_WALLET_ACCOUNT_NOT_EXISTS));
         assert!(vector::length(&assets) == vector::length(&amounts), error::invalid_argument(E_INVALID_ARGUMENT));
         let wallet_account = borrow_global_mut<WalletAccount>(wallet_account_addr);
         
@@ -233,7 +234,7 @@ module moneyfi::wallet_account {
             let asset = *vector::borrow(&assets, i);
             let asset_addr = object::object_address(&asset);
             let amount = *vector::borrow(&amounts, i);
-            
+            access_control::check_asset_supported(asset_addr);
             // Check if this asset is a stablecoin and we haven't deducted fee yet
             let is_stablecoin = vector::contains(&stablecoin_metadata, &asset_addr);
             
@@ -277,7 +278,6 @@ module moneyfi::wallet_account {
             };
             i = i + 1;
         };
-        
         // Add fee to system if fee was deducted
         if (fee_deducted) {
             let server_signer = access_control::get_object_data_signer();
