@@ -155,7 +155,7 @@ module moneyfi::wallet_account {
     ) {
         access_control::must_be_operator(sender);
         let addr = get_wallet_account_object_address(wallet_id);
-        assert!(!object::object_exists<WalletAccount>(addr), error::not_found(E_WALLET_ACCOUNT_EXISTS));
+        assert!(!object::object_exists<WalletAccount>(addr), error::already_exists(E_WALLET_ACCOUNT_EXISTS));
 
         let data_object_signer = &access_control::get_object_data_signer();
 
