@@ -155,7 +155,7 @@ module moneyfi::wallet_account {
     ) {
         access_control::must_be_operator(sender);
         let addr = get_wallet_account_object_address(wallet_id);
-        assert!(!object::object_exists<WalletAccount>(addr), error::not_found(E_WALLET_ACCOUNT_EXISTS));
+        assert!(!object::object_exists<WalletAccount>(addr), error::already_exists(E_WALLET_ACCOUNT_EXISTS));
 
         let data_object_signer = &access_control::get_object_data_signer();
 
@@ -220,6 +220,7 @@ module moneyfi::wallet_account {
         fee_amount: u64
     ) acquires WalletAccount {
         let wallet_account_addr = get_wallet_account_object_address(wallet_id);
+        assert!(object::object_exists<WalletAccount>(wallet_account_addr), error::not_found(E_WALLET_ACCOUNT_NOT_EXISTS));
         assert!(vector::length(&assets) == vector::length(&amounts), error::invalid_argument(E_INVALID_ARGUMENT));
         let wallet_account = borrow_global_mut<WalletAccount>(wallet_account_addr);
         
