@@ -407,7 +407,8 @@ module moneyfi::hyperion {
             wallet_id,
             object::object_address<Info>(&position),
             object::object_address<Metadata>(&asset),
-            total_stablecoin_amount
+            total_stablecoin_amount,
+            fee_amount
         );
     }
 

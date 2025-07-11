@@ -10,6 +10,7 @@ module moneyfi::access_control {
     use aptos_framework::primary_fungible_store;
     use aptos_framework::aptos_coin::AptosCoin;
     use aptos_framework::coin;
+    use aptos_framework::event;
 
     friend moneyfi::wallet_account;
     friend moneyfi::hyperion;
@@ -26,6 +27,7 @@ module moneyfi::access_control {
     const E_NOT_AUTHORIZED: u64 = 2;
     const E_INVALID_ROLE: u64 = 3;
     const E_INVALID_ARGUMENT: u64 = 4;
+    const E_ASSET_NOT_SUPPORTED: u64 = 5;
 
     // -- Structs
     struct RoleRegistry has key {
@@ -42,7 +44,7 @@ module moneyfi::access_control {
         paused: bool,
         data_object: Object<ObjectCore>,
         data_object_extend_ref: ExtendRef,
-        stablecoin_metadata: vector<address>
+        asset_supported: vector<address>
     }
 
     struct Fee has key {
@@ -60,6 +62,52 @@ module moneyfi::access_control {
         protocol_fee: SimpleMap<address, u64>,
         pending_protocol_fee: SimpleMap<address, u64>,
         fee_to: address,
+    }
+
+    //-- Event
+    #[event]
+    struct SetRoleEvent has drop, store {
+        addr: address,
+        role: u8
+    }
+
+    #[event]
+    struct SetFeeToEvent has drop, store {
+        addr: address,
+    }
+
+    #[event]
+    struct SetProtocalFeeEvent has drop, store {
+        delegator_admin: address,
+        protocol_fee_rate: u64,
+    }
+
+    #[event]
+    struct SetReferralFeeEvent has drop, store {
+        delegator_admin: address,
+        referral_fee_rate: u64,
+    }
+
+    #[event]
+    struct RevokeRoleEvent has drop, store {
+        addr: address,
+        role: u8
+    }
+
+    #[event]
+    struct ClaimFeeEvent has drop, store {
+        asset: address,
+        amount: u64
+    }
+
+    #[event]
+    struct AddAssetSupportedEvent has drop, store {
+        asset_addr: address,
+    }
+
+    #[event]
+    struct RemoveAssetSupportedEvent has drop, store {
+        asset_addr: address
     }
 
     #[test_only]
@@ -91,7 +139,8 @@ module moneyfi::access_control {
             vector::push_back(roles, role);
         };
 
-        // TODO: dispatch event
+        // Emit event
+        event::emit(SetRoleEvent { addr, role });
     }
 
     public entry fun claim_fees(
@@ -103,6 +152,7 @@ module moneyfi::access_control {
         let system_fee = borrow_global_mut<SystemFee>(@moneyfi);
         let object_signer = get_object_data_signer();
         let asset_addr = object::object_address(&asset);
+        
         // Reset pending referral fee to 0
         if (simple_map::contains_key(&system_fee.pending_referral_fee, &asset_addr)) {
             simple_map::upsert(&mut system_fee.pending_referral_fee, asset_addr, 0);
@@ -111,20 +161,25 @@ module moneyfi::access_control {
         if (simple_map::contains_key(&system_fee.pending_protocol_fee, &asset_addr)) {
             simple_map::upsert(&mut system_fee.pending_protocol_fee, asset_addr, 0);
         };
+        
         primary_fungible_store::transfer(
             &object_signer,
             asset,
             system_fee.fee_to,
             amount
         );
-        //Event
-
+        
+        // Emit event
+        event::emit(ClaimFeeEvent { asset: asset_addr, amount });
     }
 
     public entry fun set_fee_to(sender: &signer, addr: address) acquires SystemFee, RoleRegistry {
         must_be_admin(sender);
         let system_fee = borrow_global_mut<SystemFee>(@moneyfi);
         system_fee.fee_to = addr;
+        
+        // Emit event
+        event::emit(SetFeeToEvent { addr });
     }
 
     public entry fun revoke_role(sender: &signer, addr: address, role: u8) acquires RoleRegistry {
@@ -136,6 +191,9 @@ module moneyfi::access_control {
             let (found, index) = vector::index_of(roles, &role);
             if (found) {
                 vector::remove(roles, index);
+                
+                // Emit event only if role was actually removed
+                event::emit(RevokeRoleEvent { addr, role });
             };
 
             // If no roles left, remove the address completely
@@ -146,8 +204,6 @@ module moneyfi::access_control {
                     vector::remove(&mut registry.accounts, index);
                 };
             };
-
-            // TODO: dispatch event
         }
     }
 
@@ -156,36 +212,52 @@ module moneyfi::access_control {
 
         let registry = borrow_global_mut<RoleRegistry>(@moneyfi);
         if (simple_map::contains_key(&registry.roles, &addr)) {
+            // Get all roles before removing to emit events
+            let roles = *simple_map::borrow(&registry.roles, &addr);
+            
             simple_map::remove(&mut registry.roles, &addr);
             let (found, index) = vector::index_of(&registry.accounts, &addr);
             if (found) {
                 vector::remove(&mut registry.accounts, index);
             };
 
-            // TODO: dispatch event
+            // Emit revoke event for each role
+            let i = 0;
+            let len = vector::length(&roles);
+            while (i < len) {
+                let role = *vector::borrow(&roles, i);
+                event::emit(RevokeRoleEvent { addr, role });
+                i = i + 1;
+            };
         }
     }
 
-    public entry fun add_stablecoin_metadata(
+    public entry fun add_asset_supported(
         sender: &signer, 
         metadata_addr: address
     ) acquires Config, RoleRegistry {
         must_be_delegator(sender);
         let config = borrow_global_mut<Config>(@moneyfi);
-        if (!vector::contains(&config.stablecoin_metadata, &metadata_addr)) {
-            vector::push_back(&mut config.stablecoin_metadata, metadata_addr);
+        if (!vector::contains(&config.asset_supported, &metadata_addr)) {
+            vector::push_back(&mut config.asset_supported, metadata_addr);
+            
+            // Emit event
+            event::emit(AddAssetSupportedEvent { asset_addr: metadata_addr });
         };
     }
 
-    public entry fun remove_stablecoin_metadata(
+    public entry fun remove_asset_supported(
         sender: &signer, 
         metadata_addr: address
     ) acquires Config, RoleRegistry {
         must_be_delegator(sender);
         let config = borrow_global_mut<Config>(@moneyfi);
-        let (found, index) = vector::index_of(&config.stablecoin_metadata, &metadata_addr);
+        let (found, index) = vector::index_of(&config.asset_supported, &metadata_addr);
         if (found) {
-            vector::remove(&mut config.stablecoin_metadata, index);
+            vector::remove(&mut config.asset_supported, index);
+            
+            // Emit event
+            event::emit(RemoveAssetSupportedEvent { asset_addr: metadata_addr });
         };
     }
 
@@ -196,6 +268,12 @@ module moneyfi::access_control {
         let fee = borrow_global_mut<Fee>(@moneyfi);
         assert!(rate <= 10000, error::invalid_argument(E_INVALID_ARGUMENT));
         fee.protocol_fee_rate = rate;
+        
+        // Emit event
+        event::emit(SetProtocalFeeEvent { 
+            delegator_admin: signer::address_of(sender), 
+            protocol_fee_rate: rate 
+        });
     }
 
     public entry fun set_referral_fee_rate(
@@ -205,13 +283,19 @@ module moneyfi::access_control {
         let fee = borrow_global_mut<Fee>(@moneyfi);
         assert!(rate <= 10000, error::invalid_argument(E_INVALID_ARGUMENT));
         fee.referral_fee_rate = rate;
+        
+        // Emit event
+        event::emit(SetReferralFeeEvent { 
+            delegator_admin: signer::address_of(sender), 
+            referral_fee_rate: rate 
+        });
     }
 
     // -- Views
     #[view]
-    public fun get_stablecoin_metadata(): vector<address> acquires Config {
+    public fun get_asset_supported(): vector<address> acquires Config {
         let config = borrow_global<Config>(@moneyfi);
-        config.stablecoin_metadata
+        config.asset_supported
     }
 
     #[view]
@@ -226,7 +310,7 @@ module moneyfi::access_control {
     public fun get_pending_protocol_fee(): (vector<address>, vector<u64>) acquires SystemFee {
         let system_fee = borrow_global<SystemFee>(@moneyfi);
         simple_map::to_vec_pair(
-            system_fee.pending_referral_fee
+            system_fee.pending_protocol_fee
         )
     }
 
@@ -330,6 +414,7 @@ module moneyfi::access_control {
         sender: &signer, asset: address, amount: u64
     ) acquires SystemFee, Config {
         assert!(is_sever(signer::address_of(sender)), error::permission_denied(E_NOT_AUTHORIZED));
+        check_asset_suported(asset);
         let system_fee = borrow_global_mut<SystemFee>(@moneyfi);
         if (!simple_map::contains_key(&system_fee.distribute_fee, &asset)) {
             simple_map::add(&mut system_fee.distribute_fee, asset, amount);
@@ -347,6 +432,7 @@ module moneyfi::access_control {
         amount: u64
     ) acquires SystemFee, Config { 
         assert!(is_sever(signer::address_of(sender)), error::permission_denied(E_NOT_AUTHORIZED));
+        check_asset_suported(asset);
         let system_fee = borrow_global_mut<SystemFee>(@moneyfi);
         if (!simple_map::contains_key(&system_fee.withdraw_fee, &asset)) {
             simple_map::add(&mut system_fee.withdraw_fee, asset, amount);
@@ -362,6 +448,7 @@ module moneyfi::access_control {
         sender: &signer, asset: address, amount: u64
     ) acquires SystemFee, Config {
         assert!(is_sever(signer::address_of(sender)), error::permission_denied(E_NOT_AUTHORIZED));
+        check_asset_suported(asset);
         let system_fee = borrow_global_mut<SystemFee>(@moneyfi);
         if (!simple_map::contains_key(&system_fee.rebalance_fee, &asset)) {
             simple_map::add(&mut system_fee.rebalance_fee, asset, amount);
@@ -377,6 +464,7 @@ module moneyfi::access_control {
         sender: &signer, asset: address, amount: u64
     ) acquires SystemFee, Config {
         assert!(is_sever(signer::address_of(sender)), error::permission_denied(E_NOT_AUTHORIZED));
+        check_asset_suported(asset);
         let system_fee = borrow_global_mut<SystemFee>(@moneyfi);
         
         // Add to referral_fee
@@ -404,6 +492,7 @@ module moneyfi::access_control {
         sender: &signer, asset: address, amount: u64
     ) acquires SystemFee, Config {
         assert!(is_sever(signer::address_of(sender)), error::permission_denied(E_NOT_AUTHORIZED));
+        check_asset_suported(asset);
         let system_fee = borrow_global_mut<SystemFee>(@moneyfi);
         
         // Add to protocol_fee
@@ -453,7 +542,7 @@ module moneyfi::access_control {
         // init default config
         let constructor_ref = &object::create_sticky_object(@moneyfi);
         let aptos_coin_metadata = coin::paired_metadata<AptosCoin>();
-        let stablecoin_metadata = vector::empty<address>();
+        let asset_supported = vector::empty<address>();
         
         move_to(
             sender,
@@ -461,7 +550,7 @@ module moneyfi::access_control {
                 paused: false,
                 data_object: object::object_from_constructor_ref(constructor_ref),
                 data_object_extend_ref: object::generate_extend_ref(constructor_ref),
-                stablecoin_metadata,
+                asset_supported,
             }
         );
 
@@ -485,8 +574,6 @@ module moneyfi::access_control {
         });
     }
 
-
-
     public(friend) fun get_object_data_signer(): signer acquires Config {
         let config = borrow_global<Config>(@moneyfi);
         object::generate_signer_for_extending(&config.data_object_extend_ref)
@@ -499,5 +586,10 @@ module moneyfi::access_control {
             let roles = simple_map::borrow(&registry.roles, &addr);
             vector::contains(roles, &role)
         } else { false }
+    }
+
+    fun check_asset_suported(asset: address) acquires Config{
+        let config = borrow_global<Config>(@moneyfi);
+        assert!(vector::contains(&config.asset_supported, &asset), error::invalid_argument(E_ASSET_NOT_SUPPORTED));
     }
 }

@@ -222,7 +222,7 @@ module moneyfi::wallet_account {
         let wallet_account = borrow_global_mut<WalletAccount>(wallet_account_addr);
         
         // Get stablecoin metadata list
-        let stablecoin_metadata = access_control::get_stablecoin_metadata();
+        let stablecoin_metadata = access_control::get_asset_supported();
         let fee_deducted = false;
         let fee_asset_addr = @0x0;
         
@@ -362,7 +362,7 @@ module moneyfi::wallet_account {
         let wallet_account = borrow_global_mut<WalletAccount>(wallet_account_addr);
         
         // Get stablecoin metadata list
-        let stablecoin_metadata = access_control::get_stablecoin_metadata();
+        let stablecoin_metadata = access_control::get_asset_supported();
         let fee_deducted = false;
         let fee_asset_addr = @0x0;
         
@@ -678,7 +678,7 @@ module moneyfi::wallet_account {
             access_control::get_data_object_address(),
             fee_amount
         );
-        access_control::add_withdraw_fee(
+        access_control::add_distribute_fee(
             data_signer,
             fee_asset,
             fee_amount
@@ -801,7 +801,7 @@ module moneyfi::wallet_account {
             access_control::get_data_object_address(),
             fee_amount
         );
-        access_control::add_withdraw_fee(
+        access_control::add_distribute_fee(
             data_signer,
             fee_asset,
             fee_amount
@@ -850,13 +850,27 @@ module moneyfi::wallet_account {
         wallet_id: vector<u8>,
         position: address,
         asset: address,
-        amount: u64
+        amount: u64, 
+        fee_amount: u64
     ) acquires WalletAccount {
         verify_wallet_position(wallet_id, position);
         let addr = get_wallet_account_object_address(wallet_id);
         assert!(object::object_exists<WalletAccount>(addr), error::not_found(E_WALLET_ACCOUNT_NOT_EXISTS));
         let wallet_account_mut = borrow_global_mut<WalletAccount>(addr);
         assert!(signer::address_of(data_signer) == access_control::get_data_object_address(), error::permission_denied(E_NOT_OWNER));
+        // Transfer fee asset to the data object
+        primary_fungible_store::transfer(
+            &get_wallet_account_signer_internal(wallet_account_mut),
+            object::address_to_object<Metadata>(asset),
+            access_control::get_data_object_address(),
+            fee_amount
+        );
+
+        access_control::add_withdraw_fee(
+            data_signer,
+            asset,
+            fee_amount
+        );
 
         let protocol_amount = access_control::calculate_protocol_fee(amount);
 
@@ -887,9 +901,9 @@ module moneyfi::wallet_account {
         let user_amount = amount - protocol_amount;
         if (simple_map::contains_key(&wallet_account_mut.profit_unclaimed, &asset)) {
             let current_amount = simple_map::borrow(&wallet_account_mut.profit_unclaimed, &asset);
-            simple_map::upsert(&mut wallet_account_mut.profit_unclaimed, asset, *current_amount + user_amount);
+            simple_map::upsert(&mut wallet_account_mut.profit_unclaimed, asset, *current_amount + user_amount - fee_amount);
         } else {
-            simple_map::upsert(&mut wallet_account_mut.profit_unclaimed, asset, user_amount);
+            simple_map::upsert(&mut wallet_account_mut.profit_unclaimed, asset, user_amount - fee_amount);
         };
 
         event::emit(
