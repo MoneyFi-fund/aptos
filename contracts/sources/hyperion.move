@@ -240,41 +240,41 @@ module moneyfi::hyperion {
     //         );
     // }
 
-    // public entry fun remove_liquidity_single_from_operator(
-    //     operator: &signer,
-    //     wallet_id: vector<u8>,
-    //     position: Object<Info>,
-    //     asset: Object<Metadata>,
-    //     slippage_numerator: u256,
-    //     slippage_denominator: u256,
-    //     fee_amount: u64
-    //     ) {
-    //         let wallet_signer = wallet_account::get_wallet_account_signer(operator, wallet_id);
-    //         claim_fees_and_rewards_from_operator(
-    //             &wallet_signer,
-    //             wallet_id,
-    //             position,
-    //             asset,
-    //             0
-    //         );
-    //         let liquidity = position_v3::get_liquidity(position);
-    //         router_v3::remove_liquidity_single(
-    //             &wallet_signer,
-    //             position,
-    //             liquidity,
-    //             asset,
-    //             slippage_numerator,
-    //             slippage_denominator,
-    //         );
-    //         let server_signer = access_control::get_object_data_signer();
-    //         wallet_account::remove_position_opened(
-    //             &server_signer,
-    //             wallet_id,
-    //             object::object_address<Info>(&position),
-    //             asset,
-    //             fee_amount
-    //         );
-    //     }
+    public entry fun remove_liquidity_single_from_operator(
+        operator: &signer,
+        wallet_id: vector<u8>,
+        position: Object<Info>,
+        asset: Object<Metadata>,
+        slippage_numerator: u256,
+        slippage_denominator: u256,
+        fee_amount: u64
+        ) {
+            let wallet_signer = wallet_account::get_wallet_account_signer(operator, wallet_id);
+            claim_fees_and_rewards_from_operator(
+                operator,
+                wallet_id,
+                position,
+                asset,
+                0
+            );
+            let liquidity = position_v3::get_liquidity(position);
+            router_v3::remove_liquidity_single(
+                &wallet_signer,
+                position,
+                liquidity,
+                asset,
+                slippage_numerator,
+                slippage_denominator,
+            );
+            let server_signer = access_control::get_object_data_signer();
+            wallet_account::remove_position_opened(
+                &server_signer,
+                wallet_id,
+                object::object_address<Info>(&position),
+                asset,
+                fee_amount
+            );
+        }
 
     // public entry fun claim_fees_and_rewards_from_operator(
     //     operator: &signer,
