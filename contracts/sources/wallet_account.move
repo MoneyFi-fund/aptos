@@ -84,6 +84,7 @@ module moneyfi::wallet_account {
     #[event]
     struct DepositToWalletAccountEvent has drop, store {
         sender: address,
+        wallet_id: vector<u8>,
         wallet_object: address,
         assets: vector<Object<Metadata>>,
         amounts: vector<u64>,
@@ -204,6 +205,7 @@ module moneyfi::wallet_account {
         sender: &signer, wallet_id: vector<u8>
     ) acquires WalletAccount {
         let wallet_account_addr = get_wallet_account_object_address(wallet_id);
+        assert!(object::object_exists<WalletAccount>(wallet_account_addr), error::not_found(E_WALLET_ACCOUNT_NOT_EXISTS));
         let wallet_account = borrow_global_mut<WalletAccount>(wallet_account_addr);
         assert!(wallet_account.source_domain == APT_SRC_DOMAIN, error::invalid_state(E_NOT_APTOS_WALLET_ACCOUNT));
         assert!(signer::address_of(sender) == util::address_from_bytes(wallet_id), error::permission_denied(E_NOT_OWNER));
@@ -289,6 +291,7 @@ module moneyfi::wallet_account {
         event::emit(
             DepositToWalletAccountEvent {
                 sender: signer::address_of(sender),
+                wallet_id: wallet_id,
                 wallet_object: wallet_account_addr,
                 assets: assets,
                 amounts: amounts,
