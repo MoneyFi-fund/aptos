@@ -11,6 +11,7 @@ module moneyfi::access_control {
     use aptos_framework::aptos_coin::AptosCoin;
     use aptos_framework::coin;
     use aptos_framework::event;
+    use aptos_framework::timestamp::now_seconds;
 
     friend moneyfi::wallet_account;
     friend moneyfi::hyperion;
@@ -68,46 +69,54 @@ module moneyfi::access_control {
     #[event]
     struct SetRoleEvent has drop, store {
         addr: address,
-        role: u8
+        role: u8,
+        timestamp: u64
     }
 
     #[event]
     struct SetFeeToEvent has drop, store {
         addr: address,
+        timestamp: u64
     }
 
     #[event]
     struct SetProtocalFeeEvent has drop, store {
         delegator_admin: address,
         protocol_fee_rate: u64,
+        timestamp: u64
     }
 
     #[event]
     struct SetReferralFeeEvent has drop, store {
         delegator_admin: address,
         referral_fee_rate: u64,
+        timestamp: u64
     }
 
     #[event]
     struct RevokeRoleEvent has drop, store {
         addr: address,
-        role: u8
+        role: u8,
+        timestamp: u64
     }
 
     #[event]
     struct ClaimFeeEvent has drop, store {
         asset: address,
-        amount: u64
+        amount: u64,
+        timestamp: u64
     }
 
     #[event]
     struct AddAssetSupportedEvent has drop, store {
         asset_addr: address,
+        timestamp: u64
     }
 
     #[event]
     struct RemoveAssetSupportedEvent has drop, store {
-        asset_addr: address
+        asset_addr: address,
+        timestamp: u64
     }
 
     #[test_only]
@@ -140,7 +149,11 @@ module moneyfi::access_control {
         };
 
         // Emit event
-        event::emit(SetRoleEvent { addr, role });
+        event::emit(SetRoleEvent {
+             addr, 
+             role , 
+             timestamp: now_seconds()
+        });
     }
 
     public entry fun claim_fees(
@@ -170,7 +183,11 @@ module moneyfi::access_control {
         );
         
         // Emit event
-        event::emit(ClaimFeeEvent { asset: asset_addr, amount });
+        event::emit(ClaimFeeEvent { 
+            asset: asset_addr, 
+            amount,
+            timestamp: now_seconds() 
+            });
     }
 
     public entry fun set_fee_to(sender: &signer, addr: address) acquires SystemFee, RoleRegistry {
@@ -179,7 +196,10 @@ module moneyfi::access_control {
         system_fee.fee_to = addr;
         
         // Emit event
-        event::emit(SetFeeToEvent { addr });
+        event::emit(SetFeeToEvent { 
+            addr,
+            timestamp: now_seconds() 
+            });
     }
 
     public entry fun revoke_role(sender: &signer, addr: address, role: u8) acquires RoleRegistry {
@@ -193,7 +213,11 @@ module moneyfi::access_control {
                 vector::remove(roles, index);
                 
                 // Emit event only if role was actually removed
-                event::emit(RevokeRoleEvent { addr, role });
+                event::emit(RevokeRoleEvent { 
+                    addr, 
+                    role,
+                    timestamp: now_seconds() 
+                    });
             };
 
             // If no roles left, remove the address completely
@@ -226,7 +250,11 @@ module moneyfi::access_control {
             let len = vector::length(&roles);
             while (i < len) {
                 let role = *vector::borrow(&roles, i);
-                event::emit(RevokeRoleEvent { addr, role });
+                event::emit(RevokeRoleEvent { 
+                    addr, 
+                    role,
+                    timestamp: now_seconds(),
+                     });
                 i = i + 1;
             };
         }
@@ -242,7 +270,10 @@ module moneyfi::access_control {
             vector::push_back(&mut config.asset_supported, metadata_addr);
             
             // Emit event
-            event::emit(AddAssetSupportedEvent { asset_addr: metadata_addr });
+            event::emit(AddAssetSupportedEvent { 
+                asset_addr: metadata_addr,
+                timestamp: now_seconds()
+                 });
         };
     }
 
@@ -257,7 +288,10 @@ module moneyfi::access_control {
             vector::remove(&mut config.asset_supported, index);
             
             // Emit event
-            event::emit(RemoveAssetSupportedEvent { asset_addr: metadata_addr });
+            event::emit(RemoveAssetSupportedEvent { 
+                asset_addr: metadata_addr,
+                timestamp: now_seconds(),
+             });
         };
     }
 
@@ -272,7 +306,8 @@ module moneyfi::access_control {
         // Emit event
         event::emit(SetProtocalFeeEvent { 
             delegator_admin: signer::address_of(sender), 
-            protocol_fee_rate: rate 
+            protocol_fee_rate: rate,
+            timestamp: now_seconds()
         });
     }
 
@@ -287,7 +322,8 @@ module moneyfi::access_control {
         // Emit event
         event::emit(SetReferralFeeEvent { 
             delegator_admin: signer::address_of(sender), 
-            referral_fee_rate: rate 
+            referral_fee_rate: rate ,
+            timestamp: now_seconds()
         });
     }
 
