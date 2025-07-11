@@ -80,7 +80,7 @@ module moneyfi::access_control {
     }
 
     #[event]
-    struct SetProtocalFeeEvent has drop, store {
+    struct SetProtocolFeeEvent has drop, store {
         delegator_admin: address,
         protocol_fee_rate: u64,
         timestamp: u64
@@ -303,7 +303,7 @@ module moneyfi::access_control {
         fee.protocol_fee_rate = rate;
         
         // Emit event
-        event::emit(SetProtocalFeeEvent { 
+        event::emit(SetProtocolFeeEvent { 
             delegator_admin: signer::address_of(sender), 
             protocol_fee_rate: rate,
             timestamp: now_seconds()
@@ -449,7 +449,7 @@ module moneyfi::access_control {
         sender: &signer, asset: address, amount: u64
     ) acquires SystemFee, Config {
         assert!(is_sever(signer::address_of(sender)), error::permission_denied(E_NOT_AUTHORIZED));
-        check_asset_suported(asset);
+        check_asset_supported(asset);
         let system_fee = borrow_global_mut<SystemFee>(@moneyfi);
         if (!simple_map::contains_key(&system_fee.distribute_fee, &asset)) {
             simple_map::add(&mut system_fee.distribute_fee, asset, amount);
@@ -467,7 +467,7 @@ module moneyfi::access_control {
         amount: u64
     ) acquires SystemFee, Config { 
         assert!(is_sever(signer::address_of(sender)), error::permission_denied(E_NOT_AUTHORIZED));
-        check_asset_suported(asset);
+        check_asset_supported(asset);
         let system_fee = borrow_global_mut<SystemFee>(@moneyfi);
         if (!simple_map::contains_key(&system_fee.withdraw_fee, &asset)) {
             simple_map::add(&mut system_fee.withdraw_fee, asset, amount);
@@ -483,7 +483,7 @@ module moneyfi::access_control {
         sender: &signer, asset: address, amount: u64
     ) acquires SystemFee, Config {
         assert!(is_sever(signer::address_of(sender)), error::permission_denied(E_NOT_AUTHORIZED));
-        check_asset_suported(asset);
+        check_asset_supported(asset);
         let system_fee = borrow_global_mut<SystemFee>(@moneyfi);
         if (!simple_map::contains_key(&system_fee.rebalance_fee, &asset)) {
             simple_map::add(&mut system_fee.rebalance_fee, asset, amount);
@@ -499,7 +499,7 @@ module moneyfi::access_control {
         sender: &signer, asset: address, amount: u64
     ) acquires SystemFee, Config {
         assert!(is_sever(signer::address_of(sender)), error::permission_denied(E_NOT_AUTHORIZED));
-        check_asset_suported(asset);
+        check_asset_supported(asset);
         let system_fee = borrow_global_mut<SystemFee>(@moneyfi);
         
         // Add to referral_fee
@@ -527,7 +527,7 @@ module moneyfi::access_control {
         sender: &signer, asset: address, amount: u64
     ) acquires SystemFee, Config {
         assert!(is_sever(signer::address_of(sender)), error::permission_denied(E_NOT_AUTHORIZED));
-        check_asset_suported(asset);
+        check_asset_supported(asset);
         let system_fee = borrow_global_mut<SystemFee>(@moneyfi);
         
         // Add to protocol_fee
@@ -623,7 +623,7 @@ module moneyfi::access_control {
         } else { false }
     }
 
-    fun check_asset_suported(asset: address) acquires Config{
+    fun check_asset_supported(asset: address) acquires Config{
         let config = borrow_global<Config>(@moneyfi);
         assert!(vector::contains(&config.asset_supported, &asset), error::invalid_argument(E_ASSET_NOT_SUPPORTED));
     }
