@@ -251,7 +251,7 @@ module moneyfi::hyperion {
         ) {
             let wallet_signer = wallet_account::get_wallet_account_signer(operator, wallet_id);
             claim_fees_and_rewards_from_operator(
-                &wallet_signer,
+                operator,
                 wallet_id,
                 position,
                 asset,
