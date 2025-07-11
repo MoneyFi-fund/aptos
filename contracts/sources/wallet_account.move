@@ -233,7 +233,7 @@ module moneyfi::wallet_account {
             let asset = *vector::borrow(&assets, i);
             let asset_addr = object::object_address(&asset);
             let amount = *vector::borrow(&amounts, i);
-            
+            access_control::check_asset_supported(asset_addr);
             // Check if this asset is a stablecoin and we haven't deducted fee yet
             let is_stablecoin = vector::contains(&stablecoin_metadata, &asset_addr);
             
