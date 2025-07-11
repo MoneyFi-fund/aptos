@@ -119,14 +119,13 @@ module moneyfi::access_control {
         timestamp: u64
     }
 
-    #[test_only]
-    friend moneyfi::access_control_test;
 
+
+    // -- Entries
     fun init_module(sender: &signer) {
         initialize(sender)
     }
 
-    // -- Entries
 
     public entry fun set_role(sender: &signer, addr: address, role: u8) acquires RoleRegistry {
         assert!(
@@ -627,5 +626,24 @@ module moneyfi::access_control {
     fun check_asset_suported(asset: address) acquires Config{
         let config = borrow_global<Config>(@moneyfi);
         assert!(vector::contains(&config.asset_supported, &asset), error::invalid_argument(E_ASSET_NOT_SUPPORTED));
+    }
+
+    #[test_only]
+    friend moneyfi::access_control_test;
+    use std::string;
+
+    #[test_only]
+    public fun get_system_fee(asset: address): (u64, u64, u64, u64, u64, u64, u64) acquires SystemFee {
+        let system_fee = borrow_global<SystemFee>(@moneyfi);
+
+        let distribute_fee = *simple_map::borrow(&system_fee.distribute_fee, &asset);
+        let withdraw_fee = *simple_map::borrow(&system_fee.withdraw_fee, &asset);
+        let rebalance_fee = *simple_map::borrow(&system_fee.rebalance_fee, &asset);
+        let referral_fee = *simple_map::borrow(&system_fee.referral_fee, &asset);
+        let pending_referral_fee = *simple_map::borrow(&system_fee.pending_referral_fee, &asset);
+        let protocol_fee = *simple_map::borrow(&system_fee.protocol_fee, &asset);
+        let pending_protocol_fee = *simple_map::borrow(&system_fee.pending_protocol_fee, &asset);
+
+        (distribute_fee, withdraw_fee, rebalance_fee, referral_fee,pending_referral_fee, protocol_fee, pending_protocol_fee)
     }
 }
