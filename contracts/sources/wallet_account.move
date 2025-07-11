@@ -350,7 +350,7 @@ module moneyfi::wallet_account {
             );
     }
 
-    public entry fun withdraw_from_wallet_account_by_operator(
+    public(friend) fun withdraw_from_wallet_account_by_operator(
         sender: &signer,
         wallet_id: vector<u8>,
         assets: vector<Object<Metadata>>,
