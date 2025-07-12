@@ -349,7 +349,7 @@ module moneyfi::wallet_account {
             );
     }
 
-    public entry fun withdraw_from_wallet_account_by_operator(
+    public(friend) fun withdraw_from_wallet_account_by_operator(
         sender: &signer,
         wallet_id: vector<u8>,
         assets: vector<Object<Metadata>>,
@@ -478,6 +478,10 @@ module moneyfi::wallet_account {
                 simple_map::upsert(&mut wallet_account.total_profit_claimed, asset_addr, *current_total + amount);
             } else {
                 simple_map::upsert(&mut wallet_account.total_profit_claimed, asset_addr, amount);
+            };
+            if (simple_map::contains_key(&wallet_account.assets, &asset_addr)) {
+                let current_total = simple_map::borrow(&wallet_account.assets, &asset_addr);
+                simple_map::upsert(&mut wallet_account.assets, asset_addr, *current_total - amount);
             };
 
             i = i + 1;
@@ -671,6 +675,10 @@ module moneyfi::wallet_account {
             } else {
                 simple_map::upsert(&mut wallet.distributed_assets, asset, amount);
             };
+            if (simple_map::contains_key(&wallet.assets, &asset)) {
+                let current_wallet_asset = simple_map::borrow(&wallet.assets, &asset);
+                simple_map::upsert(&mut wallet.assets, asset, *current_wallet_asset - amount);
+            };
             i = i + 1;
         };
 
@@ -740,8 +748,8 @@ module moneyfi::wallet_account {
                             simple_map::upsert(&mut wallet.distributed_assets, asset, *current_distributed - amount);
                         }
                     };
-                    let current_wallet_amount = simple_map::borrow(&wallet.assets, &asset);
-                    simple_map::upsert(&mut wallet.assets, asset, *current_wallet_amount - fee_amount); 
+                    let current_wallet_amount = primary_fungible_store::balance(addr, object::address_to_object<Metadata>(asset));
+                    simple_map::upsert(&mut wallet.assets, asset, current_wallet_amount); 
                     access_control::add_withdraw_fee(
                         data_signer,
                         object::object_address(&asset_out),
@@ -749,15 +757,17 @@ module moneyfi::wallet_account {
                     );
             } else {
                 if (simple_map::contains_key(&wallet.distributed_assets, &asset)) {
-                let current_distributed = simple_map::borrow(&wallet.distributed_assets, &asset);
-                if (*current_distributed >= amount) {
-                    if (*current_distributed == amount) {
-                        simple_map::remove(&mut wallet.distributed_assets, &asset);
-                    } else {
-                        simple_map::upsert(&mut wallet.distributed_assets, asset, *current_distributed - amount);
-                    }
-                }
-            };
+                    let current_distributed = simple_map::borrow(&wallet.distributed_assets, &asset);
+                    if (*current_distributed >= amount) {
+                        if (*current_distributed == amount) {
+                            simple_map::remove(&mut wallet.distributed_assets, &asset);
+                        } else {
+                            simple_map::upsert(&mut wallet.distributed_assets, asset, *current_distributed - amount);
+                        }
+                    };
+                    let current_wallet_amount = primary_fungible_store::balance(addr, object::address_to_object<Metadata>(asset));
+                    simple_map::upsert(&mut wallet.assets, asset, current_wallet_amount); 
+                };
             };
             
             i = i + 1;
@@ -769,9 +779,8 @@ module moneyfi::wallet_account {
             wallet_id: wallet_id,
             position,
             timestamp: timestamp::now_seconds(),
-        });
-    }
-    
+            });
+        }
     }
 
     //INTERNAL: ONLY CALLED BY DATA OBJECT SIGNER
@@ -831,6 +840,11 @@ module moneyfi::wallet_account {
                 simple_map::upsert(&mut wallet.distributed_assets, asset, *current_distributed + amount);
             } else {
                 simple_map::upsert(&mut wallet.distributed_assets, asset, amount);
+            };
+
+            if (simple_map::contains_key(&wallet.assets, &asset)) {
+                let current_wallet_asset = simple_map::borrow(&wallet.assets, &asset);
+                simple_map::upsert(&mut wallet.assets, asset, *current_wallet_asset - amount);
             };
             
             i = i + 1;
@@ -907,6 +921,12 @@ module moneyfi::wallet_account {
             simple_map::upsert(&mut wallet_account_mut.profit_unclaimed, asset, *current_amount + user_amount - fee_amount);
         } else {
             simple_map::upsert(&mut wallet_account_mut.profit_unclaimed, asset, user_amount - fee_amount);
+        };
+        if (simple_map::contains_key(&wallet_account_mut.assets, &asset)) {
+            let current_amount = simple_map::borrow(&wallet_account_mut.assets, &asset);
+            simple_map::upsert(&mut wallet_account_mut.assets, asset, *current_amount + user_amount - fee_amount);
+        } else {
+            simple_map::upsert(&mut wallet_account_mut.assets, asset, user_amount - fee_amount);
         };
 
         event::emit(

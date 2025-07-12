@@ -287,6 +287,7 @@ module moneyfi::access_control_test {
         access_control::add_referral_fee(
                 &server_signer,
                 stable_coin_addr,
+                
                 fee_amount
         );
 
@@ -319,6 +320,3 @@ module moneyfi::access_control_test {
         assert!(*vector::borrow(&vector_fee, 0) == fee_amount); 
     }
 }
-
-
-

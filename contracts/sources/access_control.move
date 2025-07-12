@@ -630,7 +630,7 @@ module moneyfi::access_control {
 
     #[test_only]
     friend moneyfi::access_control_test;
-    friend moneyfi::test_helpers;
+    friend moneyfi::wallet_account_test;
     use std::string;
 
     #[test_only]
