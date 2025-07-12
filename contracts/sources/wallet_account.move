@@ -748,8 +748,8 @@ module moneyfi::wallet_account {
                             simple_map::upsert(&mut wallet.distributed_assets, asset, *current_distributed - amount);
                         }
                     };
-                    let current_wallet_amount = simple_map::borrow(&wallet.assets, &asset);
-                    simple_map::upsert(&mut wallet.assets, asset, *current_wallet_amount - fee_amount + amount); 
+                    let current_wallet_amount = primary_fungible_store::balance(addr, object::address_to_object<Metadata>(asset));
+                    simple_map::upsert(&mut wallet.assets, asset, current_wallet_amount); 
                     access_control::add_withdraw_fee(
                         data_signer,
                         object::object_address(&asset_out),
@@ -765,8 +765,8 @@ module moneyfi::wallet_account {
                             simple_map::upsert(&mut wallet.distributed_assets, asset, *current_distributed - amount);
                         }
                     };
-                    let current_wallet_amount = simple_map::borrow(&wallet.assets, &asset);
-                    simple_map::upsert(&mut wallet.assets, asset, *current_wallet_amount + amount); 
+                    let current_wallet_amount = primary_fungible_store::balance(addr, object::address_to_object<Metadata>(asset));
+                    simple_map::upsert(&mut wallet.assets, asset, current_wallet_amount); 
                 };
             };
             
@@ -779,9 +779,8 @@ module moneyfi::wallet_account {
             wallet_id: wallet_id,
             position,
             timestamp: timestamp::now_seconds(),
-        });
-    }
-    
+            });
+        }
     }
 
     //INTERNAL: ONLY CALLED BY DATA OBJECT SIGNER
