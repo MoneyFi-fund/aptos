@@ -248,33 +248,93 @@ module moneyfi::hyperion {
         slippage_numerator: u256,
         slippage_denominator: u256,
         fee_amount: u64
-        ) {
-            let wallet_signer = wallet_account::get_wallet_account_signer(operator, wallet_id);
-            claim_fees_and_rewards_from_operator(
-                operator,
-                wallet_id,
-                position,
-                asset,
-                0
-            );
-            let liquidity = position_v3::get_liquidity(position);
-            router_v3::remove_liquidity_single(
-                &wallet_signer,
-                position,
-                liquidity,
-                asset,
-                slippage_numerator,
-                slippage_denominator,
-            );
-            let server_signer = access_control::get_object_data_signer();
-            wallet_account::remove_position_opened(
-                &server_signer,
-                wallet_id,
-                object::object_address<Info>(&position),
-                asset,
-                fee_amount
-            );
-        }
+    ) {
+        let wallet_signer = wallet_account::get_wallet_account_signer(operator, wallet_id);
+        claim_fees_and_rewards_from_operator(
+            operator,
+            wallet_id,
+            position,
+            asset,
+            0
+        );
+        let liquidity = position_v3::get_liquidity(position);
+        router_v3::remove_liquidity_single(
+            &wallet_signer,
+            position,
+            liquidity,
+            asset,
+            slippage_numerator,
+            slippage_denominator,
+        );
+        let server_signer = access_control::get_object_data_signer();
+        wallet_account::remove_position_opened(
+            &server_signer,
+            wallet_id,
+            object::object_address<Info>(&position),
+            asset,
+            fee_amount
+        );
+    }
+
+    public entry fun remove_amount_liquidity_single_from_operator(
+        operator: &signer,
+        wallet_id: vector<u8>,
+        position: Object<Info>,
+        asset: Object<Metadata>,
+        amount: u64,
+        slippage_numerator: u256,
+        slippage_denominator: u256,
+        fee_amount: u64
+    ) {
+        let wallet_signer = wallet_account::get_wallet_account_signer(operator, wallet_id);
+        claim_fees_and_rewards_from_operator(
+            operator,
+            wallet_id,
+            position,
+            asset,
+            0
+        );
+        let (token_a, token_b, fee_tier) = get_pool_info(position);
+        let token_pair = if (object::object_address(&token_a) == object::object_address(&asset)){
+            token_a
+        }else {
+            token_b
+        };
+        let (tick_lower, tick_upper) = get_tick(position);
+
+        let (liquidity,_) = optimal_liquidity_amounts_from_a (
+            i32::as_u32(tick_lower),
+            i32::as_u32(tick_upper),
+            i32::as_u32(tick_lower) + 1,
+            asset,
+            token_pair,
+            fee_tier,
+            amount,
+            1,
+            1
+        );
+
+        router_v3::remove_liquidity_single(
+            &wallet_signer,
+            position,
+            liquidity,
+            asset,
+            slippage_numerator,
+            slippage_denominator,
+        );
+
+        let assets = vector::singleton<address>(object::object_address<Metadata>(&asset));
+        let amounts = vector::singleton<u64>(amount - fee_amount);
+        let server_signer = access_control::get_object_data_signer();
+        wallet_account::update_position_after_partial_removal(
+            &server_signer,
+            wallet_id,
+            object::object_address<Info>(&position),
+            assets,
+            amounts,
+            fee_amount
+        );
+    }
 
     public entry fun claim_fees_and_rewards_from_operator(
         operator: &signer,
