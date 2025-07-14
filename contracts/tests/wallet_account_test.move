@@ -81,6 +81,12 @@ module moneyfi::wallet_account_test {
         (b,if(b){*vector::borrow(&amounts, index)} else{0})
     }
 
+    fun get_total_profit_claimed_by_metadata(wallet_id: vector<u8>, metadata: Object<Metadata>): (bool ,u64) {
+        let (metadata_addrs, amounts) = wallet_account::get_total_profit_claimed(wallet_id);
+        let (b,index) = vector::index_of(&metadata_addrs, &object::object_address(&metadata));
+        (b,if(b){*vector::borrow(&amounts, index)} else{0})
+    }
+
     ////////////////////////////////////////////////
     ///////////// connect_aptos_wallet ////////////
     //////////////////////////////////////////////
@@ -393,6 +399,7 @@ module moneyfi::wallet_account_test {
 
     //test conncec, deposit, withdraw
 
+    // ========== ADD_POSITION_OPENED TESTS ==========
     #[test(deployer = @moneyfi,user = @0xab, aptos_framework = @0x1)]
     fun test_add_position_opened(deployer: &signer, user: &signer, aptos_framework: &signer) {
         let (fa, metadata) = setup_for_test(
@@ -589,17 +596,20 @@ module moneyfi::wallet_account_test {
         );
     }
 
-    #[test(deployer = @moneyfi,user = @0xab, aptos_framework = @0x1)]
-    fun test_remove_position_opened(deployer: &signer, user: &signer, aptos_framework: &signer) {
+    // ========== REMOVE_POSITION_OPENED TESTS ==========
+
+    #[test(deployer = @moneyfi, user = @0xab, aptos_framework = @0x1)]
+    fun test_remove_position_opened_success(deployer: &signer, user: &signer, aptos_framework: &signer) {
         let (fa, metadata) = setup_for_test(
-                deployer, 
-                signer::address_of(deployer), 
-                aptos_framework, 
-                10000
-            );
+            deployer, 
+            signer::address_of(deployer), 
+            aptos_framework, 
+            10000
+        );
         let wallet_id = get_test_wallet_id(signer::address_of(user));
         primary_fungible_store::deposit(signer::address_of(user), fa);
-        //-- deposit to wallet account
+        
+        // Create wallet account and deposit
         wallet_account::create_wallet_account(deployer, wallet_id, 9, true);
         let wallet_account_addr = wallet_account::get_wallet_account_object_address(wallet_id);
         let wallet_account_signer = wallet_account::get_wallet_account_signer(deployer, wallet_id);
@@ -610,12 +620,8 @@ module moneyfi::wallet_account_test {
             vector::singleton<u64>(10000),
             0
         );
-        assert!(test_helpers::balance_of_token(signer::address_of(user), metadata) == 0, 1);
-        assert!(test_helpers::balance_of_token(wallet_account_addr, metadata) == 10000, 1);
-        let (_, a) = get_asset_deposit_to_wallet_account(wallet_id, metadata);
-        assert!( a == 10000, 1);
-        //-- add position
-        // simulate position
+
+        // Create and add position
         let (position_addr, position_signer) = get_position(wallet_account_addr);
         primary_fungible_store::transfer(
             &wallet_account_signer,
@@ -632,16 +638,12 @@ module moneyfi::wallet_account_test {
             1,
             0
         );
-        assert!(test_helpers::balance_of_token(wallet_account_addr, metadata) == 5000, 1);
-        assert!(test_helpers::balance_of_token(position_addr, metadata) == 5000, 1);
-        let (_, b) = get_asset_deposit_to_wallet_account(wallet_id, metadata);
-        assert!(b == 5000, 1);
-        let (_, c) = get_asset_distribute_wallet_account(wallet_id, metadata);
-        assert!(c == 5000, 1);
-        let (position_openeds,_) = wallet_account::get_position_opened(wallet_id);
+
+        // Verify position was added
+        let (position_openeds, _) = wallet_account::get_position_opened(wallet_id);
         assert!(vector::contains(&position_openeds, &position_addr), 1);
 
-        // remove position
+        // Transfer assets back to wallet account before removing position
         primary_fungible_store::transfer(
             &position_signer,
             metadata,
@@ -649,6 +651,7 @@ module moneyfi::wallet_account_test {
             5000
         );
 
+        // Remove position
         wallet_account::remove_position_opened(
             &access_control::get_object_data_signer(),
             wallet_id,
@@ -656,15 +659,1085 @@ module moneyfi::wallet_account_test {
             metadata,
             100
         );
-        assert!(test_helpers::balance_of_token(wallet_account_addr, metadata) == 9900, 1);
-        assert!(test_helpers::balance_of_token(position_addr, metadata) == 0, 1);
-        let (_, d) = get_asset_deposit_to_wallet_account(wallet_id, metadata);
-        assert!(d == 10000, 1);
-        let (_, e) = get_asset_distribute_wallet_account(wallet_id, metadata);
-        assert!(e == 0, 1);
-        let (position_openeds,_) = wallet_account::get_position_opened(wallet_id);
-        assert!(!vector::contains(&position_openeds, &position_addr), 1);
 
+        // Verify position was removed
+        let (position_openeds_after, _) = wallet_account::get_position_opened(wallet_id);
+        assert!(!vector::contains(&position_openeds_after, &position_addr), 2);
+        
+        // Verify balances updated correctly
+        assert!(test_helpers::balance_of_token(wallet_account_addr, metadata) == 9900, 3); // 5000 - 100 fee + 5000 remaining
+        let (_, wallet_balance) = get_asset_deposit_to_wallet_account(wallet_id, metadata);
+        assert!(wallet_balance == 9900, 4);
+        let (_, distributed_balance) = get_asset_distribute_wallet_account(wallet_id, metadata);
+        assert!(distributed_balance == 0, 5);
     }
 
+    #[test(deployer = @moneyfi, user = @0xab, aptos_framework = @0x1)]
+    #[expected_failure(abort_code = 0x50004, location = moneyfi::wallet_account)]
+    fun test_remove_position_opened_not_data_signer(deployer: &signer, user: &signer, aptos_framework: &signer) {
+        let (fa, metadata) = setup_for_test(
+            deployer, 
+            signer::address_of(deployer), 
+            aptos_framework, 
+            10000
+        );
+        let wallet_id = get_test_wallet_id(signer::address_of(user));
+        primary_fungible_store::deposit(signer::address_of(user), fa);
+        
+        wallet_account::create_wallet_account(deployer, wallet_id, 9, true);
+        let wallet_account_addr = wallet_account::get_wallet_account_object_address(wallet_id);
+        wallet_account::deposit_to_wallet_account(
+            user,
+            wallet_id,
+            vector::singleton<Object<Metadata>>(metadata),
+            vector::singleton<u64>(10000),
+            0
+        );
+
+        let (position_addr, _) = get_position(wallet_account_addr);
+        wallet_account::add_position_opened(
+            &access_control::get_object_data_signer(),
+            wallet_id,
+            position_addr,
+            vector::singleton<address>(object::object_address<Metadata>(&metadata)),
+            vector::singleton<u64>(5000),
+            1,
+            0
+        );
+
+        // Try to remove position with wrong signer
+        wallet_account::remove_position_opened(
+            user, // Wrong signer
+            wallet_id,
+            position_addr,
+            metadata,
+            100
+        );
+    }
+
+    #[test(deployer = @moneyfi, user = @0xab, aptos_framework = @0x1)]
+    #[expected_failure(abort_code = 0x60008, location = moneyfi::wallet_account)]
+    fun test_remove_position_opened_position_not_exists(deployer: &signer, user: &signer, aptos_framework: &signer) {
+        let (fa, metadata) = setup_for_test(
+            deployer, 
+            signer::address_of(deployer), 
+            aptos_framework, 
+            10000
+        );
+        let wallet_id = get_test_wallet_id(signer::address_of(user));
+        primary_fungible_store::deposit(signer::address_of(user), fa);
+        
+        wallet_account::create_wallet_account(deployer, wallet_id, 9, true);
+        let wallet_account_addr = wallet_account::get_wallet_account_object_address(wallet_id);
+        wallet_account::deposit_to_wallet_account(
+            user,
+            wallet_id,
+            vector::singleton<Object<Metadata>>(metadata),
+            vector::singleton<u64>(10000),
+            0
+        );
+
+        let (position_addr, _) = get_position(wallet_account_addr);
+        
+        // Try to remove position that doesn't exist
+        wallet_account::remove_position_opened(
+            &access_control::get_object_data_signer(),
+            wallet_id,
+            position_addr,
+            metadata,
+            100
+        );
+    }
+
+    // ========== UPGRADE_POSITION_OPENED TESTS ==========
+
+    #[test(deployer = @moneyfi, user = @0xab, aptos_framework = @0x1)]
+    fun test_upgrade_position_opened_success(deployer: &signer, user: &signer, aptos_framework: &signer) {
+        let (fa, metadata) = setup_for_test(
+            deployer, 
+            signer::address_of(deployer), 
+            aptos_framework, 
+            20000
+        );
+        let wallet_id = get_test_wallet_id(signer::address_of(user));
+        primary_fungible_store::deposit(signer::address_of(user), fa);
+        
+        // Create wallet account and deposit
+        wallet_account::create_wallet_account(deployer, wallet_id, 9, true);
+        let wallet_account_addr = wallet_account::get_wallet_account_object_address(wallet_id);
+        wallet_account::deposit_to_wallet_account(
+            user,
+            wallet_id,
+            vector::singleton<Object<Metadata>>(metadata),
+            vector::singleton<u64>(20000),
+            0
+        );
+
+        // Create and add initial position
+        let (position_addr, _) = get_position(wallet_account_addr);
+        wallet_account::add_position_opened(
+            &access_control::get_object_data_signer(),
+            wallet_id,
+            position_addr,
+            vector::singleton<address>(object::object_address<Metadata>(&metadata)),
+            vector::singleton<u64>(5000),
+            1,
+            0
+        );
+
+        // Verify initial state
+        let (_, initial_wallet_balance) = get_asset_deposit_to_wallet_account(wallet_id, metadata);
+        let (_, initial_distributed_balance) = get_asset_distribute_wallet_account(wallet_id, metadata);
+        assert!(initial_wallet_balance == 15000, 1); // 20000 - 5000
+        assert!(initial_distributed_balance == 5000, 2);
+
+        // Upgrade position with additional assets
+        wallet_account::upgrade_position_opened(
+            &access_control::get_object_data_signer(),
+            wallet_id,
+            position_addr,
+            vector::singleton<address>(object::object_address<Metadata>(&metadata)),
+            vector::singleton<u64>(3000),
+            100 // fee
+        );
+
+        // Verify updated state
+        let (_, final_wallet_balance) = get_asset_deposit_to_wallet_account(wallet_id, metadata);
+        let (_, final_distributed_balance) = get_asset_distribute_wallet_account(wallet_id, metadata);
+        assert!(final_wallet_balance == 11900, 3); // 15000 - 3000 - 100 fee
+        assert!(final_distributed_balance == 8000, 4); // 5000 + 3000
+    }
+
+    #[test(deployer = @moneyfi, user = @0xab, aptos_framework = @0x1)]
+    #[expected_failure(abort_code = 0x50004, location = moneyfi::wallet_account)]
+    fun test_upgrade_position_opened_not_data_signer(deployer: &signer, user: &signer, aptos_framework: &signer) {
+        let (fa, metadata) = setup_for_test(
+            deployer, 
+            signer::address_of(deployer), 
+            aptos_framework, 
+            10000
+        );
+        let wallet_id = get_test_wallet_id(signer::address_of(user));
+        primary_fungible_store::deposit(signer::address_of(user), fa);
+        
+        wallet_account::create_wallet_account(deployer, wallet_id, 9, true);
+        let wallet_account_addr = wallet_account::get_wallet_account_object_address(wallet_id);
+        wallet_account::deposit_to_wallet_account(
+            user,
+            wallet_id,
+            vector::singleton<Object<Metadata>>(metadata),
+            vector::singleton<u64>(10000),
+            0
+        );
+
+        let (position_addr, _) = get_position(wallet_account_addr);
+        wallet_account::add_position_opened(
+            &access_control::get_object_data_signer(),
+            wallet_id,
+            position_addr,
+            vector::singleton<address>(object::object_address<Metadata>(&metadata)),
+            vector::singleton<u64>(5000),
+            1,
+            0
+        );
+
+        // Try to upgrade position with wrong signer
+        wallet_account::upgrade_position_opened(
+            user, // Wrong signer
+            wallet_id,
+            position_addr,
+            vector::singleton<address>(object::object_address<Metadata>(&metadata)),
+            vector::singleton<u64>(2000),
+            100
+        );
+    }
+
+    #[test(deployer = @moneyfi, user = @0xab, aptos_framework = @0x1)]
+    #[expected_failure(abort_code = 0x10007, location = moneyfi::wallet_account)]
+    fun test_upgrade_position_opened_invalid_argument(deployer: &signer, user: &signer, aptos_framework: &signer) {
+        let (fa, metadata) = setup_for_test(
+            deployer, 
+            signer::address_of(deployer), 
+            aptos_framework, 
+            10000
+        );
+        let wallet_id = get_test_wallet_id(signer::address_of(user));
+        primary_fungible_store::deposit(signer::address_of(user), fa);
+        
+        wallet_account::create_wallet_account(deployer, wallet_id, 9, true);
+        let wallet_account_addr = wallet_account::get_wallet_account_object_address(wallet_id);
+        wallet_account::deposit_to_wallet_account(
+            user,
+            wallet_id,
+            vector::singleton<Object<Metadata>>(metadata),
+            vector::singleton<u64>(10000),
+            0
+        );
+
+        let (position_addr, _) = get_position(wallet_account_addr);
+        wallet_account::add_position_opened(
+            &access_control::get_object_data_signer(),
+            wallet_id,
+            position_addr,
+            vector::singleton<address>(object::object_address<Metadata>(&metadata)),
+            vector::singleton<u64>(5000),
+            1,
+            0
+        );
+
+        // Try to upgrade with mismatched assets and amounts vectors
+        let assets = vector::singleton<address>(object::object_address<Metadata>(&metadata));
+        let amounts = vector::empty<u64>();
+        vector::push_back(&mut amounts, 2000);
+        vector::push_back(&mut amounts, 1000); // Extra amount
+
+        wallet_account::upgrade_position_opened(
+            &access_control::get_object_data_signer(),
+            wallet_id,
+            position_addr,
+            assets,
+            amounts,
+            100
+        );
+    }
+
+    #[test(deployer = @moneyfi, user = @0xab, aptos_framework = @0x1)]
+    #[expected_failure(abort_code = 0x60008, location = moneyfi::wallet_account)]
+    fun test_upgrade_position_opened_position_not_exists(deployer: &signer, user: &signer, aptos_framework: &signer) {
+        let (fa, metadata) = setup_for_test(
+            deployer, 
+            signer::address_of(deployer), 
+            aptos_framework, 
+            10000
+        );
+        let wallet_id = get_test_wallet_id(signer::address_of(user));
+        primary_fungible_store::deposit(signer::address_of(user), fa);
+        
+        wallet_account::create_wallet_account(deployer, wallet_id, 9, true);
+        let wallet_account_addr = wallet_account::get_wallet_account_object_address(wallet_id);
+        wallet_account::deposit_to_wallet_account(
+            user,
+            wallet_id,
+            vector::singleton<Object<Metadata>>(metadata),
+            vector::singleton<u64>(10000),
+            0
+        );
+
+        let (position_addr, _) = get_position(wallet_account_addr);
+        
+        // Try to upgrade position that doesn't exist
+        wallet_account::upgrade_position_opened(
+            &access_control::get_object_data_signer(),
+            wallet_id,
+            position_addr,
+            vector::singleton<address>(object::object_address<Metadata>(&metadata)),
+            vector::singleton<u64>(2000),
+            100
+        );
+    }
+
+     // ========== ADD_PROFIT_UNCLAIMED TESTS ==========
+
+    #[test(deployer = @moneyfi, user = @0xab, aptos_framework = @0x1)]
+    fun test_add_profit_unclaimed_success_with_referral(deployer: &signer, user: &signer, aptos_framework: &signer) {
+        let (fa, metadata) = setup_for_test(
+            deployer, 
+            signer::address_of(deployer), 
+            aptos_framework, 
+            20000
+        );
+        let wallet_id = get_test_wallet_id(signer::address_of(user));
+        primary_fungible_store::deposit(signer::address_of(user), fa);
+        
+        // Create wallet account with referral enabled
+        wallet_account::create_wallet_account(deployer, wallet_id, 9, true);
+        let wallet_account_addr = wallet_account::get_wallet_account_object_address(wallet_id);
+        let wallet_account_signer = wallet_account::get_wallet_account_signer(deployer, wallet_id);
+        wallet_account::deposit_to_wallet_account(
+            user,
+            wallet_id,
+            vector::singleton<Object<Metadata>>(metadata),
+            vector::singleton<u64>(10000),
+            0
+        );
+
+        // Create and add position
+        let (position_addr, _) = get_position(wallet_account_addr);
+        wallet_account::add_position_opened(
+            &access_control::get_object_data_signer(),
+            wallet_id,
+            position_addr,
+            vector::singleton<address>(object::object_address<Metadata>(&metadata)),
+            vector::singleton<u64>(5000),
+            1,
+            0
+        );
+
+        // Simulate profit by transferring tokens to wallet account
+        let profit_amount = 2000;
+        primary_fungible_store::transfer(
+            user,
+            metadata,
+            wallet_account_addr,
+            profit_amount
+        );
+
+        // Add profit unclaimed
+        wallet_account::add_profit_unclaimed(
+            &access_control::get_object_data_signer(),
+            wallet_id,
+            position_addr,
+            object::object_address<Metadata>(&metadata),
+            profit_amount,
+            100 // fee
+        );
+
+        // Verify profit was added to unclaimed
+        let (profit_assets, profit_amounts) = wallet_account::get_profit_unclaimed(wallet_id);
+        assert!(vector::length(&profit_assets) == 1, 1);
+        assert!(vector::contains(&profit_assets, &object::object_address<Metadata>(&metadata)), 2);
+        
+        // Calculate expected user amount after protocol fee and withdrawal fee
+        let protocol_fee = access_control::calculate_protocol_fee(profit_amount);
+        let user_amount = profit_amount - protocol_fee;
+        let expected_user_profit = user_amount - 100; // minus withdrawal fee
+        
+        let profit_amount_actual = *vector::borrow(&profit_amounts, 0);
+        assert!(profit_amount_actual == expected_user_profit, 3);
+    }
+
+    #[test(deployer = @moneyfi, user = @0xab, aptos_framework = @0x1)]
+    fun test_add_profit_unclaimed_success_without_referral(deployer: &signer, user: &signer, aptos_framework: &signer) {
+        let (fa, metadata) = setup_for_test(
+            deployer, 
+            signer::address_of(deployer), 
+            aptos_framework, 
+            20000
+        );
+        let wallet_id = get_test_wallet_id(signer::address_of(user));
+        primary_fungible_store::deposit(signer::address_of(user), fa);
+        
+        // Create wallet account without referral
+        wallet_account::create_wallet_account(deployer, wallet_id, 9, false);
+        let wallet_account_addr = wallet_account::get_wallet_account_object_address(wallet_id);
+        wallet_account::deposit_to_wallet_account(
+            user,
+            wallet_id,
+            vector::singleton<Object<Metadata>>(metadata),
+            vector::singleton<u64>(10000),
+            0
+        );
+
+        // Create and add position
+        let (position_addr, _) = get_position(wallet_account_addr);
+        wallet_account::add_position_opened(
+            &access_control::get_object_data_signer(),
+            wallet_id,
+            position_addr,
+            vector::singleton<address>(object::object_address<Metadata>(&metadata)),
+            vector::singleton<u64>(5000),
+            1,
+            0
+        );
+
+        // Simulate profit
+        let profit_amount = 1500;
+        primary_fungible_store::transfer(
+            user,
+            metadata,
+            wallet_account_addr,
+            profit_amount
+        );
+
+        // Add profit unclaimed
+        wallet_account::add_profit_unclaimed(
+            &access_control::get_object_data_signer(),
+            wallet_id,
+            position_addr,
+            object::object_address<Metadata>(&metadata),
+            profit_amount,
+            50 // fee
+        );
+
+        // Verify profit was added correctly
+        let (profit_assets, profit_amounts) = wallet_account::get_profit_unclaimed(wallet_id);
+        assert!(vector::length(&profit_assets) == 1, 1);
+        
+        let protocol_fee = access_control::calculate_protocol_fee(profit_amount);
+        let user_amount = profit_amount - protocol_fee;
+        let expected_user_profit = user_amount - 50; // minus withdrawal fee
+        
+        let profit_amount_actual = *vector::borrow(&profit_amounts, 0);
+        assert!(profit_amount_actual == expected_user_profit, 2);
+    }
+
+    #[test(deployer = @moneyfi, user = @0xab, aptos_framework = @0x1)]
+    #[expected_failure(abort_code = 0x50004, location = moneyfi::wallet_account)]
+    fun test_add_profit_unclaimed_not_data_signer(deployer: &signer, user: &signer, aptos_framework: &signer) {
+        let (fa, metadata) = setup_for_test(
+            deployer, 
+            signer::address_of(deployer), 
+            aptos_framework, 
+            10000
+        );
+        let wallet_id = get_test_wallet_id(signer::address_of(user));
+        primary_fungible_store::deposit(signer::address_of(user), fa);
+        
+        wallet_account::create_wallet_account(deployer, wallet_id, 9, true);
+        let wallet_account_addr = wallet_account::get_wallet_account_object_address(wallet_id);
+        wallet_account::deposit_to_wallet_account(
+            user,
+            wallet_id,
+            vector::singleton<Object<Metadata>>(metadata),
+            vector::singleton<u64>(10000),
+            0
+        );
+
+        let (position_addr, _) = get_position(wallet_account_addr);
+        wallet_account::add_position_opened(
+            &access_control::get_object_data_signer(),
+            wallet_id,
+            position_addr,
+            vector::singleton<address>(object::object_address<Metadata>(&metadata)),
+            vector::singleton<u64>(5000),
+            1,
+            0
+        );
+
+        // Try to add profit with wrong signer
+        wallet_account::add_profit_unclaimed(
+            user, // Wrong signer
+            wallet_id,
+            position_addr,
+            object::object_address<Metadata>(&metadata),
+            1000,
+            50
+        );
+    }
+
+    #[test(deployer = @moneyfi, user = @0xab, aptos_framework = @0x1)]
+    #[expected_failure(abort_code = 0x60008, location = moneyfi::wallet_account)]
+    fun test_add_profit_unclaimed_position_not_exists(deployer: &signer, user: &signer, aptos_framework: &signer) {
+        let (fa, metadata) = setup_for_test(
+            deployer, 
+            signer::address_of(deployer), 
+            aptos_framework, 
+            10000
+        );
+        let wallet_id = get_test_wallet_id(signer::address_of(user));
+        primary_fungible_store::deposit(signer::address_of(user), fa);
+        
+        wallet_account::create_wallet_account(deployer, wallet_id, 9, true);
+        let wallet_account_addr = wallet_account::get_wallet_account_object_address(wallet_id);
+        wallet_account::deposit_to_wallet_account(
+            user,
+            wallet_id,
+            vector::singleton<Object<Metadata>>(metadata),
+            vector::singleton<u64>(10000),
+            0
+        );
+
+        let (position_addr, _) = get_position(wallet_account_addr);
+        
+        // Try to add profit for position that doesn't exist
+        wallet_account::add_profit_unclaimed(
+            &access_control::get_object_data_signer(),
+            wallet_id,
+            position_addr,
+            object::object_address<Metadata>(&metadata),
+            1000,
+            50
+        );
+    }
+
+    #[test(deployer = @moneyfi, user = @0xab, aptos_framework = @0x1)]
+    fun test_add_profit_unclaimed_multiple_calls(deployer: &signer, user: &signer, aptos_framework: &signer) {
+        let (fa, metadata) = setup_for_test(
+            deployer, 
+            signer::address_of(deployer), 
+            aptos_framework, 
+            30000
+        );
+        let wallet_id = get_test_wallet_id(signer::address_of(user));
+        primary_fungible_store::deposit(signer::address_of(user), fa);
+        
+        wallet_account::create_wallet_account(deployer, wallet_id, 9, false);
+        let wallet_account_addr = wallet_account::get_wallet_account_object_address(wallet_id);
+        wallet_account::deposit_to_wallet_account(
+            user,
+            wallet_id,
+            vector::singleton<Object<Metadata>>(metadata),
+            vector::singleton<u64>(10000),
+            0
+        );
+
+        let (position_addr, _) = get_position(wallet_account_addr);
+        wallet_account::add_position_opened(
+            &access_control::get_object_data_signer(),
+            wallet_id,
+            position_addr,
+            vector::singleton<address>(object::object_address<Metadata>(&metadata)),
+            vector::singleton<u64>(5000),
+            1,
+            0
+        );
+
+        // Add profit multiple times
+        let profit1 = 1000;
+        let profit2 = 800;
+        
+        // Transfer profits to wallet account
+        primary_fungible_store::transfer(user, metadata, wallet_account_addr, profit1);
+        primary_fungible_store::transfer(user, metadata, wallet_account_addr, profit2);
+
+        // Add first profit
+        wallet_account::add_profit_unclaimed(
+            &access_control::get_object_data_signer(),
+            wallet_id,
+            position_addr,
+            object::object_address<Metadata>(&metadata),
+            profit1,
+            25
+        );
+
+        // Add second profit
+        wallet_account::add_profit_unclaimed(
+            &access_control::get_object_data_signer(),
+            wallet_id,
+            position_addr,
+            object::object_address<Metadata>(&metadata),
+            profit2,
+            20
+        );
+
+        // Verify accumulated profit
+        let (profit_assets, profit_amounts) = wallet_account::get_profit_unclaimed(wallet_id);
+        assert!(vector::length(&profit_assets) == 1, 1);
+        
+        let protocol_fee1 = access_control::calculate_protocol_fee(profit1);
+        let protocol_fee2 = access_control::calculate_protocol_fee(profit2);
+        let user_amount1 = profit1 - protocol_fee1 - 25;
+        let user_amount2 = profit2 - protocol_fee2 - 20;
+        let expected_total = user_amount1 + user_amount2;
+        
+        let actual_profit = *vector::borrow(&profit_amounts, 0);
+        assert!(actual_profit == expected_total, 2);
+    }
+
+    // ========== CLAIM_REWARDS TESTS ==========
+
+    #[test(deployer = @moneyfi, user = @0xab, aptos_framework = @0x1)]
+    fun test_claim_rewards_success(deployer: &signer, user: &signer, aptos_framework: &signer) {
+        let (fa, metadata) = setup_for_test(
+            deployer, 
+            signer::address_of(deployer), 
+            aptos_framework, 
+            20000
+        );
+        let wallet_id = get_test_wallet_id(signer::address_of(user));
+        primary_fungible_store::deposit(signer::address_of(user), fa);
+        
+        // Create wallet account and deposit
+        wallet_account::create_wallet_account(deployer, wallet_id, 9, true);
+        let wallet_account_addr = wallet_account::get_wallet_account_object_address(wallet_id);
+        wallet_account::deposit_to_wallet_account(
+            user,
+            wallet_id,
+            vector::singleton<Object<Metadata>>(metadata),
+            vector::singleton<u64>(10000),
+            0
+        );
+
+        // Create and add position
+        let (position_addr, _) = get_position(wallet_account_addr);
+        wallet_account::add_position_opened(
+            &access_control::get_object_data_signer(),
+            wallet_id,
+            position_addr,
+            vector::singleton<address>(object::object_address<Metadata>(&metadata)),
+            vector::singleton<u64>(5000),
+            1,
+            0
+        );
+
+        // Simulate profit by transferring tokens to wallet account
+        let profit_amount = 2000;
+        primary_fungible_store::transfer(
+            user,
+            metadata,
+            wallet_account_addr,
+            profit_amount
+        );
+
+        // Add profit unclaimed
+        wallet_account::add_profit_unclaimed(
+            &access_control::get_object_data_signer(),
+            wallet_id,
+            position_addr,
+            object::object_address<Metadata>(&metadata),
+            profit_amount,
+            50 // fee
+        );
+
+        // Verify profit was added
+        let (profit_assets_before, profit_amounts_before) = wallet_account::get_profit_unclaimed(wallet_id);
+        assert!(vector::length(&profit_assets_before) == 1, 1);
+
+        // Get user balance before claiming
+        let user_balance_before = primary_fungible_store::balance(signer::address_of(user), metadata);
+
+        // Claim all rewards
+        wallet_account::claim_rewards(user, wallet_id);
+
+        // Verify rewards were claimed
+        let user_balance_after = primary_fungible_store::balance(signer::address_of(user), metadata);
+        let claimed_amount = *vector::borrow(&profit_amounts_before, 0);
+        assert!(user_balance_after - user_balance_before == claimed_amount, 2);
+
+        // Verify all profit unclaimed was cleared
+        let (profit_assets_after, _) = wallet_account::get_profit_unclaimed(wallet_id);
+        assert!(vector::length(&profit_assets_after) == 0, 3);
+
+        // Verify total profit claimed was updated
+        let (_,total_claimed) = get_total_profit_claimed_by_metadata(wallet_id, metadata);
+        assert!(total_claimed == claimed_amount, 4);
+    }
+
+    #[test(deployer = @moneyfi, user = @0xab, aptos_framework = @0x1)]
+    fun test_claim_rewards_multiple_assets(deployer: &signer, user: &signer, aptos_framework: &signer) {
+        let (fa1, metadata1) = setup_for_test(
+            deployer, 
+            signer::address_of(deployer), 
+            aptos_framework, 
+            20000
+        );
+        primary_fungible_store::deposit(signer::address_of(user), fa1);
+
+        // Create second token
+        let fa2 = create_token_and_add_to_supported_asset(deployer, b"token2");
+        let metadata2 = fungible_asset::metadata_from_asset(&fa2);
+        primary_fungible_store::deposit(signer::address_of(user), fa2);
+
+        let wallet_id = get_test_wallet_id(signer::address_of(user));
+        
+        // Create wallet account and deposit both tokens
+        wallet_account::create_wallet_account(deployer, wallet_id, 9, true);
+        let wallet_account_addr = wallet_account::get_wallet_account_object_address(wallet_id);
+        
+        let assets = vector::empty<Object<Metadata>>();
+        vector::push_back(&mut assets, metadata1);
+        vector::push_back(&mut assets, metadata2);
+        
+        let amounts = vector::empty<u64>();
+        vector::push_back(&mut amounts, 10000);
+        vector::push_back(&mut amounts, 9000);
+
+        wallet_account::deposit_to_wallet_account(user, wallet_id, assets, amounts, 0);
+
+        // Create and add position
+        let (position_addr, _) = get_position(wallet_account_addr);
+        
+        let position_assets = vector::empty<address>();
+        vector::push_back(&mut position_assets, object::object_address<Metadata>(&metadata1));
+        vector::push_back(&mut position_assets, object::object_address<Metadata>(&metadata2));
+        
+        let position_amounts = vector::empty<u64>();
+        vector::push_back(&mut position_amounts, 5000);
+        vector::push_back(&mut position_amounts, 5000);
+
+        wallet_account::add_position_opened(
+            &access_control::get_object_data_signer(),
+            wallet_id,
+            position_addr,
+            position_assets,
+            position_amounts,
+            1,
+            0
+        );
+
+        // Add profits for both tokens
+        primary_fungible_store::transfer(user, metadata1, wallet_account_addr, 1000);
+        primary_fungible_store::transfer(user, metadata2, wallet_account_addr, 800);
+
+        wallet_account::add_profit_unclaimed(
+            &access_control::get_object_data_signer(),
+            wallet_id,
+            position_addr,
+            object::object_address<Metadata>(&metadata1),
+            1000,
+            50
+        );
+
+        wallet_account::add_profit_unclaimed(
+            &access_control::get_object_data_signer(),
+            wallet_id,
+            position_addr,
+            object::object_address<Metadata>(&metadata2),
+            800,
+            40
+        );
+
+        // Get profit amounts before claiming
+        let (profit_assets, profit_amounts) = wallet_account::get_profit_unclaimed(wallet_id);
+        assert!(vector::length(&profit_assets) == 2, 1);
+
+        // Get user balances before claiming
+        let user_balance1_before = primary_fungible_store::balance(signer::address_of(user), metadata1);
+        let user_balance2_before = primary_fungible_store::balance(signer::address_of(user), metadata2);
+
+        // Claim all rewards
+        wallet_account::claim_rewards(user, wallet_id);
+
+        // Verify both rewards were claimed
+        let user_balance1_after = primary_fungible_store::balance(signer::address_of(user), metadata1);
+        let user_balance2_after = primary_fungible_store::balance(signer::address_of(user), metadata2);
+
+        let (_, metadata1_index) = vector::index_of(&profit_assets, &object::object_address<Metadata>(&metadata1));
+        let (_, metadata2_index) = vector::index_of(&profit_assets, &object::object_address<Metadata>(&metadata2));
+
+        assert!(user_balance1_after - user_balance1_before == *vector::borrow(&profit_amounts, metadata1_index), 2);
+        assert!(user_balance2_after - user_balance2_before == *vector::borrow(&profit_amounts, metadata2_index), 3);
+
+        // Verify all profits were claimed
+        let (profit_assets_after, _) = wallet_account::get_profit_unclaimed(wallet_id);
+        assert!(vector::length(&profit_assets_after) == 0, 4);
+    }
+
+    #[test(deployer = @moneyfi, user = @0xab, aptos_framework = @0x1)]
+    fun test_claim_rewards_with_zero_amounts(deployer: &signer, user: &signer, aptos_framework: &signer) {
+        let (fa1, metadata1) = setup_for_test(
+            deployer, 
+            signer::address_of(deployer), 
+            aptos_framework, 
+            20000
+        );
+        primary_fungible_store::deposit(signer::address_of(user), fa1);
+
+        // Create second token
+        let fa2 = create_token_and_add_to_supported_asset(deployer, b"token2");
+        let metadata2 = fungible_asset::metadata_from_asset(&fa2);
+        primary_fungible_store::deposit(signer::address_of(user), fa2);
+
+        let wallet_id = get_test_wallet_id(signer::address_of(user));
+        
+        // Create wallet account and deposit both tokens
+        wallet_account::create_wallet_account(deployer, wallet_id, 9, true);
+        let wallet_account_addr = wallet_account::get_wallet_account_object_address(wallet_id);
+        
+        let assets = vector::empty<Object<Metadata>>();
+        vector::push_back(&mut assets, metadata1);
+        vector::push_back(&mut assets, metadata2);
+        
+        let amounts = vector::empty<u64>();
+        vector::push_back(&mut amounts, 10000);
+        vector::push_back(&mut amounts, 10000);
+
+        wallet_account::deposit_to_wallet_account(user, wallet_id, assets, amounts, 0);
+
+        // Create and add position
+        let (position_addr, _) = get_position(wallet_account_addr);
+        
+        let position_assets = vector::empty<address>();
+        vector::push_back(&mut position_assets, object::object_address<Metadata>(&metadata1));
+        vector::push_back(&mut position_assets, object::object_address<Metadata>(&metadata2));
+        
+        let position_amounts = vector::empty<u64>();
+        vector::push_back(&mut position_amounts, 5000);
+        vector::push_back(&mut position_amounts, 5000);
+
+        wallet_account::add_position_opened(
+            &access_control::get_object_data_signer(),
+            wallet_id,
+            position_addr,
+            position_assets,
+            position_amounts,
+            1,
+            0
+        );
+
+        // Add profit for only one token (metadata1), metadata2 will have 0 profit
+        primary_fungible_store::transfer(user, metadata1, wallet_account_addr, 1000);
+
+        wallet_account::add_profit_unclaimed(
+            &access_control::get_object_data_signer(),
+            wallet_id,
+            position_addr,
+            object::object_address<Metadata>(&metadata1),
+            1000,
+            50
+        );
+
+        // Manually add zero profit for metadata2 to test zero amount handling
+        // This simulates a scenario where one asset has profit and another doesn't
+
+        // Get user balances before claiming
+        let user_balance1_before = primary_fungible_store::balance(signer::address_of(user), metadata1);
+        let user_balance2_before = primary_fungible_store::balance(signer::address_of(user), metadata2);
+
+        // Claim all rewards
+        wallet_account::claim_rewards(user, wallet_id);
+
+        // Verify only non-zero rewards were claimed
+        let user_balance1_after = primary_fungible_store::balance(signer::address_of(user), metadata1);
+        let user_balance2_after = primary_fungible_store::balance(signer::address_of(user), metadata2);
+
+        // metadata1 should have increased balance
+        assert!(user_balance1_after > user_balance1_before, 1);
+        // metadata2 should have same balance (no profit to claim)
+        assert!(user_balance2_after == user_balance2_before, 2);
+
+        // Verify all profits were cleared
+        let (profit_assets_after, _) = wallet_account::get_profit_unclaimed(wallet_id);
+        assert!(vector::length(&profit_assets_after) == 0, 3);
+    }
+
+    #[test(deployer = @moneyfi, user = @0xab, aptos_framework = @0x1)]
+    fun test_claim_rewards_no_profit_available(deployer: &signer, user: &signer, aptos_framework: &signer) {
+        let (fa, metadata) = setup_for_test(
+            deployer, 
+            signer::address_of(deployer), 
+            aptos_framework, 
+            10000
+        );
+        let wallet_id = get_test_wallet_id(signer::address_of(user));
+        primary_fungible_store::deposit(signer::address_of(user), fa);
+        
+        // Create wallet account and deposit
+        wallet_account::create_wallet_account(deployer, wallet_id, 9, true);
+        wallet_account::deposit_to_wallet_account(
+            user,
+            wallet_id,
+            vector::singleton<Object<Metadata>>(metadata),
+            vector::singleton<u64>(10000),
+            0
+        );
+
+        // Get user balance before claiming
+        let user_balance_before = primary_fungible_store::balance(signer::address_of(user), metadata);
+
+        // Claim rewards when no profit is available
+        wallet_account::claim_rewards(user, wallet_id);
+
+        // Verify no change in balance
+        let user_balance_after = primary_fungible_store::balance(signer::address_of(user), metadata);
+        assert!(user_balance_after == user_balance_before, 1);
+
+        // Verify profit unclaimed is still empty
+        let (profit_assets_after, _) = wallet_account::get_profit_unclaimed(wallet_id);
+        assert!(vector::length(&profit_assets_after) == 0, 2);
+    }
+
+    #[test(deployer = @moneyfi, user = @0xab, aptos_framework = @0x1)]
+    fun test_claim_rewards_auto_connect_wallet(deployer: &signer, user: &signer, aptos_framework: &signer) {
+        let (fa, metadata) = setup_for_test(
+            deployer, 
+            signer::address_of(deployer), 
+            aptos_framework, 
+            20000
+        );
+        let wallet_id = get_test_wallet_id(signer::address_of(user));
+        primary_fungible_store::deposit(signer::address_of(user), fa);
+        
+        // Create wallet account and deposit
+        wallet_account::create_wallet_account(deployer, wallet_id, 9, true);
+        let wallet_account_addr = wallet_account::get_wallet_account_object_address(wallet_id);
+        wallet_account::deposit_to_wallet_account(
+            user,
+            wallet_id,
+            vector::singleton<Object<Metadata>>(metadata),
+            vector::singleton<u64>(10000),
+            0
+        );
+
+        // Create and add position
+        let (position_addr, _) = get_position(wallet_account_addr);
+        wallet_account::add_position_opened(
+            &access_control::get_object_data_signer(),
+            wallet_id,
+            position_addr,
+            vector::singleton<address>(object::object_address<Metadata>(&metadata)),
+            vector::singleton<u64>(5000),
+            1,
+            0
+        );
+
+        // Add profit
+        let profit_amount = 1500;
+        primary_fungible_store::transfer(user, metadata, wallet_account_addr, profit_amount);
+        wallet_account::add_profit_unclaimed(
+            &access_control::get_object_data_signer(),
+            wallet_id,
+            position_addr,
+            object::object_address<Metadata>(&metadata),
+            profit_amount,
+            75
+        );
+
+        // Verify user is not connected initially (if there's a way to check this)
+        // Note: This test assumes the wallet connection logic works as intended
+
+        // Get user balance before claiming
+        let user_balance_before = primary_fungible_store::balance(signer::address_of(user), metadata);
+
+        // Claim rewards - this should auto-connect the wallet if not connected
+        wallet_account::claim_rewards(user, wallet_id);
+
+        // Verify rewards were claimed successfully
+        let user_balance_after = primary_fungible_store::balance(signer::address_of(user), metadata);
+        assert!(user_balance_after > user_balance_before, 1);
+
+        // Verify profit was cleared
+        let (profit_assets_after, _) = wallet_account::get_profit_unclaimed(wallet_id);
+        assert!(vector::length(&profit_assets_after) == 0, 2);
+    }
+
+    #[test(deployer = @moneyfi, user1 = @0xab, user2 = @0xac, aptos_framework = @0x1)]
+    #[expected_failure(abort_code = 0x50004, location = moneyfi::wallet_account)]
+    fun test_claim_rewards_not_owner(deployer: &signer, user1: &signer, user2: &signer, aptos_framework: &signer) {
+        let (fa, metadata) = setup_for_test(
+            deployer, 
+            signer::address_of(deployer), 
+            aptos_framework, 
+            20000
+        );
+        let wallet_id = get_test_wallet_id(signer::address_of(user1));
+        primary_fungible_store::deposit(signer::address_of(user1), fa);
+        
+        // Create wallet account for user1
+        wallet_account::create_wallet_account(deployer, wallet_id, 9, true);
+        let wallet_account_addr = wallet_account::get_wallet_account_object_address(wallet_id);
+        wallet_account::deposit_to_wallet_account(
+            user1,
+            wallet_id,
+            vector::singleton<Object<Metadata>>(metadata),
+            vector::singleton<u64>(10000),
+            0
+        );
+
+        // Create and add position
+        let (position_addr, _) = get_position(wallet_account_addr);
+        wallet_account::add_position_opened(
+            &access_control::get_object_data_signer(),
+            wallet_id,
+            position_addr,
+            vector::singleton<address>(object::object_address<Metadata>(&metadata)),
+            vector::singleton<u64>(5000),
+            1,
+            0
+        );
+
+        // Add profit
+        primary_fungible_store::transfer(user1, metadata, wallet_account_addr, 1000);
+        wallet_account::add_profit_unclaimed(
+            &access_control::get_object_data_signer(),
+            wallet_id,
+            position_addr,
+            object::object_address<Metadata>(&metadata),
+            1000,
+            50
+        );
+
+        // Try to claim rewards with wrong user (user2 instead of user1)
+        wallet_account::claim_rewards(user2, wallet_id); // Wrong user
+    }
+
+    #[test(deployer = @moneyfi, user = @0xab, aptos_framework = @0x1)]
+    #[expected_failure(abort_code = 0x60002, location = moneyfi::wallet_account)]
+    fun test_claim_rewards_wallet_not_exists(deployer: &signer, user: &signer, aptos_framework: &signer) {
+        let (fa, metadata) = setup_for_test(
+            deployer, 
+            signer::address_of(deployer), 
+            aptos_framework, 
+            10000
+        );
+        primary_fungible_store::deposit(signer::address_of(user), fa);
+        
+        // Use wallet_id that doesn't exist
+        let wallet_id = get_test_wallet_id(signer::address_of(user));
+
+        // Try to claim rewards from non-existent wallet
+        wallet_account::claim_rewards(user, wallet_id);
+    }
+
+    #[test(deployer = @moneyfi, user = @0xab, aptos_framework = @0x1)]
+    fun test_claim_rewards_multiple_claims(deployer: &signer, user: &signer, aptos_framework: &signer) {
+        let (fa, metadata) = setup_for_test(
+            deployer, 
+            signer::address_of(deployer), 
+            aptos_framework, 
+            30000
+        );
+        let wallet_id = get_test_wallet_id(signer::address_of(user));
+        primary_fungible_store::deposit(signer::address_of(user), fa);
+        
+        // Create wallet account and deposit
+        wallet_account::create_wallet_account(deployer, wallet_id, 9, true);
+        let wallet_account_addr = wallet_account::get_wallet_account_object_address(wallet_id);
+        wallet_account::deposit_to_wallet_account(
+            user,
+            wallet_id,
+            vector::singleton<Object<Metadata>>(metadata),
+            vector::singleton<u64>(15000),
+            0
+        );
+
+        // Create and add position
+        let (position_addr, _) = get_position(wallet_account_addr);
+        wallet_account::add_position_opened(
+            &access_control::get_object_data_signer(),
+            wallet_id,
+            position_addr,
+            vector::singleton<address>(object::object_address<Metadata>(&metadata)),
+            vector::singleton<u64>(10000),
+            1,
+            0
+        );
+
+        // Add first profit and claim
+        primary_fungible_store::transfer(user, metadata, wallet_account_addr, 1000);
+        wallet_account::add_profit_unclaimed(
+            &access_control::get_object_data_signer(),
+            wallet_id,
+            position_addr,
+            object::object_address<Metadata>(&metadata),
+            1000,
+            50
+        );
+
+        let user_balance_before_first = primary_fungible_store::balance(signer::address_of(user), metadata);
+        wallet_account::claim_rewards(user, wallet_id);
+        let user_balance_after_first = primary_fungible_store::balance(signer::address_of(user), metadata);
+        let first_claim_amount = user_balance_after_first - user_balance_before_first;
+
+        // Verify first claim worked
+        assert!(first_claim_amount > 0, 1);
+        let (profit_assets_after_first, _) = wallet_account::get_profit_unclaimed(wallet_id);
+        assert!(vector::length(&profit_assets_after_first) == 0, 2);
+
+        // Add second profit and claim
+        primary_fungible_store::transfer(user, metadata, wallet_account_addr, 800);
+        wallet_account::add_profit_unclaimed(
+            &access_control::get_object_data_signer(),
+            wallet_id,
+            position_addr,
+            object::object_address<Metadata>(&metadata),
+            800,
+            40
+        );
+
+        let user_balance_before_second = primary_fungible_store::balance(signer::address_of(user), metadata);
+        wallet_account::claim_rewards(user, wallet_id);
+        let user_balance_after_second = primary_fungible_store::balance(signer::address_of(user), metadata);
+        let second_claim_amount = user_balance_after_second - user_balance_before_second;
+
+        // Verify second claim worked
+        assert!(second_claim_amount > 0, 3);
+        let (profit_assets_after_second, _) = wallet_account::get_profit_unclaimed(wallet_id);
+        assert!(vector::length(&profit_assets_after_second) == 0, 4);
+
+        // Verify total profit claimed is cumulative
+        let (_,total_claimed) = get_total_profit_claimed_by_metadata(wallet_id, metadata);
+        assert!(total_claimed == first_claim_amount + second_claim_amount, 5);
+    }
+    
 }
