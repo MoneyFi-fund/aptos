@@ -21,6 +21,7 @@ module moneyfi::wallet_account_test {
         account::create_account_for_test(deployer_addr);
         access_control::initialize(deployer);
         access_control::set_fee_to(deployer, fee_to);
+        wallet_account::initialize(deployer);
 
        let fa = test_helpers::create_fungible_asset_and_mint(deployer, b"token1", amount);
        let metadata = fungible_asset::metadata_from_asset(&fa);
@@ -1738,6 +1739,471 @@ module moneyfi::wallet_account_test {
         // Verify total profit claimed is cumulative
         let (_,total_claimed) = get_total_profit_claimed_by_metadata(wallet_id, metadata);
         assert!(total_claimed == first_claim_amount + second_claim_amount, 5);
+    }
+
+    // ========== UPDATE_POSITION_AFTER_PARTIAL_REMOVAL TESTS ==========
+
+    #[test(deployer = @moneyfi, user = @0xab, aptos_framework = @0x1)]
+    fun test_update_position_after_partial_removal_success(deployer: &signer, user: &signer, aptos_framework: &signer) {
+        let (fa, metadata) = setup_for_test(
+            deployer, 
+            signer::address_of(deployer), 
+            aptos_framework, 
+            20000
+        );
+        let wallet_id = get_test_wallet_id(signer::address_of(user));
+        primary_fungible_store::deposit(signer::address_of(user), fa);
+        
+        // Create wallet account and deposit
+        wallet_account::create_wallet_account(deployer, wallet_id, 9, true);
+        let wallet_account_addr = wallet_account::get_wallet_account_object_address(wallet_id);
+        wallet_account::deposit_to_wallet_account(
+            user,
+            wallet_id,
+            vector::singleton<Object<Metadata>>(metadata),
+            vector::singleton<u64>(20000),
+            0
+        );
+
+        // Create and add initial position
+        let (position_addr, _) = get_position(wallet_account_addr);
+        wallet_account::add_position_opened(
+            &access_control::get_object_data_signer(),
+            wallet_id,
+            position_addr,
+            vector::singleton<address>(object::object_address<Metadata>(&metadata)),
+            vector::singleton<u64>(10000),
+            1,
+            0
+        );
+
+        // Verify initial state
+        let (_, initial_wallet_balance) = get_asset_deposit_to_wallet_account(wallet_id, metadata);
+        let (_, initial_distributed_balance) = get_asset_distribute_wallet_account(wallet_id, metadata);
+        assert!(initial_wallet_balance == 10000, 1); // 20000 - 10000
+        assert!(initial_distributed_balance == 10000, 2);
+
+        // Update position after partial removal
+        let removal_amount = 3000;
+        let fee_amount = 50;
+        wallet_account::update_position_after_partial_removal(
+            &access_control::get_object_data_signer(),
+            wallet_id,
+            position_addr,
+            vector::singleton<address>(object::object_address<Metadata>(&metadata)),
+            vector::singleton<u64>(removal_amount),
+            fee_amount
+        );
+
+        // Verify updated state
+        let (_, final_wallet_balance) = get_asset_deposit_to_wallet_account(wallet_id, metadata);
+        let (_, final_distributed_balance) = get_asset_distribute_wallet_account(wallet_id, metadata);
+        assert!(final_wallet_balance == 13000 - fee_amount, 3); // 10000 + 3000 - fee
+        assert!(final_distributed_balance == 7000, 4); // 10000 - 3000
+    }
+
+    #[test(deployer = @moneyfi, user = @0xab, aptos_framework = @0x1)]
+    fun test_update_position_after_partial_removal_multiple_assets(deployer: &signer, user: &signer, aptos_framework: &signer) {
+        let (fa1, metadata1) = setup_for_test(
+            deployer, 
+            signer::address_of(deployer), 
+            aptos_framework, 
+            30000
+        );
+        primary_fungible_store::deposit(signer::address_of(user), fa1);
+
+        // Create second token
+        let fa2 = create_token_and_add_to_supported_asset(deployer, b"token2");
+        let metadata2 = fungible_asset::metadata_from_asset(&fa2);
+        primary_fungible_store::deposit(signer::address_of(user), fa2);
+
+        let wallet_id = get_test_wallet_id(signer::address_of(user));
+        
+        // Create wallet account and deposit both tokens
+        wallet_account::create_wallet_account(deployer, wallet_id, 9, true);
+        let wallet_account_addr = wallet_account::get_wallet_account_object_address(wallet_id);
+        
+        let assets = vector::empty<Object<Metadata>>();
+        vector::push_back(&mut assets, metadata1);
+        vector::push_back(&mut assets, metadata2);
+        
+        let amounts = vector::empty<u64>();
+        vector::push_back(&mut amounts, 15000);
+        vector::push_back(&mut amounts, 10000);
+
+        wallet_account::deposit_to_wallet_account(user, wallet_id, assets, amounts, 0);
+
+        // Create and add position with both assets
+        let (position_addr, _) = get_position(wallet_account_addr);
+        
+        let position_assets = vector::empty<address>();
+        vector::push_back(&mut position_assets, object::object_address<Metadata>(&metadata1));
+        vector::push_back(&mut position_assets, object::object_address<Metadata>(&metadata2));
+        
+        let position_amounts = vector::empty<u64>();
+        vector::push_back(&mut position_amounts, 8000);
+        vector::push_back(&mut position_amounts, 6000);
+
+        wallet_account::add_position_opened(
+            &access_control::get_object_data_signer(),
+            wallet_id,
+            position_addr,
+            position_assets,
+            position_amounts,
+            1,
+            0
+        );
+
+        // Verify initial state
+        let (_, initial_wallet_balance1) = get_asset_deposit_to_wallet_account(wallet_id, metadata1);
+        let (_, initial_distributed_balance1) = get_asset_distribute_wallet_account(wallet_id, metadata1);
+        let (_, initial_wallet_balance2) = get_asset_deposit_to_wallet_account(wallet_id, metadata2);
+        let (_, initial_distributed_balance2) = get_asset_distribute_wallet_account(wallet_id, metadata2);
+        
+        assert!(initial_wallet_balance1 == 7000, 1); // 15000 - 8000
+        assert!(initial_distributed_balance1 == 8000, 2);
+        assert!(initial_wallet_balance2 == 4000, 3); // 12000 - 6000
+        assert!(initial_distributed_balance2 == 6000, 4);
+
+        // Update position after partial removal of both assets
+        let removal_amounts = vector::empty<u64>();
+        vector::push_back(&mut removal_amounts, 2000); // Remove 2000 from metadata1
+        vector::push_back(&mut removal_amounts, 1500); // Remove 1500 from metadata2
+
+        wallet_account::update_position_after_partial_removal(
+            &access_control::get_object_data_signer(),
+            wallet_id,
+            position_addr,
+            position_assets,
+            removal_amounts,
+            100 // fee
+        );
+
+        // Verify updated state
+        let (_, final_wallet_balance1) = get_asset_deposit_to_wallet_account(wallet_id, metadata1);
+        let (_, final_distributed_balance1) = get_asset_distribute_wallet_account(wallet_id, metadata1);
+        let (_, final_wallet_balance2) = get_asset_deposit_to_wallet_account(wallet_id, metadata2);
+        let (_, final_distributed_balance2) = get_asset_distribute_wallet_account(wallet_id, metadata2);
+        
+        assert!(final_wallet_balance1 == 8900, 5); // 7000 + 2000 - 100 fee
+        assert!(final_distributed_balance1 == 6000, 6); // 8000 - 2000
+        assert!(final_wallet_balance2 == 5500, 7); // 6000 + 1500 (no fee for second asset)
+        assert!(final_distributed_balance2 == 4500, 8); // 6000 - 1500
+    }
+
+    #[test(deployer = @moneyfi, user = @0xab, aptos_framework = @0x1)]
+    #[expected_failure(abort_code = 0x50004, location = moneyfi::wallet_account)]
+    fun test_update_position_after_partial_removal_not_data_signer(deployer: &signer, user: &signer, aptos_framework: &signer) {
+        let (fa, metadata) = setup_for_test(
+            deployer, 
+            signer::address_of(deployer), 
+            aptos_framework, 
+            15000
+        );
+        let wallet_id = get_test_wallet_id(signer::address_of(user));
+        primary_fungible_store::deposit(signer::address_of(user), fa);
+        
+        wallet_account::create_wallet_account(deployer, wallet_id, 9, true);
+        let wallet_account_addr = wallet_account::get_wallet_account_object_address(wallet_id);
+        wallet_account::deposit_to_wallet_account(
+            user,
+            wallet_id,
+            vector::singleton<Object<Metadata>>(metadata),
+            vector::singleton<u64>(15000),
+            0
+        );
+
+        let (position_addr, _) = get_position(wallet_account_addr);
+        wallet_account::add_position_opened(
+            &access_control::get_object_data_signer(),
+            wallet_id,
+            position_addr,
+            vector::singleton<address>(object::object_address<Metadata>(&metadata)),
+            vector::singleton<u64>(8000),
+            1,
+            0
+        );
+
+        // Try to update position with wrong signer
+        wallet_account::update_position_after_partial_removal(
+            user, // Wrong signer
+            wallet_id,
+            position_addr,
+            vector::singleton<address>(object::object_address<Metadata>(&metadata)),
+            vector::singleton<u64>(2000),
+            50
+        );
+    }
+
+    #[test(deployer = @moneyfi, user = @0xab, aptos_framework = @0x1)]
+    #[expected_failure(abort_code = 0x10007, location = moneyfi::wallet_account)]
+    fun test_update_position_after_partial_removal_invalid_argument(deployer: &signer, user: &signer, aptos_framework: &signer) {
+        let (fa, metadata) = setup_for_test(
+            deployer, 
+            signer::address_of(deployer), 
+            aptos_framework, 
+            15000
+        );
+        let wallet_id = get_test_wallet_id(signer::address_of(user));
+        primary_fungible_store::deposit(signer::address_of(user), fa);
+        
+        wallet_account::create_wallet_account(deployer, wallet_id, 9, true);
+        let wallet_account_addr = wallet_account::get_wallet_account_object_address(wallet_id);
+        wallet_account::deposit_to_wallet_account(
+            user,
+            wallet_id,
+            vector::singleton<Object<Metadata>>(metadata),
+            vector::singleton<u64>(15000),
+            0
+        );
+
+        let (position_addr, _) = get_position(wallet_account_addr);
+        wallet_account::add_position_opened(
+            &access_control::get_object_data_signer(),
+            wallet_id,
+            position_addr,
+            vector::singleton<address>(object::object_address<Metadata>(&metadata)),
+            vector::singleton<u64>(8000),
+            1,
+            0
+        );
+
+        // Try to update with mismatched assets and amounts vectors
+        let assets = vector::singleton<address>(object::object_address<Metadata>(&metadata));
+        let amounts = vector::empty<u64>();
+        vector::push_back(&mut amounts, 2000);
+        vector::push_back(&mut amounts, 1000); // Extra amount
+
+        wallet_account::update_position_after_partial_removal(
+            &access_control::get_object_data_signer(),
+            wallet_id,
+            position_addr,
+            assets,
+            amounts,
+            50
+        );
+    }
+
+    #[test(deployer = @moneyfi, user = @0xab, aptos_framework = @0x1)]
+    #[expected_failure(abort_code = 0x60008, location = moneyfi::wallet_account)]
+    fun test_update_position_after_partial_removal_position_not_exists(deployer: &signer, user: &signer, aptos_framework: &signer) {
+        let (fa, metadata) = setup_for_test(
+            deployer, 
+            signer::address_of(deployer), 
+            aptos_framework, 
+            15000
+        );
+        let wallet_id = get_test_wallet_id(signer::address_of(user));
+        primary_fungible_store::deposit(signer::address_of(user), fa);
+        
+        wallet_account::create_wallet_account(deployer, wallet_id, 9, true);
+        let wallet_account_addr = wallet_account::get_wallet_account_object_address(wallet_id);
+        wallet_account::deposit_to_wallet_account(
+            user,
+            wallet_id,
+            vector::singleton<Object<Metadata>>(metadata),
+            vector::singleton<u64>(15000),
+            0
+        );
+
+        let (position_addr, _) = get_position(wallet_account_addr);
+        
+        // Try to update position that doesn't exist
+        wallet_account::update_position_after_partial_removal(
+            &access_control::get_object_data_signer(),
+            wallet_id,
+            position_addr,
+            vector::singleton<address>(object::object_address<Metadata>(&metadata)),
+            vector::singleton<u64>(2000),
+            50
+        );
+    }
+
+    #[test(deployer = @moneyfi, user = @0xab, aptos_framework = @0x1)]
+    #[expected_failure(abort_code = 0x60002, location = moneyfi::wallet_account)]
+    fun test_update_position_after_partial_removal_wallet_not_exists(deployer: &signer, user: &signer, aptos_framework: &signer) {
+        let (fa, metadata) = setup_for_test(
+            deployer, 
+            signer::address_of(deployer), 
+            aptos_framework, 
+            15000
+        );
+        let wallet_id = get_test_wallet_id(signer::address_of(user));
+        primary_fungible_store::deposit(signer::address_of(user), fa);
+        
+        // Don't create wallet account
+        let wallet_account_addr = wallet_account::get_wallet_account_object_address(wallet_id);
+        let (position_addr, _) = get_position(wallet_account_addr);
+        
+        // Try to update position on non-existent wallet
+        wallet_account::update_position_after_partial_removal(
+            &access_control::get_object_data_signer(),
+            wallet_id,
+            position_addr,
+            vector::singleton<address>(object::object_address<Metadata>(&metadata)),
+            vector::singleton<u64>(2000),
+            50
+        );
+    }
+
+    #[test(deployer = @moneyfi, user = @0xab, aptos_framework = @0x1)]
+    fun test_update_position_after_partial_removal_zero_amounts(deployer: &signer, user: &signer, aptos_framework: &signer) {
+        let (fa, metadata) = setup_for_test(
+            deployer, 
+            signer::address_of(deployer), 
+            aptos_framework, 
+            20000
+        );
+        let wallet_id = get_test_wallet_id(signer::address_of(user));
+        primary_fungible_store::deposit(signer::address_of(user), fa);
+        
+        // Create wallet account and deposit
+        wallet_account::create_wallet_account(deployer, wallet_id, 9, true);
+        let wallet_account_addr = wallet_account::get_wallet_account_object_address(wallet_id);
+        wallet_account::deposit_to_wallet_account(
+            user,
+            wallet_id,
+            vector::singleton<Object<Metadata>>(metadata),
+            vector::singleton<u64>(20000),
+            0
+        );
+
+        // Create and add initial position
+        let (position_addr, _) = get_position(wallet_account_addr);
+        wallet_account::add_position_opened(
+            &access_control::get_object_data_signer(),
+            wallet_id,
+            position_addr,
+            vector::singleton<address>(object::object_address<Metadata>(&metadata)),
+            vector::singleton<u64>(10000),
+            1,
+            0
+        );
+
+        // Get initial state
+        let (_, initial_wallet_balance) = get_asset_deposit_to_wallet_account(wallet_id, metadata);
+        let (_, initial_distributed_balance) = get_asset_distribute_wallet_account(wallet_id, metadata);
+
+        // Update position with zero removal amount
+        wallet_account::update_position_after_partial_removal(
+            &access_control::get_object_data_signer(),
+            wallet_id,
+            position_addr,
+            vector::singleton<address>(object::object_address<Metadata>(&metadata)),
+            vector::singleton<u64>(0), // Zero removal
+            25 // fee
+        );
+
+        // Verify state remains mostly unchanged except for fee
+        let (_, final_wallet_balance) = get_asset_deposit_to_wallet_account(wallet_id, metadata);
+        let (_, final_distributed_balance) = get_asset_distribute_wallet_account(wallet_id, metadata);
+        assert!(final_wallet_balance == initial_wallet_balance - 25, 1); // Only fee deducted
+        assert!(final_distributed_balance == initial_distributed_balance, 2); // No change in distributed
+    }
+
+    #[test(deployer = @moneyfi, user = @0xab, aptos_framework = @0x1)]
+    fun test_update_position_after_partial_removal_full_amount(deployer: &signer, user: &signer, aptos_framework: &signer) {
+        let (fa, metadata) = setup_for_test(
+            deployer, 
+            signer::address_of(deployer), 
+            aptos_framework, 
+            20000
+        );
+        let wallet_id = get_test_wallet_id(signer::address_of(user));
+        primary_fungible_store::deposit(signer::address_of(user), fa);
+        
+        // Create wallet account and deposit
+        wallet_account::create_wallet_account(deployer, wallet_id, 9, true);
+        let wallet_account_addr = wallet_account::get_wallet_account_object_address(wallet_id);
+        wallet_account::deposit_to_wallet_account(
+            user,
+            wallet_id,
+            vector::singleton<Object<Metadata>>(metadata),
+            vector::singleton<u64>(20000),
+            0
+        );
+
+        // Create and add initial position
+        let (position_addr, _) = get_position(wallet_account_addr);
+        let position_amount = 8000;
+        wallet_account::add_position_opened(
+            &access_control::get_object_data_signer(),
+            wallet_id,
+            position_addr,
+            vector::singleton<address>(object::object_address<Metadata>(&metadata)),
+            vector::singleton<u64>(position_amount),
+            1,
+            0
+        );
+
+        // Update position by removing the full amount
+        wallet_account::update_position_after_partial_removal(
+            &access_control::get_object_data_signer(),
+            wallet_id,
+            position_addr,
+            vector::singleton<address>(object::object_address<Metadata>(&metadata)),
+            vector::singleton<u64>(position_amount), // Remove full amount
+            100 // fee
+        );
+
+        // Verify final state
+        let (_, final_wallet_balance) = get_asset_deposit_to_wallet_account(wallet_id, metadata);
+        let (_, final_distributed_balance) = get_asset_distribute_wallet_account(wallet_id, metadata);
+        assert!(final_wallet_balance == 20000 - 100, 1); // All back to wallet minus fee
+        assert!(final_distributed_balance == 0, 2); // No distributed assets left
+    }
+
+    #[test(deployer = @moneyfi, user = @0xab, aptos_framework = @0x1)]
+    fun test_update_position_after_partial_removal_with_high_fee(deployer: &signer, user: &signer, aptos_framework: &signer) {
+        let (fa, metadata) = setup_for_test(
+            deployer, 
+            signer::address_of(deployer), 
+            aptos_framework, 
+            25000
+        );
+        let wallet_id = get_test_wallet_id(signer::address_of(user));
+        primary_fungible_store::deposit(signer::address_of(user), fa);
+        
+        // Create wallet account and deposit
+        wallet_account::create_wallet_account(deployer, wallet_id, 9, true);
+        let wallet_account_addr = wallet_account::get_wallet_account_object_address(wallet_id);
+        wallet_account::deposit_to_wallet_account(
+            user,
+            wallet_id,
+            vector::singleton<Object<Metadata>>(metadata),
+            vector::singleton<u64>(25000),
+            0
+        );
+
+        // Create and add initial position
+        let (position_addr, _) = get_position(wallet_account_addr);
+        wallet_account::add_position_opened(
+            &access_control::get_object_data_signer(),
+            wallet_id,
+            position_addr,
+            vector::singleton<address>(object::object_address<Metadata>(&metadata)),
+            vector::singleton<u64>(15000),
+            1,
+            0
+        );
+
+        // Update position with high fee
+        let removal_amount = 5000;
+        let high_fee = 1000;
+        wallet_account::update_position_after_partial_removal(
+            &access_control::get_object_data_signer(),
+            wallet_id,
+            position_addr,
+            vector::singleton<address>(object::object_address<Metadata>(&metadata)),
+            vector::singleton<u64>(removal_amount),
+            high_fee
+        );
+
+        // Verify state with high fee deduction
+        let (_, final_wallet_balance) = get_asset_deposit_to_wallet_account(wallet_id, metadata);
+        let (_, final_distributed_balance) = get_asset_distribute_wallet_account(wallet_id, metadata);
+        assert!(final_wallet_balance == 10000 + removal_amount - high_fee, 1); // 10000 + 5000 - 1000
+        assert!(final_distributed_balance == 15000 - removal_amount, 2); // 15000 - 5000
     }
     
 }
