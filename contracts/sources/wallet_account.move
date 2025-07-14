@@ -127,6 +127,14 @@ module moneyfi::wallet_account {
     }
 
     #[event]
+    struct DistributeAssetEvent has drop, store {
+        wallet_id: vector<u8>,
+        position: address,
+        assets: SimpleMap<address, u64>,
+        timestamp: u64
+    }
+
+    #[event]
     struct RewardClaimed has drop, store {
         wallet_id: vector<u8>,
         wallet_object: address,
@@ -611,6 +619,13 @@ module moneyfi::wallet_account {
             strategy_id,
             timestamp: timestamp::now_seconds(),
         });
+
+        event::emit(DistributeAssetEvent{
+            wallet_id: wallet_id,
+            position,
+            assets: assets_map,
+            timestamp: timestamp::now_seconds(),
+        });
     }
 
     //INTERNAL: ONLY CALLED BY DATA OBJECT SIGNER
@@ -766,6 +781,12 @@ module moneyfi::wallet_account {
             timestamp: timestamp::now_seconds(),
         });
 
+        event::emit(DistributeAssetEvent{
+            wallet_id: wallet_id,
+            position,
+            assets: *assets_map,
+            timestamp: timestamp::now_seconds(),
+        });
     }
 
 
