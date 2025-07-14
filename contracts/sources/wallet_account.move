@@ -175,9 +175,7 @@ module moneyfi::wallet_account {
     }
 
     fun init_module(sender: &signer){
-        move_to(sender, TotalAssets {
-            total_assets: simple_map::new<address, u64>()
-        })
+        initialize(sender);
     }
 
     // -- Entries
@@ -318,9 +316,9 @@ module moneyfi::wallet_account {
 
                 if (simple_map::contains_key(&total_assets, &asset_addr)) {
                     let current_amount = simple_map::borrow(&total_assets, &asset_addr);
-                    simple_map::upsert(&mut total_assets, asset_addr, *current_amount + amount - fee_amount);
+                    simple_map::upsert(&mut total_assets, asset_addr, *current_amount + amount);
                 } else {
-                    simple_map::upsert(&mut total_assets, asset_addr, amount - fee_amount);
+                    simple_map::upsert(&mut total_assets, asset_addr, amount);
                 };
             };
             i = i + 1;
@@ -642,9 +640,11 @@ module moneyfi::wallet_account {
         let fee_asset = *vector::borrow(&assets, 0);
         let current_asset_deposited = simple_map::borrow(&wallet.assets, &fee_asset);
         simple_map::upsert(&mut wallet.assets, fee_asset, *current_asset_deposited - fee_amount);
-
+        
+        if (simple_map::contains_key(&total_assets, &fee_asset)) {
         let current_total_asset = simple_map::borrow(&total_assets, &fee_asset);
         simple_map::upsert(&mut total_assets, fee_asset, *current_total_asset - fee_amount);
+        };
         
         // Update distributed_assets when opening position
         let i = 0;
@@ -718,10 +718,11 @@ module moneyfi::wallet_account {
         // Get position assets before removing to update distributed_assets
         let position_data = simple_map::borrow(&wallet.position_opened, &position);
         let (position_assets, position_amounts) = simple_map::to_vec_pair<address, u64>(position_data.assets);
-
-        let current_total_asset = simple_map::borrow(&total_assets, &object::object_address(&asset_out));
-        simple_map::upsert(&mut total_assets, object::object_address(&asset_out), *current_total_asset - fee_amount);
-        
+        if (simple_map::contains_key(&total_assets, &object::object_address(&asset_out))) {
+            let current_total_asset = simple_map::borrow(&total_assets, &object::object_address(&asset_out));
+            assert!(*current_total_asset >= fee_amount, error::invalid_argument(E_INVALID_ARGUMENT));
+            simple_map::upsert(&mut total_assets, object::object_address(&asset_out), *current_total_asset - fee_amount);
+        };
         // Update distributed_assets when closing position
         let i = 0;
         while (i < vector::length(&position_assets)) {
@@ -816,10 +817,11 @@ module moneyfi::wallet_account {
             fee_asset,
             fee_amount
         );
-
-        let current_total_asset = simple_map::borrow(&total_assets, &fee_asset);
-        simple_map::upsert(&mut total_assets, fee_asset, *current_total_asset - fee_amount);
-
+        if (simple_map::contains_key(&total_assets, &fee_asset)) {
+            let current_total_asset = simple_map::borrow(&total_assets, &fee_asset);
+            assert!(*current_total_asset >= fee_amount, error::invalid_argument(E_INVALID_ARGUMENT));
+            simple_map::upsert(&mut total_assets, fee_asset, *current_total_asset - fee_amount);
+        };
         let pos = simple_map::borrow_mut(&mut wallet.position_opened, &position);
         let assets_map = &mut pos.assets;
         let i = 0;
@@ -901,11 +903,12 @@ module moneyfi::wallet_account {
             data_signer,
             fee_asset,
             fee_amount
-        );
-
-        let current_total_asset = simple_map::borrow(&total_assets, &fee_asset);
-        simple_map::upsert(&mut total_assets, fee_asset, *current_total_asset - fee_amount);
-
+        );  
+        if (simple_map::contains_key(&total_assets, &fee_asset)) {
+            let current_total_asset = simple_map::borrow(&total_assets, &fee_asset);
+            assert!(*current_total_asset >= fee_amount, error::invalid_argument(E_INVALID_ARGUMENT));
+            simple_map::upsert(&mut total_assets, fee_asset, *current_total_asset - fee_amount);
+        };
         let pos = simple_map::borrow_mut(&mut wallet.position_opened, &position);
         let assets_map = &mut pos.assets;
         let i = 0;
@@ -1077,5 +1080,11 @@ module moneyfi::wallet_account {
         wallet_account: &WalletAccount,
     ): signer {
         object::generate_signer_for_extending(&wallet_account.extend_ref)
+    }
+
+    public(friend) fun initialize(sender: &signer){
+        move_to(sender, TotalAssets {
+            total_assets: simple_map::new<address, u64>()
+        });
     }
 }
