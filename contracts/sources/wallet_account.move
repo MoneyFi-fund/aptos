@@ -389,20 +389,20 @@ module moneyfi::wallet_account {
                     simple_map::remove(&mut total_assets, &asset_addr);
                 } else {
                     simple_map::upsert(&mut total_assets, asset_addr, *current_amount - amount);
-                }
+                   };
             };
             i = i + 1;
         };
         event::emit(
-                WithdrawFromWalletAccountEvent {
-                    recipient: signer::address_of(sender),
-                    wallet_object: wallet_account_addr,
-                    assets: assets,
-                    amounts: amounts,
-                    fee_amount: 0, // No fee for user withdrawal
-                    timestamp: timestamp::now_seconds(),
-                }
-            );
+            WithdrawFromWalletAccountEvent {
+                recipient: signer::address_of(sender),
+                wallet_object: wallet_account_addr,
+                assets: assets,
+                amounts: amounts,
+                fee_amount: 0, // No fee for user withdrawal
+                timestamp: timestamp::now_seconds(),
+            }
+        );
     }
 
     public entry fun claim_rewards(
@@ -1086,7 +1086,6 @@ module moneyfi::wallet_account {
             total_assets: simple_map::new<address, u64>()
         });
     }
-
 
     #[test_only]
     friend moneyfi::wallet_account_test;
