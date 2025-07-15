@@ -4,7 +4,7 @@ module moneyfi::wallet_account {
     use std::vector;
     use std::error;
     use std::option::{Self, Option};
-    use aptos_std::string_utils;
+    use aptos_std::table::{Self, Table};
     use aptos_std::simple_map::{Self, SimpleMap};
     use aptos_framework::event;
     use aptos_framework::util;
@@ -37,6 +37,7 @@ module moneyfi::wallet_account {
     struct WalletAccount has key {
         // wallet_id is a byte array of length 32
         wallet_id: vector<u8>,
+        wallet_address: Option<address>,
         // empty means has no referer
         referrer_wallet_id: vector<u8>,
         // source_domain is the domain where the wallet is created
@@ -173,7 +174,6 @@ module moneyfi::wallet_account {
         user_reward: u64,
         protocol_fee: u64,
         referral_fee: u64,
-        referral: bool,
         fee_amount: u64,
         timestamp: u64
     }
@@ -193,29 +193,32 @@ module moneyfi::wallet_account {
         referrer_wallet_id: vector<u8>
     ) {
         access_control::must_be_service_account(verifier);
-        let addr = get_wallet_account_object_address(wallet_id);
+        let wallet_address = signer::address_of(sender);
         assert!(
-            !object::object_exists<WalletAccount>(addr),
-            error::already_exists(E_WALLET_ACCOUNT_EXISTS)
+            !exists<WalletAccountObject>(wallet_address),
+            error::already_exists(E_WALLET_ACCOUNT_ALREADY_CONNECTED)
         );
 
-        let extend_ref =
-            storage::create_child_object(get_wallet_account_object_seed(wallet_id));
-        let wallet_signer = &object::generate_signer_for_extending(&extend_ref);
-
-        move_to(
-            wallet_signer,
-            WalletAccount {
-                wallet_id,
-                referrer_wallet_id,
-                assets: simple_map::new<address, u64>(),
-                distributed_assets: simple_map::new<address, u64>(),
-                position_opened: simple_map::new<address, PositionOpened>(),
-                total_profit_claimed: simple_map::new<address, u64>(),
-                profit_unclaimed: simple_map::new<address, u64>(),
-                extend_ref
+        let addr = get_wallet_account_object_address(wallet_id);
+        if (object::object_exists<WalletAccount>(addr)) {
+            // WaletAccount can be created earlier if it is a referrer of another wallet
+            let account = borrow_global_mut<WalletAccount>(addr);
+            if (option::is_none(&account.wallet_address)) {
+                account.wallet_address = option::some(wallet_address);
+                account.referrer_wallet_id = referrer_wallet_id;
             }
-        );
+        } else {
+            create_wallet_account(
+                wallet_id, referrer_wallet_id, option::some(wallet_address)
+            );
+
+            if (!vector::is_empty(&referrer_wallet_id)) {
+                let referrer_addr = get_wallet_account_object_address(referrer_wallet_id);
+                if (object::object_exists<WalletAccount>(referrer_addr)) {
+                    create_wallet_account(referrer_wallet_id, vector[], option::none())
+                }
+            }
+        };
 
         move_to(
             sender,
@@ -231,71 +234,6 @@ module moneyfi::wallet_account {
                 timestamp: timestamp::now_seconds()
             }
         );
-    }
-
-    // create a new WalletAccount for a given wallet_id<byte[32]>
-    public entry fun create_wallet_account(
-        sender: &signer,
-        wallet_id: vector<u8>,
-        source_domain: u32,
-        referral: bool
-    ) {
-        access_control::must_be_service_account(sender);
-        let addr = get_wallet_account_object_address(wallet_id);
-        assert!(
-            !object::object_exists<WalletAccount>(addr),
-            error::already_exists(E_WALLET_ACCOUNT_EXISTS)
-        );
-
-        let extend_ref =
-            storage::create_child_object(get_wallet_account_object_seed(wallet_id));
-        let wallet_signer = &object::generate_signer_for_extending(&extend_ref);
-        // initialize the WalletAccount object
-        move_to(
-            wallet_signer,
-            WalletAccount {
-                wallet_id: wallet_id,
-                source_domain: source_domain,
-                referral: referral,
-                assets: simple_map::new<address, u64>(),
-                distributed_assets: simple_map::new<address, u64>(),
-                position_opened: simple_map::new<address, PositionOpened>(),
-                total_profit_claimed: simple_map::new<address, u64>(),
-                profit_unclaimed: simple_map::new<address, u64>(),
-                extend_ref
-            }
-        );
-
-        event::emit(
-            WalletAccountCreatedEvent {
-                wallet_id: wallet_id,
-                source_domain: source_domain,
-                wallet_object: addr,
-                timestamp: timestamp::now_seconds()
-            }
-        );
-    }
-
-    // Connect Aptos wallet to a WalletAccount
-    // This function has to be called before claim assets
-    public entry fun connect_aptos_wallet(
-        sender: &signer, wallet_id: vector<u8>
-    ) acquires WalletAccount {
-        let wallet_account_addr = get_wallet_account_object_address(wallet_id);
-        assert!(
-            object::object_exists<WalletAccount>(wallet_account_addr),
-            error::not_found(E_WALLET_ACCOUNT_NOT_EXISTS)
-        );
-        let wallet_account = borrow_global_mut<WalletAccount>(wallet_account_addr);
-        assert!(
-            wallet_account.source_domain == APT_SRC_DOMAIN,
-            error::invalid_state(E_NOT_APTOS_WALLET_ACCOUNT)
-        );
-        assert!(
-            signer::address_of(sender) == util::address_from_bytes(wallet_id),
-            error::permission_denied(E_NOT_OWNER)
-        );
-        connect_wallet_internal(sender, wallet_account);
     }
 
     public entry fun deposit_to_wallet_account(
@@ -427,9 +365,6 @@ module moneyfi::wallet_account {
         assets: vector<Object<Metadata>>,
         amounts: vector<u64>
     ) acquires WalletAccount, WalletAccountObject, TotalAssets {
-        if (!is_connected(signer::address_of(sender), wallet_id)) {
-            connect_aptos_wallet(sender, wallet_id);
-        };
         claim_rewards(sender, wallet_id);
         let object_signer = get_wallet_account_signer_for_owner(sender, wallet_id);
         let wallet_account_addr = get_wallet_account_object_address(wallet_id);
@@ -499,10 +434,6 @@ module moneyfi::wallet_account {
     public entry fun claim_rewards(
         sender: &signer, wallet_id: vector<u8>
     ) acquires WalletAccount, WalletAccountObject, TotalAssets {
-        if (!is_connected(signer::address_of(sender), wallet_id)) {
-            connect_aptos_wallet(sender, wallet_id);
-        };
-
         let object_signer = get_wallet_account_signer_for_owner(sender, wallet_id);
         let wallet_account_addr = get_wallet_account_object_address(wallet_id);
         let wallet_account = borrow_global_mut<WalletAccount>(wallet_account_addr);
@@ -675,19 +606,6 @@ module moneyfi::wallet_account {
         let addr = get_wallet_account_object_address(wallet_id);
         let wallet_account = borrow_global<WalletAccount>(addr);
         simple_map::to_vec_pair<address, u64>(wallet_account.distributed_assets)
-    }
-
-    #[view]
-    public fun is_connected(user: address, wallet_id: vector<u8>): bool acquires WalletAccountObject {
-        assert!(
-            user == util::address_from_bytes(wallet_id),
-            error::permission_denied(E_NOT_OWNER)
-        );
-        let addr = get_wallet_account_object_address(wallet_id);
-        if (exists<WalletAccountObject>(user)) {
-            let wallet_account_object = borrow_global<WalletAccountObject>(user);
-            addr == object::object_address(&wallet_account_object.wallet_account)
-        } else { false }
     }
 
     // -- Public
@@ -1281,7 +1199,6 @@ module moneyfi::wallet_account {
                 user_reward: user_amount,
                 protocol_fee: protocol_amount - referral_fee,
                 referral_fee: referral_fee,
-                referral: wallet_account_mut.referral,
                 fee_amount: fee_amount,
                 timestamp: timestamp::now_seconds()
             }
@@ -1347,6 +1264,31 @@ module moneyfi::wallet_account {
             sender,
             TotalAssets {
                 total_assets: simple_map::new<address, u64>()
+            }
+        );
+    }
+
+    inline fun create_wallet_account(
+        wallet_id: vector<u8>,
+        referrer_wallet_id: vector<u8>,
+        wallet_address: Option<address>
+    ) {
+        let extend_ref =
+            storage::create_child_object(get_wallet_account_object_seed(wallet_id));
+        let wallet_signer = &object::generate_signer_for_extending(&extend_ref);
+
+        move_to(
+            wallet_signer,
+            WalletAccount {
+                wallet_id,
+                wallet_address,
+                referrer_wallet_id,
+                assets: simple_map::new<address, u64>(),
+                distributed_assets: simple_map::new<address, u64>(),
+                position_opened: simple_map::new<address, PositionOpened>(),
+                total_profit_claimed: simple_map::new<address, u64>(),
+                profit_unclaimed: simple_map::new<address, u64>(),
+                extend_ref
             }
         );
     }
