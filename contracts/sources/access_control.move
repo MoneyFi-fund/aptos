@@ -12,7 +12,7 @@ module moneyfi::access_control {
     const ROLE_ROLE_MANAGER: u8 = 2;
     const ROLE_SERVICE_ACCOUNT: u8 = 3;
 
-    // increse this value when add/remove role
+    // IMPORTANT: increse this value when add/remove role
     const ROLE_COUNT: u8 = 3;
 
     // -- Error Codes

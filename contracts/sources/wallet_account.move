@@ -15,6 +15,7 @@ module moneyfi::wallet_account {
 
     use moneyfi::access_control;
     use moneyfi::storage;
+    use moneyfi::fee_manager;
 
     // -- Constants
     const WALLET_ACCOUNT_SEED: vector<u8> = b"WALLET_ACCOUNT";
@@ -224,15 +225,6 @@ module moneyfi::wallet_account {
         );
     }
 
-    // Connect user wallet to a WalletAccount
-    //   public entry fun connect_wallet(
-    //       sender: &signer, wallet_id: vector<u8>, signature: vector<u8>
-    //   ) acquires WalletAccount {
-    //
-    //       // TODO: verify signature
-    //       //connect_wallet_internal(sender, wallet_id);
-    //   }
-
     // Connect Aptos wallet to a WalletAccount
     // This function has to be called before claim assets
     public entry fun connect_aptos_wallet(
@@ -284,7 +276,7 @@ module moneyfi::wallet_account {
             let asset = *vector::borrow(&assets, i);
             let asset_addr = object::object_address(&asset);
             let amount = *vector::borrow(&amounts, i);
-            access_control::check_asset_supported(asset_addr);
+            // access_control::check_asset_supported(asset_addr);
             // Check if this asset is a stablecoin and we haven't deducted fee yet
             let is_stablecoin = vector::contains(&stablecoin_metadata, &asset_addr);
 
@@ -296,7 +288,7 @@ module moneyfi::wallet_account {
                 primary_fungible_store::transfer(
                     sender,
                     asset,
-                    access_control::get_data_object_address(),
+                    storage::get_address(),
                     fee_amount
                 );
                 primary_fungible_store::transfer(
@@ -362,8 +354,7 @@ module moneyfi::wallet_account {
         };
         // Add fee to system if fee was deducted
         if (fee_deducted) {
-            let server_signer = access_control::get_object_data_signer();
-            access_control::add_rebalance_fee(&server_signer, fee_asset_addr, fee_amount);
+            fee_manager::add_rebalance_fee(fee_asset_addr, fee_amount);
         };
 
         event::emit(
@@ -653,7 +644,7 @@ module moneyfi::wallet_account {
     public fun get_wallet_account_signer(
         sender: &signer, wallet_id: vector<u8>
     ): signer acquires WalletAccount {
-        access_control::muse_be_service_account(sender);
+        access_control::must_be_service_account(sender);
         let addr = get_wallet_account_object_address(wallet_id);
 
         assert!(
@@ -704,8 +695,7 @@ module moneyfi::wallet_account {
     ) acquires WalletAccount, TotalAssets {
         let addr = get_wallet_account_object_address(wallet_id);
         assert!(
-            signer::address_of(data_signer)
-                == access_control::get_data_object_address(),
+            signer::address_of(data_signer) == storage::get_address(),
             error::permission_denied(E_NOT_OWNER)
         );
         assert!(
@@ -771,10 +761,10 @@ module moneyfi::wallet_account {
         primary_fungible_store::transfer(
             &get_wallet_account_signer_internal(wallet),
             object::address_to_object<Metadata>(fee_asset),
-            access_control::get_data_object_address(),
+            storage::get_address(),
             fee_amount
         );
-        access_control::add_distribute_fee(data_signer, fee_asset, fee_amount);
+        fee_manager::add_distribute_fee(fee_asset, fee_amount);
 
         event::emit(
             OpenPositionEvent {
@@ -811,8 +801,7 @@ module moneyfi::wallet_account {
         verify_wallet_position(wallet_id, position);
         let addr = get_wallet_account_object_address(wallet_id);
         assert!(
-            signer::address_of(data_signer)
-                == access_control::get_data_object_address(),
+            signer::address_of(data_signer) == storage::get_address(),
             error::permission_denied(E_NOT_OWNER)
         );
         assert!(
@@ -856,7 +845,7 @@ module moneyfi::wallet_account {
                 primary_fungible_store::transfer(
                     &get_wallet_account_signer_internal(wallet),
                     asset_out,
-                    access_control::get_data_object_address(),
+                    storage::get_address(),
                     fee_amount
                 );
                 if (simple_map::contains_key(&wallet.distributed_assets, &asset)) {
@@ -878,8 +867,7 @@ module moneyfi::wallet_account {
                             addr, object::address_to_object<Metadata>(asset)
                         );
                     simple_map::upsert(&mut wallet.assets, asset, current_wallet_amount);
-                    access_control::add_withdraw_fee(
-                        data_signer,
+                    fee_manager::add_withdraw_fee(
                         object::object_address(&asset_out),
                         fee_amount
                     );
@@ -940,8 +928,7 @@ module moneyfi::wallet_account {
         verify_wallet_position(wallet_id, position);
         let addr = get_wallet_account_object_address(wallet_id);
         assert!(
-            signer::address_of(data_signer)
-                == access_control::get_data_object_address(),
+            signer::address_of(data_signer) == storage::get_address(),
             error::permission_denied(E_NOT_OWNER)
         );
         assert!(
@@ -969,10 +956,10 @@ module moneyfi::wallet_account {
         primary_fungible_store::transfer(
             &get_wallet_account_signer_internal(wallet),
             object::address_to_object<Metadata>(fee_asset),
-            access_control::get_data_object_address(),
+            storage::get_address(),
             fee_amount
         );
-        access_control::add_distribute_fee(data_signer, fee_asset, fee_amount);
+        fee_manager::add_distribute_fee(fee_asset, fee_amount);
         if (simple_map::contains_key(&total_assets, &fee_asset)) {
             let current_total_asset = simple_map::borrow(&total_assets, &fee_asset);
             assert!(
@@ -1053,8 +1040,7 @@ module moneyfi::wallet_account {
         verify_wallet_position(wallet_id, position);
         let addr = get_wallet_account_object_address(wallet_id);
         assert!(
-            signer::address_of(data_signer)
-                == access_control::get_data_object_address(),
+            signer::address_of(data_signer) == storage::get_address(),
             error::permission_denied(E_NOT_OWNER)
         );
         assert!(
@@ -1082,10 +1068,10 @@ module moneyfi::wallet_account {
         primary_fungible_store::transfer(
             &get_wallet_account_signer_internal(wallet),
             object::address_to_object<Metadata>(fee_asset),
-            access_control::get_data_object_address(),
+            storage::get_address(),
             fee_amount
         );
-        access_control::add_withdraw_fee(data_signer, fee_asset, fee_amount);
+        fee_manager::add_withdraw_fee(fee_asset, fee_amount);
         if (simple_map::contains_key(&total_assets, &fee_asset)) {
             let current_total_asset = simple_map::borrow(&total_assets, &fee_asset);
             assert!(
@@ -1162,37 +1148,36 @@ module moneyfi::wallet_account {
         let wallet_account_mut = borrow_global_mut<WalletAccount>(addr);
         let total_assets = borrow_global_mut<TotalAssets>(@moneyfi).total_assets;
         assert!(
-            signer::address_of(data_signer)
-                == access_control::get_data_object_address(),
+            signer::address_of(data_signer) == storage::get_address(),
             error::permission_denied(E_NOT_OWNER)
         );
         // Transfer fee asset to the data object
         primary_fungible_store::transfer(
             &get_wallet_account_signer_internal(wallet_account_mut),
             object::address_to_object<Metadata>(asset),
-            access_control::get_data_object_address(),
+            storage::get_address(),
             fee_amount
         );
 
-        access_control::add_withdraw_fee(data_signer, asset, fee_amount);
+        fee_manager::add_withdraw_fee(asset, fee_amount);
 
-        let protocol_amount = access_control::calculate_protocol_fee(amount);
+        let protocol_amount = fee_manager::calculate_protocol_fee(amount);
 
         primary_fungible_store::transfer(
             &get_wallet_account_signer_internal(wallet_account_mut),
             object::address_to_object<Metadata>(asset),
-            access_control::get_data_object_address(),
+            storage::get_address(),
             protocol_amount
         );
 
         let referral_fee =
             if (wallet_account_mut.referral) {
-                access_control::calculate_referral_fee(protocol_amount) // 25% of protocol amount
+                fee_manager::calculate_referral_fee(protocol_amount) // 25% of protocol amount
             } else { 0 };
 
-        access_control::add_referral_fee(data_signer, asset, referral_fee);
+        fee_manager::add_referral_fee(data_signer, asset, referral_fee);
 
-        access_control::add_protocol_fee(
+        fee_manager::add_protocol_fee(
             data_signer,
             asset,
             protocol_amount - referral_fee // 75% of protocol amount
