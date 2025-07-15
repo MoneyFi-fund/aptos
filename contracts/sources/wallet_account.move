@@ -40,6 +40,7 @@ module moneyfi::wallet_account {
         wallet_address: Option<address>,
         // empty means has no referer
         referrer_wallet_id: vector<u8>,
+        referee_count: u64,
         // source_domain is the domain where the wallet is created
         // e.g. 9 for Aptos, 1 for Ethereum, etc.
         // This is used to identify the wallet account in cross-chain operations
@@ -209,13 +210,24 @@ module moneyfi::wallet_account {
             }
         } else {
             create_wallet_account(
-                wallet_id, referrer_wallet_id, option::some(wallet_address)
+                wallet_id,
+                referrer_wallet_id,
+                option::some(wallet_address),
+                0
             );
 
             if (!vector::is_empty(&referrer_wallet_id)) {
                 let referrer_addr = get_wallet_account_object_address(referrer_wallet_id);
                 if (object::object_exists<WalletAccount>(referrer_addr)) {
-                    create_wallet_account(referrer_wallet_id, vector[], option::none())
+                    let account = borrow_global_mut<WalletAccount>(referrer_addr);
+                    account.referee_count += 1;
+                } else {
+                    create_wallet_account(
+                        referrer_wallet_id,
+                        vector[],
+                        option::none(),
+                        1
+                    )
                 }
             }
         };
@@ -1271,7 +1283,8 @@ module moneyfi::wallet_account {
     inline fun create_wallet_account(
         wallet_id: vector<u8>,
         referrer_wallet_id: vector<u8>,
-        wallet_address: Option<address>
+        wallet_address: Option<address>,
+        referee_count: u64
     ) {
         let extend_ref =
             storage::create_child_object(get_wallet_account_object_seed(wallet_id));
@@ -1283,6 +1296,7 @@ module moneyfi::wallet_account {
                 wallet_id,
                 wallet_address,
                 referrer_wallet_id,
+                referee_count,
                 assets: simple_map::new<address, u64>(),
                 distributed_assets: simple_map::new<address, u64>(),
                 position_opened: simple_map::new<address, PositionOpened>(),
