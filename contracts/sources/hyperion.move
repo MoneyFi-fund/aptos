@@ -305,9 +305,15 @@ module moneyfi::hyperion {
             operator, wallet_id
         );
 
-        // Get amounts before removal
-        let (amount_a_before, amount_b_before) = get_amount_by_liquidity(position);
+        // Get amount before removal
+        let balance_before = primary_fungible_store::balance(
+            signer::address_of(&wallet_signer), asset
+        );
 
+        let (assets, amounts) = wallet_account::get_amount_by_position(wallet_id, object::object_address<Info>(&position));
+        let (_,index) = vector::index_of(&assets, &object::object_address<Metadata>(&asset));
+        let amounts_before = *vector::borrow(&amounts, index);
+    
         claim_fees_and_rewards_from_operator(operator, wallet_id, position, asset, 0);
 
         router_v3::remove_liquidity_single(
@@ -319,43 +325,16 @@ module moneyfi::hyperion {
             slippage_denominator
         );
 
-        let (token_a, token_b, _) = position_v3::get_pool_info(position);
+        let balance_after = primary_fungible_store::balance(
+            signer::address_of(&wallet_signer), asset
+        );
 
-        // Get amounts after removal
-        let (amount_a_after, amount_b_after) = get_amount_by_liquidity(position);
-
-        // Calculate withdrawn amounts
-        let withdrawn_amount_a = amount_a_before - amount_a_after;
-        let withdrawn_amount_b = amount_b_before - amount_b_after;
-
-        let asset_is_token_a =
-            object::object_address<Metadata>(&token_a)
-                == object::object_address<Metadata>(&asset);
-
+        let withdrawn_amount = balance_after - balance_before;
         let withdrawn_assets = vector::singleton<address>(
             object::object_address<Metadata>(&asset)
         );
-        let (withdrawn_amounts, amounts_after) =
-            if (asset_is_token_a) {
-                vector::push_back(
-                    &mut withdrawn_assets, object::object_address<Metadata>(&token_b)
-                );
-                let amounts = vector::singleton<u64>(withdrawn_amount_a);
-                vector::push_back(&mut amounts, withdrawn_amount_b);
-                let amounts_after = vector::singleton<u64>(amount_a_after);
-                vector::push_back(&mut amounts_after, amount_b_after);
-                (amounts, amounts_after)
-            } else {
-                vector::push_back(
-                    &mut withdrawn_assets, object::object_address<Metadata>(&token_a)
-                );
-                let amounts = vector::singleton<u64>(withdrawn_amount_b);
-                vector::push_back(&mut amounts, withdrawn_amount_a);
-                let amounts_after = vector::singleton<u64>(amount_b_after);
-                vector::push_back(&mut amounts_after, amount_a_after);
-                (amounts, amounts_after)
-            };
-
+        let withdrawn_amounts = vector::singleton<u64>(withdrawn_amount);
+        let amounts_after = vector::singleton<u64>(amounts_before - withdrawn_amount);
         let server_signer = access_control::get_object_data_signer();
         wallet_account::update_position_after_partial_removal(
             &server_signer,
@@ -410,8 +389,8 @@ module moneyfi::hyperion {
                     &wallet_signer,
                     fee_tier,
                     fee_amount_a,
-                    99,
-                    0, // sqrt_price_limit = 0 for no limit
+                    0,
+                    4295048016 + 1, // min
                     token_a,
                     asset,
                     wallet_address,
@@ -428,8 +407,8 @@ module moneyfi::hyperion {
                     &wallet_signer,
                     fee_tier,
                     fee_amount_b,
-                    99,
-                    0, // sqrt_price_limit = 0 for no limit
+                    0,
+                    4295048016 + 1, // min
                     token_b,
                     asset,
                     wallet_address,
@@ -452,8 +431,8 @@ module moneyfi::hyperion {
                         &wallet_signer,
                         1, // fee_tier for reward swaps
                         reward_amount,
-                        99,
-                        0, // sqrt_price_limit = 0 for no limit
+                        0,
+                        4295048016 + 1, // min
                         reward_token,
                         asset,
                         wallet_address,

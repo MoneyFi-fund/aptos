@@ -1207,21 +1207,6 @@ module moneyfi::wallet_account {
                 } else {
                     simple_map::upsert(&mut wallet.assets, asset, actual_amount);
                 };
-
-                // Update total assets
-                if (simple_map::contains_key(&total_assets_ref.total_assets, &asset)) {
-                    let current_total =
-                        simple_map::borrow(&total_assets_ref.total_assets, &asset);
-                    simple_map::upsert(
-                        &mut total_assets_ref.total_assets,
-                        asset,
-                        *current_total + actual_amount
-                    );
-                } else {
-                    simple_map::upsert(
-                        &mut total_assets_ref.total_assets, asset, actual_amount
-                    );
-                };
             };
 
             i = i + 1;
