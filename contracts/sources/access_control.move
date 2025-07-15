@@ -8,8 +8,6 @@ module moneyfi::access_control {
     use aptos_framework::object::{Self, Object, ObjectCore, ExtendRef};
     use aptos_framework::fungible_asset::{Self, Metadata};
     use aptos_framework::primary_fungible_store;
-    use aptos_framework::aptos_coin::AptosCoin;
-    use aptos_framework::coin;
     use aptos_framework::event;
     use aptos_framework::timestamp::now_seconds;
 
@@ -145,9 +143,7 @@ module moneyfi::access_control {
         };
 
         // Emit event
-        event::emit(
-            SetRoleEvent { addr, role, timestamp: now_seconds() }
-        );
+        event::emit(SetRoleEvent { addr, role, timestamp: now_seconds() });
     }
 
     public entry fun claim_fees(
@@ -175,9 +171,7 @@ module moneyfi::access_control {
         );
 
         // Emit event
-        event::emit(
-            ClaimFeeEvent { asset: asset_addr, amount, timestamp: now_seconds() }
-        );
+        event::emit(ClaimFeeEvent { asset: asset_addr, amount, timestamp: now_seconds() });
     }
 
     public entry fun set_fee_to(sender: &signer, addr: address) acquires SystemFee, RoleRegistry {
@@ -200,9 +194,7 @@ module moneyfi::access_control {
                 vector::remove(roles, index);
 
                 // Emit event only if role was actually removed
-                event::emit(
-                    RevokeRoleEvent { addr, role, timestamp: now_seconds() }
-                );
+                event::emit(RevokeRoleEvent { addr, role, timestamp: now_seconds() });
             };
 
             // If no roles left, remove the address completely
@@ -235,9 +227,7 @@ module moneyfi::access_control {
             let len = vector::length(&roles);
             while (i < len) {
                 let role = *vector::borrow(&roles, i);
-                event::emit(
-                    RevokeRoleEvent { addr, role, timestamp: now_seconds() }
-                );
+                event::emit(RevokeRoleEvent { addr, role, timestamp: now_seconds() });
                 i = i + 1;
             };
         }
@@ -569,7 +559,6 @@ module moneyfi::access_control {
 
         // init default config
         let constructor_ref = &object::create_sticky_object(@moneyfi);
-        let aptos_coin_metadata = coin::paired_metadata<AptosCoin>();
         let asset_supported = vector::empty<address>();
 
         move_to(

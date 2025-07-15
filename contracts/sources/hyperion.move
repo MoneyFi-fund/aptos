@@ -2,6 +2,7 @@ module moneyfi::hyperion {
     use std::signer;
     use std::vector;
     use std::error;
+    use aptos_std::math128;
     use aptos_framework::object::{Self, Object};
     use aptos_framework::primary_fungible_store;
     use aptos_framework::timestamp;
@@ -37,7 +38,9 @@ module moneyfi::hyperion {
         threshold_denominator: u256,
         fee_amount: u64
     ) {
-        let wallet_signer = wallet_account::get_wallet_account_signer(operator, wallet_id);
+        let wallet_signer = wallet_account::get_wallet_account_signer(
+            operator, wallet_id
+        );
 
         let position =
             pool_v3::open_position(
@@ -88,7 +91,9 @@ module moneyfi::hyperion {
         _deadline: u64,
         fee_amount: u64
     ) {
-        let wallet_signer = wallet_account::get_wallet_account_signer(operator, wallet_id);
+        let wallet_signer = wallet_account::get_wallet_account_signer(
+            operator, wallet_id
+        );
         let position =
             pool_v3::open_position(
                 &wallet_signer,
@@ -291,7 +296,7 @@ module moneyfi::hyperion {
         wallet_id: vector<u8>,
         position: Object<Info>,
         asset: Object<Metadata>,
-        amount: u64,
+        _lp_amount: u128,
         slippage_numerator: u256,
         slippage_denominator: u256,
         fee_amount: u64
@@ -299,47 +304,66 @@ module moneyfi::hyperion {
         let wallet_signer = wallet_account::get_wallet_account_signer(
             operator, wallet_id
         );
-        claim_fees_and_rewards_from_operator(operator, wallet_id, position, asset, 0);
-        let (token_a, token_b, fee_tier) = get_pool_info(position);
-        let token_pair =
-            if (object::object_address(&token_a) == object::object_address(&asset)) {
-                token_a
-            } else {
-                token_b
-            };
-        let (tick_lower, tick_upper) = get_tick(position);
 
-        let (liquidity, _) =
-            optimal_liquidity_amounts_from_a(
-                i32::as_u32(tick_lower),
-                i32::as_u32(tick_upper),
-                i32::as_u32(tick_lower) + 1,
-                asset,
-                token_pair,
-                fee_tier,
-                amount,
-                1,
-                1
-            );
+        // Get amounts before removal
+        let (amount_a_before, amount_b_before) = get_amount_by_liquidity(position);
+
+        claim_fees_and_rewards_from_operator(operator, wallet_id, position, asset, 0);
 
         router_v3::remove_liquidity_single(
             &wallet_signer,
             position,
-            liquidity,
+            _lp_amount,
             asset,
             slippage_numerator,
             slippage_denominator
         );
 
-        let assets = vector::singleton<address>(object::object_address<Metadata>(&asset));
-        let amounts = vector::singleton<u64>(amount - fee_amount);
+        let (token_a, token_b, _) = position_v3::get_pool_info(position);
+
+        // Get amounts after removal
+        let (amount_a_after, amount_b_after) = get_amount_by_liquidity(position);
+
+        // Calculate withdrawn amounts
+        let withdrawn_amount_a = amount_a_before - amount_a_after;
+        let withdrawn_amount_b = amount_b_before - amount_b_after;
+
+        let asset_is_token_a =
+            object::object_address<Metadata>(&token_a)
+                == object::object_address<Metadata>(&asset);
+
+        let withdrawn_assets = vector::singleton<address>(
+            object::object_address<Metadata>(&asset)
+        );
+        let (withdrawn_amounts, amounts_after) =
+            if (asset_is_token_a) {
+                vector::push_back(
+                    &mut withdrawn_assets, object::object_address<Metadata>(&token_b)
+                );
+                let amounts = vector::singleton<u64>(withdrawn_amount_a);
+                vector::push_back(&mut amounts, withdrawn_amount_b);
+                let amounts_after = vector::singleton<u64>(amount_a_after);
+                vector::push_back(&mut amounts_after, amount_b_after);
+                (amounts, amounts_after)
+            } else {
+                vector::push_back(
+                    &mut withdrawn_assets, object::object_address<Metadata>(&token_a)
+                );
+                let amounts = vector::singleton<u64>(withdrawn_amount_b);
+                vector::push_back(&mut amounts, withdrawn_amount_a);
+                let amounts_after = vector::singleton<u64>(amount_b_after);
+                vector::push_back(&mut amounts_after, amount_a_after);
+                (amounts, amounts_after)
+            };
+
         let server_signer = access_control::get_object_data_signer();
         wallet_account::update_position_after_partial_removal(
             &server_signer,
             wallet_id,
             object::object_address<Info>(&position),
-            assets,
-            amounts,
+            withdrawn_assets,
+            withdrawn_amounts,
+            amounts_after,
             fee_amount
         );
     }

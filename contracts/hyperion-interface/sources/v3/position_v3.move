@@ -1,7 +1,7 @@
 module dex_contract::position_v3 {
 
     use aptos_framework::fungible_asset::{Metadata};
-    use aptos_framework::object::{Object};
+    use aptos_framework::object::{Self, Object};
 
     use dex_contract::rewarder::PositionReward;
     use dex_contract::i32::{Self, I32};
@@ -23,12 +23,11 @@ module dex_contract::position_v3 {
         token_a: Object<Metadata>,
         token_b: Object<Metadata>,
         fee_tier: u8,
-        rewards: vector<PositionReward>,
+        rewards: vector<PositionReward>
     }
 
-
     #[event]
-    struct CreatePositionEvent has store,drop {
+    struct CreatePositionEvent has store, drop {
         object_id: address,
         pool_id: address,
         token_a: Object<Metadata>,
@@ -42,16 +41,20 @@ module dex_contract::position_v3 {
     const EPOSITION_NOT_INITIALIZED: u64 = 1200002;
     const EPOSITION_NOT_EMPTY: u64 = 12000003;
 
-    public fun get_tick(
-        _position: Object<Info>
-    ): (I32, I32) {
+    public fun get_tick(_position: Object<Info>): (I32, I32) {
         (i32::zero(), i32::zero())
     }
 
-    public fun get_liquidity(
-        _position: Object<Info>
-    ): u128 {
+    public fun get_liquidity(_position: Object<Info>): u128 {
         0
     }
 
+    public fun get_pool_info(_position: Object<Info>):
+        (Object<Metadata>, Object<Metadata>, u8) {
+        (
+            object::convert<Info, Metadata>(_position),
+            object::convert<Info, Metadata>(_position),
+            0
+        )
+    }
 }

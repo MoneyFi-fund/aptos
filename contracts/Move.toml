@@ -4,13 +4,12 @@ version = "1.0.0"
 authors = []
 
 [addresses]
-moneyfi = "0xcafe"
+moneyfi = "_"
 stablecoin = "0xbae207659db88bea0cbead6da0ed00aac12edcdda169e591cd41c94180b46f3b"
 [dev-addresses]
 
 [dependencies.dex]
-local = "./deps/hyperion"
-#local = "./hyperion-interface"
+local = "./hyperion-interface"
 
 
 [dependencies.AptosFramework]
