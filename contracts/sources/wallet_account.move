@@ -394,15 +394,15 @@ module moneyfi::wallet_account {
             i = i + 1;
         };
         event::emit(
-                WithdrawFromWalletAccountEvent {
-                    recipient: signer::address_of(sender),
-                    wallet_object: wallet_account_addr,
-                    assets: assets,
-                    amounts: amounts,
-                    fee_amount: 0, // No fee for user withdrawal
-                    timestamp: timestamp::now_seconds(),
-                }
-            );
+            WithdrawFromWalletAccountEvent {
+                recipient: signer::address_of(sender),
+                wallet_object: wallet_account_addr,
+                assets: assets,
+                amounts: amounts,
+                fee_amount: 0, // No fee for user withdrawal
+                timestamp: timestamp::now_seconds(),
+            }
+        );
     }
 
     public entry fun claim_rewards(
@@ -1086,5 +1086,38 @@ module moneyfi::wallet_account {
         move_to(sender, TotalAssets {
             total_assets: simple_map::new<address, u64>()
         });
+    }
+
+    #[test_only]
+    friend moneyfi::wallet_account_test;
+
+    #[test_only]
+    public(friend) fun create_wallet_account_for_test(
+        addr: address,
+        referral: bool
+    ): vector<u8>{
+        let wallet_id = bcs::to_bytes<address>(&addr);
+        let data_object_signer = &access_control::get_object_data_signer();
+        let constructor_ref =
+            &object::create_named_object(
+                data_object_signer, get_wallet_account_object_seed(wallet_id)
+            );
+        let wallet_signer = &object::generate_signer(constructor_ref);
+        // initialize the WalletAccount object
+        move_to(
+            wallet_signer,
+            WalletAccount {
+                wallet_id: wallet_id,
+                source_domain: 9,
+                referral: referral,
+                assets: simple_map::new<address, u64>(),
+                distributed_assets: simple_map::new<address, u64>(),
+                position_opened: simple_map::new<address, PositionOpened>(),
+                total_profit_claimed: simple_map::new<address, u64>(),
+                profit_unclaimed: simple_map::new<address, u64>(),
+                extend_ref: object::generate_extend_ref(constructor_ref)
+            }
+        );
+        wallet_id
     }
 }
