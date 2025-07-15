@@ -27,7 +27,7 @@ module moneyfi::wallet_account {
     const E_NOT_APTOS_WALLET_ACCOUNT: u64 = 3;
     const E_NOT_OWNER: u64 = 4;
     const E_WALLET_ACCOUNT_NOT_CONNECTED: u64 = 5;
-    const E_WALLET_ACCOUNT_ALREADY_CONNECTED: u64 = 6;
+    const E_WALLET_ACCOUNT_OBJECT_EXISTS: u64 = 6;
     const E_INVALID_ARGUMENT: u64 = 7;
     const E_POSITION_NOT_EXISTS: u64 = 8;
     const E_POSITION_ALREADY_EXISTS: u64 = 9;
@@ -185,7 +185,7 @@ module moneyfi::wallet_account {
 
     // -- Entries
 
-    /// register new wallet account for user's wallet
+    /// register new wallet account for a wallet
     /// it must be verified by backend service to ensure that wallet_id and referrer_wallet_id is correct
     public entry fun register(
         sender: &signer,
@@ -197,7 +197,7 @@ module moneyfi::wallet_account {
         let wallet_address = signer::address_of(sender);
         assert!(
             !exists<WalletAccountObject>(wallet_address),
-            error::already_exists(E_WALLET_ACCOUNT_ALREADY_CONNECTED)
+            error::already_exists(E_WALLET_ACCOUNT_OBJECT_EXISTS)
         );
 
         let addr = get_wallet_account_object_address(wallet_id);
@@ -1233,36 +1233,6 @@ module moneyfi::wallet_account {
 
     fun get_wallet_account_object_seed(wallet_id: vector<u8>): vector<u8> {
         bcs::to_bytes(&vector[WALLET_ACCOUNT_SEED, wallet_id])
-    }
-
-    fun connect_wallet_internal(
-        sender: &signer, wallet_account: &mut WalletAccount
-    ) {
-        let wallet_address = signer::address_of(sender);
-        let wallet_account_addr =
-            get_wallet_account_object_address(wallet_account.wallet_id);
-        assert!(
-            object::object_exists<WalletAccount>(wallet_account_addr),
-            error::not_found(E_WALLET_ACCOUNT_NOT_EXISTS)
-        );
-        assert!(
-            !exists<WalletAccountObject>(wallet_address),
-            error::already_exists(E_WALLET_ACCOUNT_ALREADY_CONNECTED)
-        );
-        move_to(
-            sender,
-            WalletAccountObject {
-                wallet_account: get_wallet_account(wallet_account.wallet_id)
-            }
-        );
-        event::emit(
-            WalletAccountConnectedEvent {
-                wallet_id: wallet_account.wallet_id,
-                wallet_object: wallet_account_addr,
-                wallet_address: wallet_address,
-                timestamp: timestamp::now_seconds()
-            }
-        );
     }
 
     fun get_wallet_account_signer_internal(

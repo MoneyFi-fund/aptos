@@ -64,18 +64,6 @@ module moneyfi::fee_manager {
         math64::mul_div(protocol_fee, fee.referral_fee_rate, fee.denominator)
     }
 
-    public(friend) fun add_rebalance_fee(asset: address, amount: u64) acquires SystemFee {
-        let system_fee = borrow_global_mut<SystemFee>(@moneyfi);
-        if (!ordered_map::contains(&system_fee.rebalance_fee, &asset)) {
-            ordered_map::add(&mut system_fee.rebalance_fee, asset, amount);
-        } else {
-            let current_amount = *ordered_map::borrow(&system_fee.rebalance_fee, &asset);
-            ordered_map::upsert(
-                &mut system_fee.rebalance_fee, asset, current_amount + amount
-            );
-        };
-    }
-
     public(friend) fun add_distribute_fee(asset: address, amount: u64) acquires SystemFee {
         let system_fee = borrow_global_mut<SystemFee>(@moneyfi);
         if (!ordered_map::contains(&system_fee.distribute_fee, &asset)) {
@@ -102,9 +90,7 @@ module moneyfi::fee_manager {
         };
     }
 
-    public(friend) fun add_rebalance_fee(
-        sender: &signer, asset: address, amount: u64
-    ) acquires SystemFee {
+    public(friend) fun add_rebalance_fee(asset: address, amount: u64) acquires SystemFee {
         let system_fee = borrow_global_mut<SystemFee>(@moneyfi);
         if (!ordered_map::contains(&system_fee.rebalance_fee, &asset)) {
             ordered_map::add(&mut system_fee.rebalance_fee, asset, amount);

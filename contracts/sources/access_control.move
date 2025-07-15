@@ -158,7 +158,7 @@ module moneyfi::access_control {
         let addr = signer::address_of(sender);
         assert!(
             !exists<Registry>(addr),
-            E_ALREADY_INITIALIZED
+            error::already_exists(E_ALREADY_INITIALIZED)
         );
 
         let admin_addr =
