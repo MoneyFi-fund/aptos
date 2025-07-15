@@ -37,13 +37,15 @@ module moneyfi::wallet_account {
     struct WalletAccount has key {
         // wallet_id is a byte array of length 32
         wallet_id: vector<u8>,
+        // empty means has no referer
+        referrer_wallet_id: vector<u8>,
         // source_domain is the domain where the wallet is created
         // e.g. 9 for Aptos, 1 for Ethereum, etc.
         // This is used to identify the wallet account in cross-chain operations
-        source_domain: u32,
+        // source_domain: u32,
         // referral is the address of the referrer, if any
         // This can be used for referral programs or rewards
-        referral: bool,
+        // referral: bool,
         // assets user deposited to the wallet account
         assets: SimpleMap<address, u64>,
         // assets distributed pool
@@ -74,7 +76,7 @@ module moneyfi::wallet_account {
     #[event]
     struct WalletAccountCreatedEvent has drop, store {
         wallet_id: vector<u8>,
-        source_domain: u32,
+        // source_domain: u32,
         wallet_object: address,
         timestamp: u64
     }
@@ -181,6 +183,55 @@ module moneyfi::wallet_account {
     }
 
     // -- Entries
+
+    /// register new wallet account for user's wallet
+    /// it must be verified by backend service to ensure that wallet_id and referrer_wallet_id is correct
+    public entry fun register(
+        sender: &signer,
+        verifier: &signer,
+        wallet_id: vector<u8>,
+        referrer_wallet_id: vector<u8>
+    ) {
+        access_control::must_be_service_account(verifier);
+        let addr = get_wallet_account_object_address(wallet_id);
+        assert!(
+            !object::object_exists<WalletAccount>(addr),
+            error::already_exists(E_WALLET_ACCOUNT_EXISTS)
+        );
+
+        let extend_ref =
+            storage::create_child_object(get_wallet_account_object_seed(wallet_id));
+        let wallet_signer = &object::generate_signer_for_extending(&extend_ref);
+
+        move_to(
+            wallet_signer,
+            WalletAccount {
+                wallet_id,
+                referrer_wallet_id,
+                assets: simple_map::new<address, u64>(),
+                distributed_assets: simple_map::new<address, u64>(),
+                position_opened: simple_map::new<address, PositionOpened>(),
+                total_profit_claimed: simple_map::new<address, u64>(),
+                profit_unclaimed: simple_map::new<address, u64>(),
+                extend_ref
+            }
+        );
+
+        move_to(
+            sender,
+            WalletAccountObject {
+                wallet_account: object::address_to_object<WalletAccount>(addr)
+            }
+        );
+
+        event::emit(
+            WalletAccountCreatedEvent {
+                wallet_id: wallet_id,
+                wallet_object: addr,
+                timestamp: timestamp::now_seconds()
+            }
+        );
+    }
 
     // create a new WalletAccount for a given wallet_id<byte[32]>
     public entry fun create_wallet_account(
