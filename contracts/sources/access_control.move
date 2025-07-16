@@ -197,7 +197,7 @@ module moneyfi::access_control {
                 &mut system_fee.pending_referral_fee, asset_addr, current - amount
             );
         } else {
-            assert!(true, error::invalid_argument(E_ASSET_NOT_SUPPORTED))
+            assert!(false, error::invalid_argument(E_ASSET_NOT_SUPPORTED))
         };
 
         primary_fungible_store::transfer(
