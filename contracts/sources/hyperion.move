@@ -1,7 +1,6 @@
 module moneyfi::hyperion {
     use std::signer;
     use std::vector;
-    use std::error;
     use aptos_framework::object::{Self, Object};
     use aptos_framework::primary_fungible_store;
     use aptos_framework::timestamp;
@@ -12,10 +11,9 @@ module moneyfi::hyperion {
     use dex_contract::rewarder;
     use dex_contract::position_v3::{Self, Info};
 
-    use moneyfi::access_control;
     use moneyfi::wallet_account;
 
-    const DEADLINE_BUFFER: u64 = 31556926 ; // 1 years
+    const DEADLINE_BUFFER: u64 = 31556926; // 1 years
     const USDC_ADDRESS: address = @stablecoin;
 
     const STRATEGY_ID: u8 = 1; // Hyperion strategy id
@@ -37,16 +35,22 @@ module moneyfi::hyperion {
         threshold_denominator: u256,
         fee_amount: u64
     ) {
-        let wallet_signer = wallet_account::get_wallet_account_signer(operator,wallet_id);
-
-        let position = pool_v3::open_position(
-              &wallet_signer,
-              token_a,
-              token_b,
-              fee_tier,
-              tick_lower,
-              tick_upper
+        let wallet_signer = wallet_account::get_wallet_account_signer(
+            operator, wallet_id
         );
+
+        let balance_before =
+            primary_fungible_store::balance(signer::address_of(&wallet_signer), token_a);
+
+        let position =
+            pool_v3::open_position(
+                &wallet_signer,
+                token_a,
+                token_b,
+                fee_tier,
+                tick_lower,
+                tick_upper
+            );
 
         router_v3::add_liquidity_single(
             &wallet_signer,
@@ -60,13 +64,14 @@ module moneyfi::hyperion {
             threshold_denominator
         );
 
-        let server_signer = access_control::get_object_data_signer();
+        let balance_after =
+            primary_fungible_store::balance(signer::address_of(&wallet_signer), token_a);
+
         wallet_account::add_position_opened(
-            &server_signer,
             wallet_id,
             object::object_address<Info>(&position),
             vector::singleton<address>(object::object_address<Metadata>(&token_a)),
-            vector::singleton<u64>(amount_in - fee_amount),
+            vector::singleton<u64>(balance_before - balance_after - fee_amount),
             STRATEGY_ID,
             fee_amount
         );
@@ -87,15 +92,20 @@ module moneyfi::hyperion {
         _deadline: u64,
         fee_amount: u64
     ) {
-        let wallet_signer = wallet_account::get_wallet_account_signer(operator,wallet_id);
-        let position = pool_v3::open_position(
-              &wallet_signer,
-              token_a,
-              token_b,
-              fee_tier,
-              tick_lower,
-              tick_upper
+        let wallet_signer = wallet_account::get_wallet_account_signer(
+            operator, wallet_id
         );
+        let balance_a_before = primary_fungible_store::balance(signer::address_of(&wallet_signer), token_a);
+        let balance_b_before = primary_fungible_store::balance(signer::address_of(&wallet_signer), token_b);
+        let position =
+            pool_v3::open_position(
+                &wallet_signer,
+                token_a,
+                token_b,
+                fee_tier,
+                tick_lower,
+                tick_upper
+            );
         router_v3::add_liquidity(
             &wallet_signer,
             position,
@@ -109,27 +119,30 @@ module moneyfi::hyperion {
             _deadline
         );
 
-        let server_signer = access_control::get_object_data_signer();
-        let (_, amount_a, amount_b) = optimal_liquidity_amounts(
-            tick_lower,
-            tick_upper,
-            token_a,
-            token_b,
-            fee_tier,
-            _amount_a_desired - fee_amount,
-            _amount_b_desired,
-            _amount_a_min - fee_amount,
-            _amount_b_min
-        );
+        let (_, amount_a, amount_b) =
+            optimal_liquidity_amounts(
+                tick_lower,
+                tick_upper,
+                token_a,
+                token_b,
+                fee_tier,
+                _amount_a_desired - fee_amount,
+                _amount_b_desired,
+                _amount_a_min - fee_amount,
+                _amount_b_min
+            );
 
-        let assets = vector::singleton<address>(object::object_address<Metadata>(&token_a));
+        let balance_a_after = primary_fungible_store::balance(signer::address_of(&wallet_signer), token_a);
+        let balance_b_after = primary_fungible_store::balance(signer::address_of(&wallet_signer), token_b);
+        let assets = vector::singleton<address>(
+            object::object_address<Metadata>(&token_a)
+        );
         vector::push_back(&mut assets, object::object_address<Metadata>(&token_b));
-        
-        let amounts = vector::singleton<u64>(amount_a);
-        vector::push_back(&mut amounts, amount_b);
+
+        let amounts = vector::singleton<u64>(balance_a_before - balance_a_after - fee_amount);
+        vector::push_back(&mut amounts, balance_b_before - balance_b_after - fee_amount);
 
         wallet_account::add_position_opened(
-            &server_signer,
             wallet_id,
             object::object_address<Info>(&position),
             assets,
@@ -152,7 +165,10 @@ module moneyfi::hyperion {
         threshold_denominator: u256,
         fee_amount: u64
     ) {
-        let wallet_signer = wallet_account::get_wallet_account_signer(operator, wallet_id);
+        let wallet_signer = wallet_account::get_wallet_account_signer(
+            operator, wallet_id
+        );
+        let balance_before = primary_fungible_store::balance(signer::address_of(&wallet_signer), token_input);
         
         router_v3::add_liquidity_single(
             &wallet_signer,
@@ -165,14 +181,14 @@ module moneyfi::hyperion {
             threshold_numerator,
             threshold_denominator
         );
+        let balance_after = primary_fungible_store::balance(signer::address_of(&wallet_signer), token_input);
         
-        let server_signer = access_control::get_object_data_signer();
-        
-        let assets = vector::singleton<address>(object::object_address<Metadata>(&token_input));
-        let amounts = vector::singleton<u64>(amount_in - fee_amount);
+        let assets = vector::singleton<address>(
+            object::object_address<Metadata>(&token_input)
+        );
+        let amounts = vector::singleton<u64>(balance_before - balance_after - fee_amount);
 
         wallet_account::upgrade_position_opened(
-            &server_signer,
             wallet_id,
             object::object_address<Info>(&position),
             assets,
@@ -195,8 +211,12 @@ module moneyfi::hyperion {
         deadline: u64,
         fee_amount: u64
     ) {
-        let wallet_signer = wallet_account::get_wallet_account_signer(operator, wallet_id);
-        
+        let wallet_signer = wallet_account::get_wallet_account_signer(
+            operator, wallet_id
+        );
+        let balance_a_before = primary_fungible_store::balance(signer::address_of(&wallet_signer), token_a);
+        let balance_b_before = primary_fungible_store::balance(signer::address_of(&wallet_signer), token_b);
+
         router_v3::add_liquidity(
             &wallet_signer,
             position,
@@ -209,35 +229,37 @@ module moneyfi::hyperion {
             amount_b_min,
             deadline
         );
-        let server_signer = access_control::get_object_data_signer();
-
+    
         let (tick_lower, tick_upper) = position_v3::get_tick(position);
-        let (_, amount_a, amount_b) = optimal_liquidity_amounts(
-            i32::as_u32(tick_lower),
-            i32::as_u32(tick_upper),
-            token_a,
-            token_b,
-            fee_tier,
-            amount_a_desired - fee_amount,
-            amount_b_desired,
-            amount_a_min - fee_amount,
-            amount_b_min
+        let (_, amount_a, amount_b) =
+            optimal_liquidity_amounts(
+                i32::as_u32(tick_lower),
+                i32::as_u32(tick_upper),
+                token_a,
+                token_b,
+                fee_tier,
+                amount_a_desired - fee_amount,
+                amount_b_desired,
+                amount_a_min - fee_amount,
+                amount_b_min
+            );
+        let balance_a_after = primary_fungible_store::balance(signer::address_of(&wallet_signer), token_a);
+        let balance_b_after = primary_fungible_store::balance(signer::address_of(&wallet_signer), token_b);
+        let assets = vector::singleton<address>(
+            object::object_address<Metadata>(&token_a)
         );
-
-        let assets = vector::singleton<address>(object::object_address<Metadata>(&token_a));
         vector::push_back(&mut assets, object::object_address<Metadata>(&token_b));
-        
-        let amounts = vector::singleton<u64>(amount_a);
-        vector::push_back(&mut amounts, amount_b);
+
+        let amounts = vector::singleton<u64>(balance_a_before - balance_a_after - fee_amount);
+        vector::push_back(&mut amounts, balance_b_before - balance_a_after);
 
         wallet_account::upgrade_position_opened(
-            &server_signer,
             wallet_id,
             object::object_address<Info>(&position),
             assets,
             amounts,
             fee_amount
-            );
+        );
     }
 
     public entry fun remove_liquidity_single_from_operator(
@@ -249,14 +271,10 @@ module moneyfi::hyperion {
         slippage_denominator: u256,
         fee_amount: u64
     ) {
-        let wallet_signer = wallet_account::get_wallet_account_signer(operator, wallet_id);
-        claim_fees_and_rewards_from_operator(
-            operator,
-            wallet_id,
-            position,
-            asset,
-            0
+        let wallet_signer = wallet_account::get_wallet_account_signer(
+            operator, wallet_id
         );
+        claim_fees_and_rewards_from_operator(operator, wallet_id, position, asset, 0);
         let liquidity = position_v3::get_liquidity(position);
         router_v3::remove_liquidity_single(
             &wallet_signer,
@@ -264,11 +282,10 @@ module moneyfi::hyperion {
             liquidity,
             asset,
             slippage_numerator,
-            slippage_denominator,
+            slippage_denominator
         );
-        let server_signer = access_control::get_object_data_signer();
+        
         wallet_account::remove_position_opened(
-            &server_signer,
             wallet_id,
             object::object_address<Info>(&position),
             asset,
@@ -281,59 +298,62 @@ module moneyfi::hyperion {
         wallet_id: vector<u8>,
         position: Object<Info>,
         asset: Object<Metadata>,
-        amount: u64,
+        _lp_amount: u128,
         slippage_numerator: u256,
         slippage_denominator: u256,
         fee_amount: u64
     ) {
-        let wallet_signer = wallet_account::get_wallet_account_signer(operator, wallet_id);
-        claim_fees_and_rewards_from_operator(
-            operator,
-            wallet_id,
-            position,
-            asset,
-            0
+        let wallet_signer = wallet_account::get_wallet_account_signer(
+            operator, wallet_id
         );
-        let (token_a, token_b, fee_tier) = get_pool_info(position);
-        let token_pair = if (object::object_address(&token_a) == object::object_address(&asset)){
-            token_a
+        if(_lp_amount >= get_liquidity(position)) {
+            remove_liquidity_single_from_operator(
+                operator, wallet_id, position, asset, slippage_numerator, slippage_denominator, fee_amount
+            );
         }else {
-            token_b
+            // Get amount before removal
+            let balance_before =
+                primary_fungible_store::balance(signer::address_of(&wallet_signer), asset);
+
+            let (assets, amounts) =
+                wallet_account::get_amount_by_position(
+                    wallet_id, object::object_address<Info>(&position)
+                );
+            let (_, index) = vector::index_of(
+                &assets, &object::object_address<Metadata>(&asset)
+            );
+            let amounts_before = *vector::borrow(&amounts, index);
+
+            claim_fees_and_rewards_from_operator(operator, wallet_id, position, asset, 0);
+
+            router_v3::remove_liquidity_single(
+                &wallet_signer,
+                position,
+                _lp_amount,
+                asset,
+                slippage_numerator,
+                slippage_denominator
+            );
+
+            let balance_after =
+                primary_fungible_store::balance(signer::address_of(&wallet_signer), asset);
+
+            let withdrawn_amount = balance_after - balance_before;
+            let withdrawn_assets = vector::singleton<address>(
+                object::object_address<Metadata>(&asset)
+            );
+            let withdrawn_amounts = vector::singleton<u64>(withdrawn_amount);
+            let amounts_after = vector::singleton<u64>(amounts_before - withdrawn_amount);
+            
+            wallet_account::update_position_after_partial_removal(
+                wallet_id,
+                object::object_address<Info>(&position),
+                withdrawn_assets,
+                withdrawn_amounts,
+                amounts_after,
+                fee_amount
+            );
         };
-        let (tick_lower, tick_upper) = get_tick(position);
-
-        let (liquidity,_) = optimal_liquidity_amounts_from_a (
-            i32::as_u32(tick_lower),
-            i32::as_u32(tick_upper),
-            i32::as_u32(tick_lower) + 1,
-            asset,
-            token_pair,
-            fee_tier,
-            amount,
-            1,
-            1
-        );
-
-        router_v3::remove_liquidity_single(
-            &wallet_signer,
-            position,
-            liquidity,
-            asset,
-            slippage_numerator,
-            slippage_denominator,
-        );
-
-        let assets = vector::singleton<address>(object::object_address<Metadata>(&asset));
-        let amounts = vector::singleton<u64>(amount - fee_amount);
-        let server_signer = access_control::get_object_data_signer();
-        wallet_account::update_position_after_partial_removal(
-            &server_signer,
-            wallet_id,
-            object::object_address<Info>(&position),
-            assets,
-            amounts,
-            fee_amount
-        );
     }
 
     public entry fun claim_fees_and_rewards_from_operator(
@@ -343,39 +363,43 @@ module moneyfi::hyperion {
         asset: Object<Metadata>,
         fee_amount: u64
     ) {
-        let wallet_signer = wallet_account::get_wallet_account_signer(operator, wallet_id);
+        let wallet_signer = wallet_account::get_wallet_account_signer(
+            operator, wallet_id
+        );
         let wallet_address = signer::address_of(&wallet_signer);
-        
+
         // Get balance before claiming
         let balance_before = primary_fungible_store::balance(wallet_address, asset);
-        
+
         // Get pool and fee information (still needed for swapping)
         let (token_a, token_b, fee_tier) = get_pool_info(position);
         let pending_fees = get_pending_fees(position);
         let fee_amount_a = *vector::borrow(&pending_fees, 0);
         let fee_amount_b = *vector::borrow(&pending_fees, 1);
-        
+
         // Get reward information
         let pending_rewards = get_pending_rewards(position);
-        
+
         // Claim fees and rewards for single position
         let position_addresses = vector::empty<address>();
-        vector::push_back(&mut position_addresses, object::object_address<Info>(&position));
-        
-        router_v3::claim_fees_and_rewards_directly_deposit(
-            &wallet_signer,
-            position_addresses,
+        vector::push_back(
+            &mut position_addresses, object::object_address<Info>(&position)
         );
-        
+
+        router_v3::claim_fees_and_rewards_directly_deposit(
+            &wallet_signer, position_addresses
+        );
+
         // Swap token_a to stablecoin if not already stablecoin
-        if (object::object_address<Metadata>(&token_a) != object::object_address<Metadata>(&asset)) {
+        if (object::object_address<Metadata>(&token_a)
+            != object::object_address<Metadata>(&asset)) {
             if (fee_amount_a > 0) {
                 router_v3::exact_input_swap_entry(
                     &wallet_signer,
                     fee_tier,
                     fee_amount_a,
-                    99,
-                    0, // sqrt_price_limit = 0 for no limit
+                    0,
+                    4295048016 + 1, // min
                     token_a,
                     asset,
                     wallet_address,
@@ -383,16 +407,17 @@ module moneyfi::hyperion {
                 );
             };
         };
-        
+
         // Swap token_b to stablecoin if not already stablecoin
-        if (object::object_address<Metadata>(&token_b) != object::object_address<Metadata>(&asset)) {
+        if (object::object_address<Metadata>(&token_b)
+            != object::object_address<Metadata>(&asset)) {
             if (fee_amount_b > 0) {
                 router_v3::exact_input_swap_entry(
                     &wallet_signer,
                     fee_tier,
                     fee_amount_b,
-                    99,
-                    0, // sqrt_price_limit = 0 for no limit
+                    0,
+                    4295048016 + 1, // min
                     token_b,
                     asset,
                     wallet_address,
@@ -400,22 +425,23 @@ module moneyfi::hyperion {
                 );
             };
         };
-        
+
         // Swap reward tokens to stablecoin
         let p = 0;
         let rewards_len = vector::length(&pending_rewards);
         while (p < rewards_len) {
             let reward = vector::borrow(&pending_rewards, p);
             let (reward_token, reward_amount) = rewarder::pending_rewards_unpack(reward);
-            
-            if (object::object_address<Metadata>(&reward_token) != object::object_address<Metadata>(&asset)) {
+
+            if (object::object_address<Metadata>(&reward_token)
+                != object::object_address<Metadata>(&asset)) {
                 if (reward_amount > 0) {
                     router_v3::exact_input_swap_entry(
                         &wallet_signer,
                         1, // fee_tier for reward swaps
                         reward_amount,
-                        99,
-                        0, // sqrt_price_limit = 0 for no limit
+                        0,
+                        4295048016 + 1, // min
                         reward_token,
                         asset,
                         wallet_address,
@@ -423,19 +449,17 @@ module moneyfi::hyperion {
                     );
                 };
             };
-            
+
             p = p + 1;
         };
 
         // Get balance after claiming and swapping
         let balance_after = primary_fungible_store::balance(wallet_address, asset);
-        
+
         // Calculate total stablecoin amount gained
         let total_stablecoin_amount = balance_after - balance_before;
 
-        let server_signer = access_control::get_object_data_signer();
         wallet_account::add_profit_unclaimed(
-            &server_signer,
             wallet_id,
             object::object_address<Info>(&position),
             object::object_address<Metadata>(&asset),
@@ -444,86 +468,98 @@ module moneyfi::hyperion {
         );
     }
 
-
     //-- Views
     #[view]
-    public fun get_pending_rewards_and_fees_usdc(
-        position: Object<Info>
-    ): u64 {
+    public fun get_pending_rewards_and_fees_usdc(position: Object<Info>): u64 {
         let stablecoin_metadata = object::address_to_object<Metadata>(USDC_ADDRESS);
-        let total_stablecoin_amount : u64 = 0;
-        
+        let total_stablecoin_amount: u64 = 0;
+
         // Get pool and fee information
         let (token_a, token_b, fee_tier) = get_pool_info(position);
         let pending_fees = get_pending_fees(position);
         let fee_amount_a = *vector::borrow(&pending_fees, 0);
         let fee_amount_b = *vector::borrow(&pending_fees, 1);
-        
+
         // Get reward information
         let pending_rewards = get_pending_rewards(position);
-        
+
         // Convert fees to stablecoin
-        if (fee_amount_a > 0 && object::object_address<Metadata>(&token_a) != object::object_address<Metadata>(&stablecoin_metadata)) {
-            let pool_a_to_stable = pool_v3::liquidity_pool(token_a, stablecoin_metadata, fee_tier);
-            let (amount_out_a, _) = pool_v3::get_amount_out(pool_a_to_stable, token_a, fee_amount_a);
+        if (fee_amount_a > 0
+            && object::object_address<Metadata>(&token_a)
+                != object::object_address<Metadata>(&stablecoin_metadata)) {
+            let pool_a_to_stable =
+                pool_v3::liquidity_pool(token_a, stablecoin_metadata, fee_tier);
+            let (amount_out_a, _) =
+                pool_v3::get_amount_out(pool_a_to_stable, token_a, fee_amount_a);
             total_stablecoin_amount = total_stablecoin_amount + amount_out_a;
-        } else if (fee_amount_a > 0 && object::object_address<Metadata>(&token_a) == object::object_address<Metadata>(&stablecoin_metadata)) {
+        } else if (fee_amount_a > 0
+            && object::object_address<Metadata>(&token_a)
+                == object::object_address<Metadata>(&stablecoin_metadata)) {
             total_stablecoin_amount = total_stablecoin_amount + fee_amount_a;
         };
-        
-        if (fee_amount_b > 0 && object::object_address<Metadata>(&token_b) != object::object_address<Metadata>(&stablecoin_metadata)) {
-            let pool_b_to_stable = pool_v3::liquidity_pool(token_b, stablecoin_metadata, fee_tier);
-            let (amount_out_b, _) = pool_v3::get_amount_out(pool_b_to_stable, token_b, fee_amount_b);
+
+        if (fee_amount_b > 0
+            && object::object_address<Metadata>(&token_b)
+                != object::object_address<Metadata>(&stablecoin_metadata)) {
+            let pool_b_to_stable =
+                pool_v3::liquidity_pool(token_b, stablecoin_metadata, fee_tier);
+            let (amount_out_b, _) =
+                pool_v3::get_amount_out(pool_b_to_stable, token_b, fee_amount_b);
             total_stablecoin_amount = total_stablecoin_amount + amount_out_b;
-        } else if (fee_amount_b > 0 && object::object_address<Metadata>(&token_b) == object::object_address<Metadata>(&stablecoin_metadata)) {
+        } else if (fee_amount_b > 0
+            && object::object_address<Metadata>(&token_b)
+                == object::object_address<Metadata>(&stablecoin_metadata)) {
             total_stablecoin_amount = total_stablecoin_amount + fee_amount_b;
         };
-        
+
         // Convert rewards to stablecoin
         let j = 0;
         let rewards_len = vector::length(&pending_rewards);
         while (j < rewards_len) {
             let reward = vector::borrow(&pending_rewards, j);
             let (reward_token, reward_amount) = rewarder::pending_rewards_unpack(reward);
-            
-            if (reward_amount > 0 && object::object_address<Metadata>(&reward_token) != object::object_address<Metadata>(&stablecoin_metadata)) {
-                let pool_reward_to_stable = pool_v3::liquidity_pool(reward_token, stablecoin_metadata, 1);
-                let (amount_out_reward, _) = pool_v3::get_amount_out(pool_reward_to_stable, reward_token, reward_amount);
+
+            if (reward_amount > 0
+                && object::object_address<Metadata>(&reward_token)
+                    != object::object_address<Metadata>(&stablecoin_metadata)) {
+                let pool_reward_to_stable =
+                    pool_v3::liquidity_pool(reward_token, stablecoin_metadata, 1);
+                let (amount_out_reward, _) =
+                    pool_v3::get_amount_out(
+                        pool_reward_to_stable, reward_token, reward_amount
+                    );
                 total_stablecoin_amount = total_stablecoin_amount + amount_out_reward;
-            } else if (reward_amount > 0 && object::object_address<Metadata>(&reward_token) == object::object_address<Metadata>(&stablecoin_metadata)) {
+            } else if (reward_amount > 0
+                && object::object_address<Metadata>(&reward_token)
+                    == object::object_address<Metadata>(&stablecoin_metadata)) {
                 total_stablecoin_amount = total_stablecoin_amount + reward_amount;
             };
-            
+
             j = j + 1;
         };
         total_stablecoin_amount
     }
-        
+
     #[view]
-    public fun get_tick(
-        _position: Object<Info>
-    ): (I32, I32) {
+    public fun get_tick(_position: Object<Info>): (I32, I32) {
         position_v3::get_tick(_position)
     }
 
     #[view]
-     public fun get_liquidity(
-        _position: Object<Info>
-    ): u128 {
+    public fun get_liquidity(_position: Object<Info>): u128 {
         position_v3::get_liquidity(_position)
     }
 
-     #[view]
+    #[view]
     public fun get_amount_by_liquidity(_position: Object<Info>): (u64, u64) {
         router_v3::get_amount_by_liquidity(_position)
     }
 
     #[view]
-    public fun get_pending_rewards(
-        _position: Object<Info>
-    ): vector<rewarder::PendingReward> {
+    public fun get_pending_rewards(_position: Object<Info>): vector<rewarder::PendingReward> {
         pool_v3::get_pending_rewards(_position)
     }
+
     //public fun rewarder::pending_rewards_unpack(info: &PendingReward): (Object<Metadata>, u64)
 
     #[view]
@@ -532,9 +568,8 @@ module moneyfi::hyperion {
     }
 
     #[view]
-    public fun get_pool_info(
-        _position: Object<Info>
-    ):(Object<Metadata>, Object<Metadata>, u8) { // Returns (token_a, token_b, free_tier)
+    public fun get_pool_info(_position: Object<Info>):
+        (Object<Metadata>, Object<Metadata>, u8) { // Returns (token_a, token_b, free_tier)
         position_v3::get_pool_info(_position)
     }
 
@@ -548,7 +583,7 @@ module moneyfi::hyperion {
         _amount_a_desired: u64,
         _amount_b_desired: u64,
         _amount_a_min: u64,
-        _amount_b_min: u64,
+        _amount_b_min: u64
     ): (u128, u64, u64) {
         router_v3::optimal_liquidity_amounts(
             _tick_lower_u32,
@@ -573,7 +608,7 @@ module moneyfi::hyperion {
         _fee_tier: u8,
         _amount_a_desired: u64,
         _amount_a_min: u64,
-        _amount_b_min: u64,
+        _amount_b_min: u64
     ): (u128, u64) {
         router_v3::optimal_liquidity_amounts_from_a(
             _tick_lower_u32,
@@ -587,5 +622,4 @@ module moneyfi::hyperion {
             _amount_b_min
         )
     }
-
 }

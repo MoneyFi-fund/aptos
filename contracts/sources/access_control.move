@@ -42,6 +42,13 @@ module moneyfi::access_control {
         timestamp: u64
     }
 
+    #[event]
+    struct RevokeRoleEvent has drop, store {
+        account: address,
+        roles: vector<u8>,
+        timestamp: u64
+    }
+
     fun init_module(sender: &signer) {
         let addr = signer::address_of(sender);
         assert!(
@@ -113,11 +120,14 @@ module moneyfi::access_control {
         ensure_registry_is_unlocked(registry);
         ensure_account_is_safe_to_remove(registry, account);
 
-        if (ordered_map::contains(&registry.accounts, &account)) {
+        let roles = if (ordered_map::contains(&registry.accounts, &account)) {
+            let roles = *ordered_map::borrow(&registry.accounts, &account);
             ordered_map::remove(&mut registry.accounts, &account);
-        }
-
-        // TODO: dispatch event?
+            roles
+        }else {
+            vector::empty<u8>()
+        };
+        event::emit(RevokeRoleEvent { account, roles: roles, timestamp: now_seconds() });
     }
 
     // -- Views
@@ -183,7 +193,6 @@ module moneyfi::access_control {
                 }
             }
         );
-
         n
     }
 
