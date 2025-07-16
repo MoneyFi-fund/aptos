@@ -147,7 +147,7 @@ module moneyfi::vault {
     }
 
     public entry fun deposit(
-        sender: &signer, asset: Object<Metadata>, amount: u64
+        sender: &signer, wallet_id: vector<u8>, asset: Object<Metadata>, amount: u64
     ) acquires Config {
         let config = borrow_global<Config>(@moneyfi);
         assert!(
@@ -155,29 +155,34 @@ module moneyfi::vault {
             error::permission_denied(E_DEPOSIT_NOT_ALLOWED)
         );
 
-        let wallet_addr = signer::address_of(sender);
-        let account = wallet_account::get_wallet_account_by_address(wallet_addr);
-
-        primary_fungible_store::transfer(
+        wallet_account::deposit_to_wallet_account(
             sender,
-            asset,
-            object::object_address(&account),
-            amount
-        );
-
-        // TODO: mint LP
-
-        event::emit(
-            Deposited {
-                sender: wallet_addr,
-                wallet_account: account,
-                asset,
-                amount,
-                lp_amount: 0,
-                timestamp: now_seconds()
-            }
+            wallet_id,
+            vector::singleton<Object<Metadata>>(asset),
+            vector::singleton<u64>(amount),
+            0
         );
     }
+
+    public entry fun withdraw(
+        sender: &signer,
+        wallet_id: vector<u8>,
+        assets: Object<Metadata>,
+        amounts: u64
+    ) acquires Config {
+        let config = borrow_global<Config>(@moneyfi);
+        assert!(
+            can_deposit(config, asset, amount),
+            error::permission_denied(E_DEPOSIT_NOT_ALLOWED)
+        );
+        wallet_account::withdraw_from_wallet_account_by_user(
+            sender,
+            wallet_id,
+            vector::singleton<Object<Metadata>>(asset),
+            vector::singleton<u64>(amount)
+        );
+    }
+    
 
     // -- Views
 
