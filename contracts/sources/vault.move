@@ -20,6 +20,7 @@ module moneyfi::vault {
         BurnRef
     };
     use aptos_framework::primary_fungible_store;
+    use aptos_framework::timestamp;
 
     use moneyfi::access_control;
     use moneyfi::wallet_account;
@@ -46,7 +47,8 @@ module moneyfi::vault {
         min_deposit: u64,
         max_deposit: u64,
         min_withdraw: u64,
-        max_withdraw: u64
+        max_withdraw: u64,
+        lp_exchange_rate: u64
     }
 
     struct LPToken has key {
@@ -55,6 +57,17 @@ module moneyfi::vault {
         transfer_ref: TransferRef,
         burn_ref: BurnRef,
         extend_ref: ExtendRef
+    }
+
+    //  -- events
+    #[event]
+    struct Deposited has drop, store {
+        sender: address,
+        wallet_account: Object<wallet_account::WalletAccount>,
+        asset: Object<Metadata>,
+        amount: u64,
+        lp_amount: u64,
+        timestamp: u64
     }
 
     // -- init
@@ -90,14 +103,22 @@ module moneyfi::vault {
         min_deposit: u64,
         max_deposit: u64,
         min_withdraw: u64,
-        max_withdraw: u64
+        max_withdraw: u64,
+        lp_exchange_rate: u64
     ) acquires Config {
         access_control::must_be_service_account(sender);
         let config = borrow_global_mut<Config>(@moneyfi);
 
         config.upsert_asset(
             asset,
-            AssetConfig { enabled, min_deposit, max_deposit, min_withdraw, max_withdraw }
+            AssetConfig {
+                enabled,
+                min_deposit,
+                max_deposit,
+                min_withdraw,
+                max_withdraw,
+                lp_exchange_rate
+            }
         )
         // TODO: distpatch event
     }
@@ -128,7 +149,18 @@ module moneyfi::vault {
             amount
         );
 
-        // TODO: mint LP, dispatch event
+        // TODO: mint LP
+
+        event::emit(
+            Deposited {
+                sender: wallet_addr,
+                wallet_account: account,
+                asset,
+                amount,
+                lp_amount: 0,
+                timestamp: timestamp::now_seconds()
+            }
+        );
     }
 
     // -- Views

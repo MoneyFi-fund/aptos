@@ -1,4 +1,6 @@
 module moneyfi::storage {
+    use std::signer;
+    use std::bcs;
     use aptos_framework::object::{
         Self,
         Object,
@@ -11,6 +13,8 @@ module moneyfi::storage {
     use moneyfi::access_control;
 
     friend moneyfi::wallet_account;
+
+    const OBJECT_OWNER_SEED: vector<u8> = b"OBJECT_OWNER";
 
     struct Storage has key {
         object: Object<ObjectCore>,
@@ -30,7 +34,6 @@ module moneyfi::storage {
                 extend_ref: object::generate_extend_ref(constructor_ref),
                 transfer_ref
             }
-
         );
     }
 
@@ -53,6 +56,10 @@ module moneyfi::storage {
         object::object_address(&storage.object)
     }
 
+    public fun get_child_address(seed: vector<u8>): address acquires Storage {
+        object::create_object_address(&get_address(), seed)
+    }
+
     // -- Private
 
     fun get_signer(): signer acquires Storage {
@@ -62,11 +69,20 @@ module moneyfi::storage {
     }
 
     public(friend) fun create_child_object(seed: vector<u8>): ExtendRef acquires Storage {
-        let signer = get_signer();
+        assert!(seed != OBJECT_OWNER_SEED);
 
-        let constructor_ref = &object::create_named_object(&signer, seed);
+        let storage_signer = get_signer();
+
+        let constructor_ref = &object::create_named_object(&storage_signer, seed);
         let transfer_ref = object::generate_transfer_ref(constructor_ref);
         object::disable_ungated_transfer(&transfer_ref);
+
+        let addr = object::address_from_constructor_ref(constructor_ref);
+        let storage_addr = signer::address_of(&storage_signer);
+        let owner_addr = object::create_object_address(&storage_addr, OBJECT_OWNER_SEED);
+
+        let linear_transfer_ref = object::generate_linear_transfer_ref(&transfer_ref);
+        object::transfer_with_ref(linear_transfer_ref, owner_addr);
 
         object::generate_extend_ref(constructor_ref)
     }
