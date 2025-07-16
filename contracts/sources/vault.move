@@ -1,11 +1,11 @@
 module moneyfi::vault {
-
     use std::bcs;
     use std::signer;
+    use std::debug;
+    use std::error;
     use std::vector;
     use std::string::{Self, String};
     use std::option::{Self, Option};
-    use aptos_std::table::{Self, Table};
     use aptos_std::string_utils;
     use aptos_framework::account;
     use aptos_framework::ordered_map::{Self, OrderedMap};
@@ -20,7 +20,6 @@ module moneyfi::vault {
         BurnRef
     };
     use aptos_framework::primary_fungible_store;
-    use aptos_framework::auth_data::{Self, AbstractionAuthData};
 
     use moneyfi::access_control;
     use moneyfi::wallet_account;
@@ -32,9 +31,8 @@ module moneyfi::vault {
 
     // -- Errors
     const E_ALREADY_INITIALIZED: u64 = 1;
-    const E_PAUSED: u64 = 2;
-    const E_WALLET_ACCOUNT_EXISTS: u64 = 3;
-    const E_WALLET_ACCOUNT_NOT_EXISTS: u64 = 4;
+    const E_DEPOSIT_NOT_ALLOWED: u64 = 2;
+    const E_WITHDRAW_NOT_ALLOWED: u64 = 3;
 
     // -- Structs
     struct Config has key {
@@ -43,7 +41,7 @@ module moneyfi::vault {
         supported_assets: OrderedMap<address, AssetConfig>
     }
 
-    struct AssetConfig has store {
+    struct AssetConfig has store, drop {
         enabled: bool,
         min_deposit: u64,
         max_deposit: u64,
@@ -61,38 +59,11 @@ module moneyfi::vault {
 
     // -- init
     fun init_module(sender: &signer) {
-        initialize(sender);
-    }
-
-    // -- Entries
-
-    public entry fun deposit(
-        sender: &signer, token_address: address, amount: u64
-    ) {
-        assert!(amount > 0);
-        let wallet_addr = signer::address_of(sender);
-        // let account = wallet_account::get_wallet_account(wallet_addr);
-
-        // let metadata = object::address_to_object<Metadata>(token_address);
-        // primary_fungible_store::transfer(
-        //     sender,
-        //     metadata,
-        //     object::object_address(&wallet_account.wallet_account),
-        //     amount
-        // );
-
-        // TODO: mint LP, dispatch event
-    }
-
-    // -- Views
-
-    // -- Public
-
-    // -- Private
-
-    fun initialize(sender: &signer) {
         let addr = signer::address_of(sender);
-        assert!(!exists<Config>(addr), E_ALREADY_INITIALIZED);
+        assert!(
+            !exists<Config>(addr),
+            error::already_exists(E_ALREADY_INITIALIZED)
+        );
 
         move_to(
             sender,
@@ -105,6 +76,66 @@ module moneyfi::vault {
 
         init_lp_token(sender);
     }
+
+    // -- Entries
+
+    public entry fun configure(sender: &signer) {
+        // TODO
+    }
+
+    public entry fun upsert_supported_asset(
+        sender: &signer,
+        asset: Object<Metadata>,
+        enabled: bool,
+        min_deposit: u64,
+        max_deposit: u64,
+        min_withdraw: u64,
+        max_withdraw: u64
+    ) acquires Config {
+        access_control::must_be_service_account(sender);
+        let config = borrow_global_mut<Config>(@moneyfi);
+
+        config.upsert_asset(
+            asset,
+            AssetConfig { enabled, min_deposit, max_deposit, min_withdraw, max_withdraw }
+        )
+        // TODO: distpatch event
+    }
+
+    public entry fun remove_supported_asset(
+        sender: &signer, token: Object<Metadata>
+    ) {
+        access_control::must_be_service_account(sender);
+        // TODO
+    }
+
+    public entry fun deposit(
+        sender: &signer, asset: Object<Metadata>, amount: u64
+    ) acquires Config {
+        let config = borrow_global<Config>(@moneyfi);
+        assert!(
+            config.can_deposit(asset, amount),
+            error::permission_denied(E_DEPOSIT_NOT_ALLOWED)
+        );
+
+        let wallet_addr = signer::address_of(sender);
+        let account = wallet_account::get_wallet_account_by_address(wallet_addr);
+
+        primary_fungible_store::transfer(
+            sender,
+            asset,
+            object::object_address(&account),
+            amount
+        );
+
+        // TODO: mint LP, dispatch event
+    }
+
+    // -- Views
+
+    // -- Public
+
+    // -- Private
 
     fun init_lp_token(sender: &signer) {
         let constructor_ref = &object::create_sticky_object(@moneyfi);
@@ -135,6 +166,36 @@ module moneyfi::vault {
                 extend_ref
             }
         );
+    }
 
+    fun upsert_asset(
+        self: &mut Config, asset: Object<Metadata>, config: AssetConfig
+    ) {
+        let addr = object::object_address(&asset);
+        ordered_map::upsert(&mut self.supported_assets, addr, config);
+    }
+
+    fun can_deposit(self: &Config, asset: Object<Metadata>, amount: u64): bool {
+        if (amount == 0) return false;
+
+        let addr = object::object_address(&asset);
+        if (ordered_map::contains(&self.supported_assets, &addr)) {
+            let config = ordered_map::borrow(&self.supported_assets, &addr);
+
+            return config.enabled
+                && (config.max_deposit == 0
+                    || config.max_deposit >= amount)
+                && (config.min_deposit == 0
+                    || config.min_deposit <= amount);
+        };
+
+        false
+    }
+
+    // -- test only
+
+    #[test_only]
+    public fun init_module_for_testing(sender: &signer) {
+        init_module(sender)
     }
 }

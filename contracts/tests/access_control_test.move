@@ -18,18 +18,15 @@ module moneyfi::access_control_test {
 
         // Simulate module deployment
         account::create_account_for_test(deployer_addr);
-        access_control::initialize(deployer);
+        access_control::init_module_for_testing(deployer);
 
-        access_control::must_be_role_manager(deployer);
-
-        access_control::upsert_account(deployer, user1_addr, vector[1]);
-        access_control::must_be_role_manager(user1);
+        access_control::must_be_admin(deployer);
 
         access_control::upsert_account(deployer, user1_addr, vector[2]);
-        access_control::must_be_service_account(user1);
+        access_control::must_be_role_manager(user1);
 
-        access_control::remove_account(deployer, user1_addr);
-        // TODO: not sure how to expect failure when call must_be_admin yet
+        access_control::upsert_account(user1, user1_addr, vector[2, 3]);
+        access_control::must_be_service_account(user1);
     }
 
     #[test(deployer = @moneyfi, user = @0x2)]
@@ -39,7 +36,7 @@ module moneyfi::access_control_test {
     ) {
         let user_addr = signer::address_of(user);
         account::create_account_for_test(signer::address_of(deployer));
-        access_control::initialize(deployer);
+        access_control::init_module_for_testing(deployer);
 
         access_control::remove_account(user, user_addr);
     }

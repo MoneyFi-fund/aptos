@@ -70,4 +70,10 @@ module moneyfi::storage {
 
         object::generate_extend_ref(constructor_ref)
     }
+
+    // -- Test only
+    #[test_only]
+    public fun init_module_for_testing(sender: &signer) {
+        init_module(sender)
+    }
 }

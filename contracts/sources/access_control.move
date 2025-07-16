@@ -42,11 +42,22 @@ module moneyfi::access_control {
         timestamp: u64
     }
 
-    #[test_only]
-    friend moneyfi::access_control_test;
-
     fun init_module(sender: &signer) {
-        initialize(sender)
+        let addr = signer::address_of(sender);
+        assert!(
+            !exists<Registry>(addr),
+            error::already_exists(E_ALREADY_INITIALIZED)
+        );
+
+        let admin_addr =
+            if (object::is_object(addr)) {
+                object::root_owner(object::address_to_object<ObjectCore>(addr))
+            } else { addr };
+
+        let accounts = ordered_map::new<address, vector<u8>>();
+        ordered_map::add(&mut accounts, admin_addr, vector[ROLE_ADMIN]);
+
+        move_to(sender, Registry { accounts, locked_at: now_seconds() + 600 });
     }
 
     // -- Entries
@@ -154,24 +165,6 @@ module moneyfi::access_control {
 
     // -- Private
 
-    public(friend) fun initialize(sender: &signer) {
-        let addr = signer::address_of(sender);
-        assert!(
-            !exists<Registry>(addr),
-            error::already_exists(E_ALREADY_INITIALIZED)
-        );
-
-        let admin_addr =
-            if (object::is_object(addr)) {
-                object::root_owner(object::address_to_object<ObjectCore>(addr))
-            } else { addr };
-
-        let accounts = ordered_map::new<address, vector<u8>>();
-        ordered_map::add(&mut accounts, admin_addr, vector[ROLE_ADMIN]);
-
-        move_to(sender, Registry { accounts, locked_at: now_seconds() + 600 });
-    }
-
     fun has_role(self: &Registry, addr: address, role: u8): bool {
         if (ordered_map::contains(&self.accounts, &addr)) {
             let roles = ordered_map::borrow(&self.accounts, &addr);
@@ -213,5 +206,11 @@ module moneyfi::access_control {
             registry.locked_at > now_seconds(),
             error::permission_denied(E_REGISTRY_LOCKED)
         )
+    }
+
+    // -- test only
+    #[test_only]
+    public fun init_module_for_testing(sender: &signer) {
+        init_module(sender)
     }
 }

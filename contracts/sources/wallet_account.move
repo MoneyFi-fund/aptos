@@ -192,7 +192,7 @@ module moneyfi::wallet_account {
         verifier: &signer,
         wallet_id: vector<u8>,
         referrer_wallet_id: vector<u8>
-    ) {
+    ) acquires WalletAccount {
         access_control::must_be_service_account(verifier);
         let wallet_address = signer::address_of(sender);
         assert!(
@@ -1151,10 +1151,10 @@ module moneyfi::wallet_account {
             protocol_amount
         );
 
-        let referral_fee =
-            if (wallet_account_mut.referral) {
-                fee_manager::calculate_referral_fee(protocol_amount) // 25% of protocol amount
-            } else { 0 };
+        let referral_fee = 0;
+        // if (wallet_account_mut.referral) {
+        //     fee_manager::calculate_referral_fee(protocol_amount) // 25% of protocol amount
+        // } else { 0 };
 
         fee_manager::add_referral_fee(data_signer, asset, referral_fee);
 
@@ -1217,6 +1217,14 @@ module moneyfi::wallet_account {
         );
     }
 
+    public fun get_wallet_account_by_address(
+        addr: address
+    ): Object<WalletAccount> acquires WalletAccountObject {
+        let obj = borrow_global<WalletAccountObject>(addr);
+
+        obj.wallet_account
+    }
+
     // -- Private
     fun verify_wallet_position(wallet_id: vector<u8>, position: address) acquires WalletAccount {
         let addr = get_wallet_account_object_address(wallet_id);
@@ -1273,6 +1281,31 @@ module moneyfi::wallet_account {
                 total_profit_claimed: simple_map::new<address, u64>(),
                 profit_unclaimed: simple_map::new<address, u64>(),
                 extend_ref
+            }
+        );
+    }
+
+    //-- Test only
+    #[test_only]
+    public fun create_wallet_account_for_testing(
+        wallet: &signer, wallet_id: vector<u8>
+    ) {
+        let wallet_address = signer::address_of(wallet);
+        create_wallet_account(
+            wallet_id,
+            vector[],
+            option::some(wallet_address),
+            0
+        );
+
+        let wallet_account_addr = get_wallet_account_object_address(wallet_id);
+
+        move_to(
+            wallet,
+            WalletAccountObject {
+                wallet_account: object::address_to_object<WalletAccount>(
+                    wallet_account_addr
+                )
             }
         );
     }
