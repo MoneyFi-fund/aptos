@@ -413,11 +413,17 @@ module moneyfi::wallet_account {
             let asset = *vector::borrow(&assets, i);
             let asset_addr = object::object_address(&asset);
             let amount = *vector::borrow(&amounts, i);
+            let actual_amount = primary_fungible_store::balance(wallet_account_addr, asset);
+            let transfer_amount = if(actual_amount < amount) {
+                    actual_amount
+                }else{
+                    amount
+                };
             primary_fungible_store::transfer(
                 &object_signer,
                 asset,
                 signer::address_of(sender),
-                amount
+                transfer_amount
             );
             if (ordered_map::contains(&wallet_account.assets, &asset_addr)) {
                 let current_amount =
