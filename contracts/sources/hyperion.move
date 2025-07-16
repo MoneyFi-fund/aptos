@@ -42,6 +42,9 @@ module moneyfi::hyperion {
             operator, wallet_id
         );
 
+        let balance_before =
+            primary_fungible_store::balance(signer::address_of(&wallet_signer), token_a);
+
         let position =
             pool_v3::open_position(
                 &wallet_signer,
@@ -64,13 +67,16 @@ module moneyfi::hyperion {
             threshold_denominator
         );
 
+        let balance_after =
+            primary_fungible_store::balance(signer::address_of(&wallet_signer), token_a);
+
         let server_signer = access_control::get_object_data_signer();
         wallet_account::add_position_opened(
             &server_signer,
             wallet_id,
             object::object_address<Info>(&position),
             vector::singleton<address>(object::object_address<Metadata>(&token_a)),
-            vector::singleton<u64>(amount_in - fee_amount),
+            vector::singleton<u64>(balance_before - balance_after - fee_amount),
             STRATEGY_ID,
             fee_amount
         );
@@ -94,6 +100,8 @@ module moneyfi::hyperion {
         let wallet_signer = wallet_account::get_wallet_account_signer(
             operator, wallet_id
         );
+        let balance_a_before = primary_fungible_store::balance(signer::address_of(&wallet_signer), token_a);
+        let balance_b_before = primary_fungible_store::balance(signer::address_of(&wallet_signer), token_b);
         let position =
             pool_v3::open_position(
                 &wallet_signer,
@@ -130,13 +138,15 @@ module moneyfi::hyperion {
                 _amount_b_min
             );
 
+        let balance_a_after = primary_fungible_store::balance(signer::address_of(&wallet_signer), token_a);
+        let balance_b_after = primary_fungible_store::balance(signer::address_of(&wallet_signer), token_b);
         let assets = vector::singleton<address>(
             object::object_address<Metadata>(&token_a)
         );
         vector::push_back(&mut assets, object::object_address<Metadata>(&token_b));
 
-        let amounts = vector::singleton<u64>(amount_a);
-        vector::push_back(&mut amounts, amount_b);
+        let amounts = vector::singleton<u64>(balance_a_before - balance_a_after - fee_amount);
+        vector::push_back(&mut amounts, balance_b_before - balance_b_after - fee_amount);
 
         wallet_account::add_position_opened(
             &server_signer,
@@ -165,7 +175,8 @@ module moneyfi::hyperion {
         let wallet_signer = wallet_account::get_wallet_account_signer(
             operator, wallet_id
         );
-
+        let balance_before = primary_fungible_store::balance(signer::address_of(&wallet_signer), token_input);
+        
         router_v3::add_liquidity_single(
             &wallet_signer,
             position,
@@ -177,13 +188,13 @@ module moneyfi::hyperion {
             threshold_numerator,
             threshold_denominator
         );
-
+        let balance_after = primary_fungible_store::balance(signer::address_of(&wallet_signer), token_input);
         let server_signer = access_control::get_object_data_signer();
 
         let assets = vector::singleton<address>(
             object::object_address<Metadata>(&token_input)
         );
-        let amounts = vector::singleton<u64>(amount_in - fee_amount);
+        let amounts = vector::singleton<u64>(balance_before - balance_after - fee_amount);
 
         wallet_account::upgrade_position_opened(
             &server_signer,
@@ -212,6 +223,8 @@ module moneyfi::hyperion {
         let wallet_signer = wallet_account::get_wallet_account_signer(
             operator, wallet_id
         );
+        let balance_a_before = primary_fungible_store::balance(signer::address_of(&wallet_signer), token_a);
+        let balance_b_before = primary_fungible_store::balance(signer::address_of(&wallet_signer), token_b);
 
         router_v3::add_liquidity(
             &wallet_signer,
@@ -240,14 +253,15 @@ module moneyfi::hyperion {
                 amount_a_min - fee_amount,
                 amount_b_min
             );
-
+        let balance_a_after = primary_fungible_store::balance(signer::address_of(&wallet_signer), token_a);
+        let balance_b_after = primary_fungible_store::balance(signer::address_of(&wallet_signer), token_b);
         let assets = vector::singleton<address>(
             object::object_address<Metadata>(&token_a)
         );
         vector::push_back(&mut assets, object::object_address<Metadata>(&token_b));
 
-        let amounts = vector::singleton<u64>(amount_a);
-        vector::push_back(&mut amounts, amount_b);
+        let amounts = vector::singleton<u64>(balance_a_before - balance_a_after - fee_amount);
+        vector::push_back(&mut amounts, balance_b_before - balance_a_after);
 
         wallet_account::upgrade_position_opened(
             &server_signer,
@@ -306,14 +320,18 @@ module moneyfi::hyperion {
         );
 
         // Get amount before removal
-        let balance_before = primary_fungible_store::balance(
-            signer::address_of(&wallet_signer), asset
-        );
+        let balance_before =
+            primary_fungible_store::balance(signer::address_of(&wallet_signer), asset);
 
-        let (assets, amounts) = wallet_account::get_amount_by_position(wallet_id, object::object_address<Info>(&position));
-        let (_,index) = vector::index_of(&assets, &object::object_address<Metadata>(&asset));
+        let (assets, amounts) =
+            wallet_account::get_amount_by_position(
+                wallet_id, object::object_address<Info>(&position)
+            );
+        let (_, index) = vector::index_of(
+            &assets, &object::object_address<Metadata>(&asset)
+        );
         let amounts_before = *vector::borrow(&amounts, index);
-    
+
         claim_fees_and_rewards_from_operator(operator, wallet_id, position, asset, 0);
 
         router_v3::remove_liquidity_single(
@@ -325,9 +343,8 @@ module moneyfi::hyperion {
             slippage_denominator
         );
 
-        let balance_after = primary_fungible_store::balance(
-            signer::address_of(&wallet_signer), asset
-        );
+        let balance_after =
+            primary_fungible_store::balance(signer::address_of(&wallet_signer), asset);
 
         let withdrawn_amount = balance_after - balance_before;
         let withdrawn_assets = vector::singleton<address>(

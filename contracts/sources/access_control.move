@@ -4,7 +4,7 @@ module moneyfi::access_control {
     use std::error;
     use std::option;
     use aptos_std::math64;
-    use aptos_std::simple_map::{Self, SimpleMap};
+    use aptos_std::ordered_map::{Self, OrderedMap};
     use aptos_framework::object::{Self, Object, ObjectCore, ExtendRef};
     use aptos_framework::fungible_asset::{Self, Metadata};
     use aptos_framework::primary_fungible_store;
@@ -31,7 +31,7 @@ module moneyfi::access_control {
     // -- Structs
     struct RoleRegistry has key {
         accounts: vector<address>,
-        roles: SimpleMap<address, vector<u8>>
+        roles: OrderedMap<address, vector<u8>>
     }
 
     struct Item has drop {
@@ -53,13 +53,13 @@ module moneyfi::access_control {
     }
 
     struct SystemFee has key {
-        distribute_fee: SimpleMap<address, u64>,
-        withdraw_fee: SimpleMap<address, u64>,
-        rebalance_fee: SimpleMap<address, u64>,
-        referral_fee: SimpleMap<address, u64>,
-        pending_referral_fee: SimpleMap<address, u64>,
-        protocol_fee: SimpleMap<address, u64>,
-        pending_protocol_fee: SimpleMap<address, u64>,
+        distribute_fee: OrderedMap<address, u64>,
+        withdraw_fee: OrderedMap<address, u64>,
+        rebalance_fee: OrderedMap<address, u64>,
+        referral_fee: OrderedMap<address, u64>,
+        pending_referral_fee: OrderedMap<address, u64>,
+        protocol_fee: OrderedMap<address, u64>,
+        pending_protocol_fee: OrderedMap<address, u64>,
         fee_to: address
     }
 
@@ -106,6 +106,14 @@ module moneyfi::access_control {
     }
 
     #[event]
+    struct ClaimReferralFeeEvent has drop, store {
+        referral: address,
+        asset: address,
+        amount: u64,
+        timestamp: u64
+    }
+
+    #[event]
     struct AddAssetSupportedEvent has drop, store {
         asset_addr: address,
         timestamp: u64
@@ -132,12 +140,12 @@ module moneyfi::access_control {
         must_be_admin(sender);
 
         let registry = borrow_global_mut<RoleRegistry>(@moneyfi);
-        if (!simple_map::contains_key(&registry.roles, &addr)) {
+        if (!ordered_map::contains(&registry.roles, &addr)) {
             vector::push_back(&mut registry.accounts, addr);
-            simple_map::add(&mut registry.roles, addr, vector::empty<u8>());
+            ordered_map::add(&mut registry.roles, addr, vector::empty<u8>());
         };
 
-        let roles = simple_map::borrow_mut(&mut registry.roles, &addr);
+        let roles = ordered_map::borrow_mut(&mut registry.roles, &addr);
         if (!vector::contains(roles, &role)) {
             vector::push_back(roles, role);
         };
@@ -154,13 +162,9 @@ module moneyfi::access_control {
         let object_signer = get_object_data_signer();
         let asset_addr = object::object_address(&asset);
 
-        // Reset pending referral fee to 0
-        if (simple_map::contains_key(&system_fee.pending_referral_fee, &asset_addr)) {
-            simple_map::upsert(&mut system_fee.pending_referral_fee, asset_addr, 0);
-        };
         // Reset pending protocol fee to 0
-        if (simple_map::contains_key(&system_fee.pending_protocol_fee, &asset_addr)) {
-            simple_map::upsert(&mut system_fee.pending_protocol_fee, asset_addr, 0);
+        if (ordered_map::contains(&system_fee.pending_protocol_fee, &asset_addr)) {
+            ordered_map::upsert(&mut system_fee.pending_protocol_fee, asset_addr, 0);
         };
 
         primary_fungible_store::transfer(
@@ -172,6 +176,45 @@ module moneyfi::access_control {
 
         // Emit event
         event::emit(ClaimFeeEvent { asset: asset_addr, amount, timestamp: now_seconds() });
+    }
+
+    public entry fun claim_referral_fee(
+        operator: &signer,
+        referral: &signer,
+        asset: Object<Metadata>,
+        amount: u64
+    ) acquires SystemFee, Config, RoleRegistry {
+        must_be_operator(operator);
+        let system_fee = borrow_global_mut<SystemFee>(@moneyfi);
+        let object_signer = get_object_data_signer();
+        let asset_addr = object::object_address(&asset);
+
+        if (ordered_map::contains(&system_fee.pending_referral_fee, &asset_addr)) {
+            let current =
+                *ordered_map::borrow(&system_fee.pending_referral_fee, &asset_addr);
+            assert!(current >= amount, error::invalid_argument(E_INVALID_ARGUMENT));
+            ordered_map::upsert(
+                &mut system_fee.pending_referral_fee, asset_addr, current - amount
+            );
+        } else {
+            assert!(true, error::invalid_argument(E_ASSET_NOT_SUPPORTED))
+        };
+
+        primary_fungible_store::transfer(
+            &object_signer,
+            asset,
+            signer::address_of(referral),
+            amount
+        );
+
+        event::emit(
+            ClaimReferralFeeEvent {
+                referral: signer::address_of(referral),
+                asset: asset_addr,
+                amount,
+                timestamp: now_seconds()
+            }
+        );
     }
 
     public entry fun set_fee_to(sender: &signer, addr: address) acquires SystemFee, RoleRegistry {
@@ -187,8 +230,8 @@ module moneyfi::access_control {
         must_be_admin(sender);
 
         let registry = borrow_global_mut<RoleRegistry>(@moneyfi);
-        if (simple_map::contains_key(&registry.roles, &addr)) {
-            let roles = simple_map::borrow_mut(&mut registry.roles, &addr);
+        if (ordered_map::contains(&registry.roles, &addr)) {
+            let roles = ordered_map::borrow_mut(&mut registry.roles, &addr);
             let (found, index) = vector::index_of(roles, &role);
             if (found) {
                 vector::remove(roles, index);
@@ -199,7 +242,7 @@ module moneyfi::access_control {
 
             // If no roles left, remove the address completely
             if (vector::is_empty(roles)) {
-                simple_map::remove(&mut registry.roles, &addr);
+                ordered_map::remove(&mut registry.roles, &addr);
                 let (found, index) = vector::index_of(&registry.accounts, &addr);
                 if (found) {
                     vector::remove(&mut registry.accounts, index);
@@ -212,11 +255,11 @@ module moneyfi::access_control {
         must_be_admin(sender);
 
         let registry = borrow_global_mut<RoleRegistry>(@moneyfi);
-        if (simple_map::contains_key(&registry.roles, &addr)) {
+        if (ordered_map::contains(&registry.roles, &addr)) {
             // Get all roles before removing to emit events
-            let roles = *simple_map::borrow(&registry.roles, &addr);
+            let roles = *ordered_map::borrow(&registry.roles, &addr);
 
-            simple_map::remove(&mut registry.roles, &addr);
+            ordered_map::remove(&mut registry.roles, &addr);
             let (found, index) = vector::index_of(&registry.accounts, &addr);
             if (found) {
                 vector::remove(&mut registry.accounts, index);
@@ -312,13 +355,13 @@ module moneyfi::access_control {
     #[view]
     public fun get_pending_referral_fee(): (vector<address>, vector<u64>) acquires SystemFee {
         let system_fee = borrow_global<SystemFee>(@moneyfi);
-        simple_map::to_vec_pair(system_fee.pending_referral_fee)
+        ordered_map::to_vec_pair(system_fee.pending_referral_fee)
     }
 
     #[view]
     public fun get_pending_protocol_fee(): (vector<address>, vector<u64>) acquires SystemFee {
         let system_fee = borrow_global<SystemFee>(@moneyfi);
-        simple_map::to_vec_pair(system_fee.pending_protocol_fee)
+        ordered_map::to_vec_pair(system_fee.pending_protocol_fee)
     }
 
     #[view]
@@ -336,8 +379,8 @@ module moneyfi::access_control {
         let i = 0;
         while (i < len) {
             let addr = *vector::borrow(&registry.accounts, i);
-            if (simple_map::contains_key(&registry.roles, &addr)) {
-                let roles = simple_map::borrow(&registry.roles, &addr);
+            if (ordered_map::contains(&registry.roles, &addr)) {
+                let roles = ordered_map::borrow(&registry.roles, &addr);
                 let role_len = vector::length(roles);
                 let j = 0;
                 while (j < role_len) {
@@ -356,8 +399,8 @@ module moneyfi::access_control {
     #[view]
     public fun get_user_roles(addr: address): vector<u8> acquires RoleRegistry {
         let registry = borrow_global<RoleRegistry>(@moneyfi);
-        if (simple_map::contains_key(&registry.roles, &addr)) {
-            *simple_map::borrow(&registry.roles, &addr)
+        if (ordered_map::contains(&registry.roles, &addr)) {
+            *ordered_map::borrow(&registry.roles, &addr)
         } else {
             vector::empty<u8>()
         }
@@ -422,11 +465,13 @@ module moneyfi::access_control {
         );
         check_asset_supported(asset);
         let system_fee = borrow_global_mut<SystemFee>(@moneyfi);
-        if (!simple_map::contains_key(&system_fee.distribute_fee, &asset)) {
-            simple_map::add(&mut system_fee.distribute_fee, asset, amount);
+        if (!ordered_map::contains(&system_fee.distribute_fee, &asset)) {
+            ordered_map::add(&mut system_fee.distribute_fee, asset, amount);
         } else {
-            let current_amount = *simple_map::borrow(&system_fee.distribute_fee, &asset);
-            simple_map::upsert(
+            let current_amount = *ordered_map::borrow(
+                &system_fee.distribute_fee, &asset
+            );
+            ordered_map::upsert(
                 &mut system_fee.distribute_fee, asset, current_amount + amount
             );
         };
@@ -441,11 +486,11 @@ module moneyfi::access_control {
         );
         check_asset_supported(asset);
         let system_fee = borrow_global_mut<SystemFee>(@moneyfi);
-        if (!simple_map::contains_key(&system_fee.withdraw_fee, &asset)) {
-            simple_map::add(&mut system_fee.withdraw_fee, asset, amount);
+        if (!ordered_map::contains(&system_fee.withdraw_fee, &asset)) {
+            ordered_map::add(&mut system_fee.withdraw_fee, asset, amount);
         } else {
-            let current_amount = *simple_map::borrow(&system_fee.withdraw_fee, &asset);
-            simple_map::upsert(
+            let current_amount = *ordered_map::borrow(&system_fee.withdraw_fee, &asset);
+            ordered_map::upsert(
                 &mut system_fee.withdraw_fee, asset, current_amount + amount
             );
         };
@@ -460,11 +505,11 @@ module moneyfi::access_control {
         );
         check_asset_supported(asset);
         let system_fee = borrow_global_mut<SystemFee>(@moneyfi);
-        if (!simple_map::contains_key(&system_fee.rebalance_fee, &asset)) {
-            simple_map::add(&mut system_fee.rebalance_fee, asset, amount);
+        if (!ordered_map::contains(&system_fee.rebalance_fee, &asset)) {
+            ordered_map::add(&mut system_fee.rebalance_fee, asset, amount);
         } else {
-            let current_amount = *simple_map::borrow(&system_fee.rebalance_fee, &asset);
-            simple_map::upsert(
+            let current_amount = *ordered_map::borrow(&system_fee.rebalance_fee, &asset);
+            ordered_map::upsert(
                 &mut system_fee.rebalance_fee, asset, current_amount + amount
             );
         };
@@ -481,22 +526,22 @@ module moneyfi::access_control {
         let system_fee = borrow_global_mut<SystemFee>(@moneyfi);
 
         // Add to referral_fee
-        if (!simple_map::contains_key(&system_fee.referral_fee, &asset)) {
-            simple_map::add(&mut system_fee.referral_fee, asset, amount);
+        if (!ordered_map::contains(&system_fee.referral_fee, &asset)) {
+            ordered_map::add(&mut system_fee.referral_fee, asset, amount);
         } else {
-            let current_amount = *simple_map::borrow(&system_fee.referral_fee, &asset);
-            simple_map::upsert(
+            let current_amount = *ordered_map::borrow(&system_fee.referral_fee, &asset);
+            ordered_map::upsert(
                 &mut system_fee.referral_fee, asset, current_amount + amount
             );
         };
 
         // Add to pending_referral_fee
-        if (!simple_map::contains_key(&system_fee.pending_referral_fee, &asset)) {
-            simple_map::add(&mut system_fee.pending_referral_fee, asset, amount);
+        if (!ordered_map::contains(&system_fee.pending_referral_fee, &asset)) {
+            ordered_map::add(&mut system_fee.pending_referral_fee, asset, amount);
         } else {
             let current_pending =
-                *simple_map::borrow(&system_fee.pending_referral_fee, &asset);
-            simple_map::upsert(
+                *ordered_map::borrow(&system_fee.pending_referral_fee, &asset);
+            ordered_map::upsert(
                 &mut system_fee.pending_referral_fee, asset, current_pending + amount
             );
         };
@@ -513,22 +558,22 @@ module moneyfi::access_control {
         let system_fee = borrow_global_mut<SystemFee>(@moneyfi);
 
         // Add to protocol_fee
-        if (!simple_map::contains_key(&system_fee.protocol_fee, &asset)) {
-            simple_map::add(&mut system_fee.protocol_fee, asset, amount);
+        if (!ordered_map::contains(&system_fee.protocol_fee, &asset)) {
+            ordered_map::add(&mut system_fee.protocol_fee, asset, amount);
         } else {
-            let current_amount = *simple_map::borrow(&system_fee.protocol_fee, &asset);
-            simple_map::upsert(
+            let current_amount = *ordered_map::borrow(&system_fee.protocol_fee, &asset);
+            ordered_map::upsert(
                 &mut system_fee.protocol_fee, asset, current_amount + amount
             );
         };
 
         // Add to pending_protocol_fee
-        if (!simple_map::contains_key(&system_fee.pending_protocol_fee, &asset)) {
-            simple_map::add(&mut system_fee.pending_protocol_fee, asset, amount);
+        if (!ordered_map::contains(&system_fee.pending_protocol_fee, &asset)) {
+            ordered_map::add(&mut system_fee.pending_protocol_fee, asset, amount);
         } else {
             let current_pending =
-                *simple_map::borrow(&system_fee.pending_protocol_fee, &asset);
-            simple_map::upsert(
+                *ordered_map::borrow(&system_fee.pending_protocol_fee, &asset);
+            ordered_map::upsert(
                 &mut system_fee.pending_protocol_fee, asset, current_pending + amount
             );
         };
@@ -548,12 +593,12 @@ module moneyfi::access_control {
                 object::owner(object::address_to_object<ObjectCore>(addr))
             } else { addr };
 
-        let roles = simple_map::new<address, vector<u8>>();
+        let roles = ordered_map::new<address, vector<u8>>();
         let admin_roles = vector::empty<u8>();
         vector::push_back(&mut admin_roles, ROLE_ADMIN);
         vector::push_back(&mut admin_roles, ROLE_DELEGATOR_ADMIN);
         vector::push_back(&mut admin_roles, ROLE_OPERATOR);
-        simple_map::add(&mut roles, admin_addr, admin_roles);
+        ordered_map::add(&mut roles, admin_addr, admin_roles);
 
         let accounts = vector::singleton<address>(admin_addr);
 
@@ -576,13 +621,13 @@ module moneyfi::access_control {
         move_to(
             sender,
             SystemFee {
-                distribute_fee: simple_map::new<address, u64>(),
-                withdraw_fee: simple_map::new<address, u64>(),
-                rebalance_fee: simple_map::new<address, u64>(),
-                referral_fee: simple_map::new<address, u64>(),
-                pending_referral_fee: simple_map::new<address, u64>(),
-                protocol_fee: simple_map::new<address, u64>(),
-                pending_protocol_fee: simple_map::new<address, u64>(),
+                distribute_fee: ordered_map::new<address, u64>(),
+                withdraw_fee: ordered_map::new<address, u64>(),
+                rebalance_fee: ordered_map::new<address, u64>(),
+                referral_fee: ordered_map::new<address, u64>(),
+                pending_referral_fee: ordered_map::new<address, u64>(),
+                protocol_fee: ordered_map::new<address, u64>(),
+                pending_protocol_fee: ordered_map::new<address, u64>(),
                 fee_to: admin_addr
             }
         );
@@ -605,8 +650,8 @@ module moneyfi::access_control {
     fun has_role(addr: address, role: u8): bool acquires RoleRegistry {
         let registry = borrow_global<RoleRegistry>(@moneyfi);
 
-        if (simple_map::contains_key(&registry.roles, &addr)) {
-            let roles = simple_map::borrow(&registry.roles, &addr);
+        if (ordered_map::contains(&registry.roles, &addr)) {
+            let roles = ordered_map::borrow(&registry.roles, &addr);
             vector::contains(roles, &role)
         } else { false }
     }
@@ -629,15 +674,15 @@ module moneyfi::access_control {
     public fun get_system_fee(asset: address): (u64, u64, u64, u64, u64, u64, u64) acquires SystemFee {
         let system_fee = borrow_global<SystemFee>(@moneyfi);
 
-        let distribute_fee = *simple_map::borrow(&system_fee.distribute_fee, &asset);
-        let withdraw_fee = *simple_map::borrow(&system_fee.withdraw_fee, &asset);
-        let rebalance_fee = *simple_map::borrow(&system_fee.rebalance_fee, &asset);
-        let referral_fee = *simple_map::borrow(&system_fee.referral_fee, &asset);
+        let distribute_fee = *ordered_map::borrow(&system_fee.distribute_fee, &asset);
+        let withdraw_fee = *ordered_map::borrow(&system_fee.withdraw_fee, &asset);
+        let rebalance_fee = *ordered_map::borrow(&system_fee.rebalance_fee, &asset);
+        let referral_fee = *ordered_map::borrow(&system_fee.referral_fee, &asset);
         let pending_referral_fee =
-            *simple_map::borrow(&system_fee.pending_referral_fee, &asset);
-        let protocol_fee = *simple_map::borrow(&system_fee.protocol_fee, &asset);
+            *ordered_map::borrow(&system_fee.pending_referral_fee, &asset);
+        let protocol_fee = *ordered_map::borrow(&system_fee.protocol_fee, &asset);
         let pending_protocol_fee =
-            *simple_map::borrow(&system_fee.pending_protocol_fee, &asset);
+            *ordered_map::borrow(&system_fee.pending_protocol_fee, &asset);
 
         (
             distribute_fee,

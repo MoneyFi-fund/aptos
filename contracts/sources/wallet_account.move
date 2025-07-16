@@ -5,7 +5,7 @@ module moneyfi::wallet_account {
     use std::error;
     use std::option::{Self, Option};
     use aptos_std::string_utils;
-    use aptos_std::simple_map::{Self, SimpleMap};
+    use aptos_std::ordered_map::{Self, OrderedMap};
     use aptos_framework::event;
     use aptos_framework::util;
     use aptos_framework::object::{Self, Object, ExtendRef};
@@ -43,15 +43,15 @@ module moneyfi::wallet_account {
         // This can be used for referral programs or rewards
         referral: bool,
         // assets user deposited to the wallet account
-        assets: SimpleMap<address, u64>,
+        assets: OrderedMap<address, u64>,
         // assets distributed pool
-        distributed_assets: SimpleMap<address, u64>,
+        distributed_assets: OrderedMap<address, u64>,
         // position opened by wallet account
-        position_opened: SimpleMap<address, PositionOpened>,
+        position_opened: OrderedMap<address, PositionOpened>,
         // total profit claimed by user
-        total_profit_claimed: SimpleMap<address, u64>,
+        total_profit_claimed: OrderedMap<address, u64>,
         //profit pending on wallet account
-        profit_unclaimed: SimpleMap<address, u64>,
+        profit_unclaimed: OrderedMap<address, u64>,
         extend_ref: ExtendRef
     }
 
@@ -60,12 +60,12 @@ module moneyfi::wallet_account {
     }
 
     struct PositionOpened has copy, drop, store {
-        assets: SimpleMap<address, u64>,
+        assets: OrderedMap<address, u64>,
         strategy_id: u8
     }
 
     struct TotalAssets has key {
-        total_assets: SimpleMap<address, u64>
+        total_assets: OrderedMap<address, u64>
     }
 
     // -- Events
@@ -110,7 +110,7 @@ module moneyfi::wallet_account {
     struct OpenPositionEvent has drop, store {
         wallet_id: vector<u8>,
         position: address,
-        assets: SimpleMap<address, u64>,
+        assets: OrderedMap<address, u64>,
         strategy_id: u8,
         fee_amount: u64,
         timestamp: u64
@@ -128,7 +128,7 @@ module moneyfi::wallet_account {
     struct AddLiquidityEvent has drop, store {
         wallet_id: vector<u8>,
         position: address,
-        total_assets: SimpleMap<address, u64>,
+        total_assets: OrderedMap<address, u64>,
         fee_amount: u64,
         timestamp: u64
     }
@@ -137,7 +137,7 @@ module moneyfi::wallet_account {
     struct RemoveLiquidityEvent has drop, store {
         wallet_id: vector<u8>,
         position: address,
-        total_assets: SimpleMap<address, u64>,
+        total_assets: OrderedMap<address, u64>,
         fee_amount: u64,
         timestamp: u64
     }
@@ -146,7 +146,7 @@ module moneyfi::wallet_account {
     struct DistributeAssetEvent has drop, store {
         wallet_id: vector<u8>,
         position: address,
-        assets: SimpleMap<address, u64>,
+        assets: OrderedMap<address, u64>,
         fee_amount: u64,
         timestamp: u64
     }
@@ -207,11 +207,11 @@ module moneyfi::wallet_account {
                 wallet_id: wallet_id,
                 source_domain: source_domain,
                 referral: referral,
-                assets: simple_map::new<address, u64>(),
-                distributed_assets: simple_map::new<address, u64>(),
-                position_opened: simple_map::new<address, PositionOpened>(),
-                total_profit_claimed: simple_map::new<address, u64>(),
-                profit_unclaimed: simple_map::new<address, u64>(),
+                assets: ordered_map::new<address, u64>(),
+                distributed_assets: ordered_map::new<address, u64>(),
+                position_opened: ordered_map::new<address, PositionOpened>(),
+                total_profit_claimed: ordered_map::new<address, u64>(),
+                profit_unclaimed: ordered_map::new<address, u64>(),
                 extend_ref: object::generate_extend_ref(constructor_ref)
             }
         );
@@ -307,32 +307,30 @@ module moneyfi::wallet_account {
                     wallet_account_addr,
                     amount - fee_amount
                 );
-                if (simple_map::contains_key(&wallet_account.assets, &asset_addr)) {
+                if (ordered_map::contains(&wallet_account.assets, &asset_addr)) {
                     let current_amount =
-                        simple_map::borrow(&wallet_account.assets, &asset_addr);
-                    simple_map::upsert(
+                        ordered_map::borrow(&wallet_account.assets, &asset_addr);
+                    ordered_map::upsert(
                         &mut wallet_account.assets,
                         asset_addr,
                         *current_amount + amount - fee_amount
                     );
                 } else {
-                    simple_map::upsert(
+                    ordered_map::upsert(
                         &mut wallet_account.assets, asset_addr, amount - fee_amount
                     );
                 };
 
-                if (simple_map::contains_key(
-                    &total_assets_ref.total_assets, &asset_addr
-                )) {
+                if (ordered_map::contains(&total_assets_ref.total_assets, &asset_addr)) {
                     let current_amount =
-                        simple_map::borrow(&total_assets_ref.total_assets, &asset_addr);
-                    simple_map::upsert(
+                        ordered_map::borrow(&total_assets_ref.total_assets, &asset_addr);
+                    ordered_map::upsert(
                         &mut total_assets_ref.total_assets,
                         asset_addr,
                         *current_amount + amount - fee_amount
                     );
                 } else {
-                    simple_map::upsert(
+                    ordered_map::upsert(
                         &mut total_assets_ref.total_assets,
                         asset_addr,
                         amount - fee_amount
@@ -345,30 +343,28 @@ module moneyfi::wallet_account {
                 primary_fungible_store::transfer(
                     sender, asset, wallet_account_addr, amount
                 );
-                if (simple_map::contains_key(&wallet_account.assets, &asset_addr)) {
+                if (ordered_map::contains(&wallet_account.assets, &asset_addr)) {
                     let current_amount =
-                        simple_map::borrow(&wallet_account.assets, &asset_addr);
-                    simple_map::upsert(
+                        ordered_map::borrow(&wallet_account.assets, &asset_addr);
+                    ordered_map::upsert(
                         &mut wallet_account.assets,
                         asset_addr,
                         *current_amount + amount
                     );
                 } else {
-                    simple_map::upsert(&mut wallet_account.assets, asset_addr, amount);
+                    ordered_map::upsert(&mut wallet_account.assets, asset_addr, amount);
                 };
 
-                if (simple_map::contains_key(
-                    &total_assets_ref.total_assets, &asset_addr
-                )) {
+                if (ordered_map::contains(&total_assets_ref.total_assets, &asset_addr)) {
                     let current_amount =
-                        simple_map::borrow(&total_assets_ref.total_assets, &asset_addr);
-                    simple_map::upsert(
+                        ordered_map::borrow(&total_assets_ref.total_assets, &asset_addr);
+                    ordered_map::upsert(
                         &mut total_assets_ref.total_assets,
                         asset_addr,
                         *current_amount + amount
                     );
                 } else {
-                    simple_map::upsert(
+                    ordered_map::upsert(
                         &mut total_assets_ref.total_assets, asset_addr, amount
                     );
                 };
@@ -423,17 +419,17 @@ module moneyfi::wallet_account {
                 signer::address_of(sender),
                 amount
             );
-            if (simple_map::contains_key(&wallet_account.assets, &asset_addr)) {
+            if (ordered_map::contains(&wallet_account.assets, &asset_addr)) {
                 let current_amount =
-                    simple_map::borrow(&wallet_account.assets, &asset_addr);
+                    ordered_map::borrow(&wallet_account.assets, &asset_addr);
                 assert!(
                     *current_amount >= amount,
                     error::invalid_argument(E_INVALID_ARGUMENT)
                 );
                 if (*current_amount == amount) {
-                    simple_map::remove(&mut wallet_account.assets, &asset_addr);
+                    ordered_map::remove(&mut wallet_account.assets, &asset_addr);
                 } else {
-                    simple_map::upsert(
+                    ordered_map::upsert(
                         &mut wallet_account.assets,
                         asset_addr,
                         *current_amount - amount
@@ -441,17 +437,17 @@ module moneyfi::wallet_account {
                 }
             };
 
-            if (simple_map::contains_key(&total_assets_ref.total_assets, &asset_addr)) {
+            if (ordered_map::contains(&total_assets_ref.total_assets, &asset_addr)) {
                 let current_amount =
-                    simple_map::borrow(&total_assets_ref.total_assets, &asset_addr);
+                    ordered_map::borrow(&total_assets_ref.total_assets, &asset_addr);
                 assert!(
                     *current_amount >= amount,
                     error::invalid_argument(E_INVALID_ARGUMENT)
                 );
                 if (*current_amount == amount) {
-                    simple_map::remove(&mut total_assets_ref.total_assets, &asset_addr);
+                    ordered_map::remove(&mut total_assets_ref.total_assets, &asset_addr);
                 } else {
-                    simple_map::upsert(
+                    ordered_map::upsert(
                         &mut total_assets_ref.total_assets,
                         asset_addr,
                         *current_amount - amount
@@ -485,7 +481,7 @@ module moneyfi::wallet_account {
         let total_assets_ref = borrow_global_mut<TotalAssets>(@moneyfi);
 
         let (assets, amounts) =
-            simple_map::to_vec_pair<address, u64>(wallet_account.profit_unclaimed);
+            ordered_map::to_vec_pair<address, u64>(wallet_account.profit_unclaimed);
         let i = 0;
         while (i < vector::length(&assets)) {
             let asset_addr = *vector::borrow(&assets, i);
@@ -506,35 +502,35 @@ module moneyfi::wallet_account {
             );
 
             // Update total profit claimed
-            if (simple_map::contains_key(
+            if (ordered_map::contains(
                 &wallet_account.total_profit_claimed, &asset_addr
             )) {
                 let current_total =
-                    simple_map::borrow(
+                    ordered_map::borrow(
                         &wallet_account.total_profit_claimed, &asset_addr
                     );
-                simple_map::upsert(
+                ordered_map::upsert(
                     &mut wallet_account.total_profit_claimed,
                     asset_addr,
                     *current_total + amount
                 );
             } else {
-                simple_map::upsert(
+                ordered_map::upsert(
                     &mut wallet_account.total_profit_claimed, asset_addr, amount
                 );
             };
-            if (simple_map::contains_key(&wallet_account.assets, &asset_addr)) {
+            if (ordered_map::contains(&wallet_account.assets, &asset_addr)) {
                 let current_total =
-                    simple_map::borrow(&wallet_account.assets, &asset_addr);
-                simple_map::upsert(
+                    ordered_map::borrow(&wallet_account.assets, &asset_addr);
+                ordered_map::upsert(
                     &mut wallet_account.assets, asset_addr, *current_total - amount
                 );
             };
 
-            if (simple_map::contains_key(&total_assets_ref.total_assets, &asset_addr)) {
+            if (ordered_map::contains(&total_assets_ref.total_assets, &asset_addr)) {
                 let current_total =
-                    simple_map::borrow(&total_assets_ref.total_assets, &asset_addr);
-                simple_map::upsert(
+                    ordered_map::borrow(&total_assets_ref.total_assets, &asset_addr);
+                ordered_map::upsert(
                     &mut total_assets_ref.total_assets,
                     asset_addr,
                     *current_total - amount
@@ -555,7 +551,7 @@ module moneyfi::wallet_account {
             }
         );
         // Clear profit_unclaimed after claiming
-        wallet_account.profit_unclaimed = simple_map::new<address, u64>();
+        wallet_account.profit_unclaimed = ordered_map::new<address, u64>();
     }
 
     // -- Views
@@ -563,7 +559,7 @@ module moneyfi::wallet_account {
     #[view]
     public fun get_total_assets(): (vector<address>, vector<u64>) acquires TotalAssets {
         let total_assets_ref = borrow_global<TotalAssets>(@moneyfi);
-        simple_map::to_vec_pair<address, u64>(total_assets_ref.total_assets)
+        ordered_map::to_vec_pair<address, u64>(total_assets_ref.total_assets)
     }
 
     #[view]
@@ -606,7 +602,7 @@ module moneyfi::wallet_account {
         let wallet_account = borrow_global<WalletAccount>(addr);
 
         let (position_addr, infos) =
-            simple_map::to_vec_pair<address, PositionOpened>(
+            ordered_map::to_vec_pair<address, PositionOpened>(
                 wallet_account.position_opened
             );
         (position_addr, vector::map<PositionOpened, u8>(infos, |pos| pos.strategy_id))
@@ -623,7 +619,7 @@ module moneyfi::wallet_account {
         );
 
         let wallet_account = borrow_global<WalletAccount>(addr);
-        simple_map::to_vec_pair<address, u64>(wallet_account.total_profit_claimed)
+        ordered_map::to_vec_pair<address, u64>(wallet_account.total_profit_claimed)
     }
 
     #[view]
@@ -636,7 +632,7 @@ module moneyfi::wallet_account {
             error::not_found(E_WALLET_ACCOUNT_EXISTS)
         );
         let wallet_account = borrow_global<WalletAccount>(addr);
-        simple_map::to_vec_pair<address, u64>(wallet_account.profit_unclaimed)
+        ordered_map::to_vec_pair<address, u64>(wallet_account.profit_unclaimed)
     }
 
     #[view]
@@ -645,7 +641,7 @@ module moneyfi::wallet_account {
     ): (vector<address>, vector<u64>) acquires WalletAccount {
         let addr = get_wallet_account_object_address(wallet_id);
         let wallet_account = borrow_global<WalletAccount>(addr);
-        simple_map::to_vec_pair<address, u64>(wallet_account.assets)
+        ordered_map::to_vec_pair<address, u64>(wallet_account.assets)
     }
 
     #[view]
@@ -654,7 +650,7 @@ module moneyfi::wallet_account {
     ): (vector<address>, vector<u64>) acquires WalletAccount {
         let addr = get_wallet_account_object_address(wallet_id);
         let wallet_account = borrow_global<WalletAccount>(addr);
-        simple_map::to_vec_pair<address, u64>(wallet_account.distributed_assets)
+        ordered_map::to_vec_pair<address, u64>(wallet_account.distributed_assets)
     }
 
     #[view]
@@ -676,11 +672,10 @@ module moneyfi::wallet_account {
     ): (vector<address>, vector<u64>) acquires WalletAccount {
         let addr = get_wallet_account_object_address(wallet_id);
         let wallet_account = borrow_global<WalletAccount>(addr);
-        let position_data = simple_map::borrow(
-            &wallet_account.position_opened, &position
-        );
+        let position_data =
+            ordered_map::borrow(&wallet_account.position_opened, &position);
         let (position_assets, position_amounts) =
-            simple_map::to_vec_pair<address, u64>(position_data.assets);
+            ordered_map::to_vec_pair<address, u64>(position_data.assets);
         (position_assets, position_amounts)
     }
 
@@ -756,24 +751,24 @@ module moneyfi::wallet_account {
         let wallet = borrow_global_mut<WalletAccount>(addr);
         let total_assets_ref = borrow_global_mut<TotalAssets>(@moneyfi);
         assert!(
-            !simple_map::contains_key(&wallet.position_opened, &position),
+            !ordered_map::contains(&wallet.position_opened, &position),
             error::already_exists(E_POSITION_ALREADY_EXISTS)
         );
 
-        let assets_map = simple_map::new_from<address, u64>(assets, amounts);
+        let assets_map = ordered_map::new_from<address, u64>(assets, amounts);
         let pos = PositionOpened { assets: assets_map, strategy_id };
 
-        simple_map::add(&mut wallet.position_opened, position, pos);
+        ordered_map::add(&mut wallet.position_opened, position, pos);
         let fee_asset = *vector::borrow(&assets, 0);
-        let current_asset_deposited = simple_map::borrow(&wallet.assets, &fee_asset);
-        simple_map::upsert(
+        let current_asset_deposited = ordered_map::borrow(&wallet.assets, &fee_asset);
+        ordered_map::upsert(
             &mut wallet.assets, fee_asset, *current_asset_deposited - fee_amount
         );
 
-        if (simple_map::contains_key(&total_assets_ref.total_assets, &fee_asset)) {
+        if (ordered_map::contains(&total_assets_ref.total_assets, &fee_asset)) {
             let current_total_asset =
-                simple_map::borrow(&total_assets_ref.total_assets, &fee_asset);
-            simple_map::upsert(
+                ordered_map::borrow(&total_assets_ref.total_assets, &fee_asset);
+            ordered_map::upsert(
                 &mut total_assets_ref.total_assets,
                 fee_asset,
                 *current_total_asset - fee_amount
@@ -786,20 +781,20 @@ module moneyfi::wallet_account {
             let asset = *vector::borrow(&assets, i);
             let amount = *vector::borrow(&amounts, i);
 
-            if (simple_map::contains_key(&wallet.distributed_assets, &asset)) {
+            if (ordered_map::contains(&wallet.distributed_assets, &asset)) {
                 let current_distributed =
-                    simple_map::borrow(&wallet.distributed_assets, &asset);
-                simple_map::upsert(
+                    ordered_map::borrow(&wallet.distributed_assets, &asset);
+                ordered_map::upsert(
                     &mut wallet.distributed_assets,
                     asset,
                     *current_distributed + amount
                 );
             } else {
-                simple_map::upsert(&mut wallet.distributed_assets, asset, amount);
+                ordered_map::upsert(&mut wallet.distributed_assets, asset, amount);
             };
-            if (simple_map::contains_key(&wallet.assets, &asset)) {
-                let current_wallet_asset = simple_map::borrow(&wallet.assets, &asset);
-                simple_map::upsert(
+            if (ordered_map::contains(&wallet.assets, &asset)) {
+                let current_wallet_asset = ordered_map::borrow(&wallet.assets, &asset);
+                ordered_map::upsert(
                     &mut wallet.assets, asset, *current_wallet_asset - amount
                 );
             };
@@ -862,19 +857,19 @@ module moneyfi::wallet_account {
         let wallet = borrow_global_mut<WalletAccount>(addr);
         let total_assets_ref = borrow_global_mut<TotalAssets>(@moneyfi);
         assert!(
-            simple_map::contains_key(&wallet.position_opened, &position),
+            ordered_map::contains(&wallet.position_opened, &position),
             error::not_found(E_POSITION_NOT_EXISTS)
         );
 
         // Get position assets before removing to update distributed_assets
-        let position_data = simple_map::borrow(&wallet.position_opened, &position);
+        let position_data = ordered_map::borrow(&wallet.position_opened, &position);
         let (position_assets, position_amounts) =
-            simple_map::to_vec_pair<address, u64>(position_data.assets);
-        if (simple_map::contains_key(
+            ordered_map::to_vec_pair<address, u64>(position_data.assets);
+        if (ordered_map::contains(
             &total_assets_ref.total_assets, &object::object_address(&asset_out)
         )) {
             let current_total_asset =
-                simple_map::borrow(
+                ordered_map::borrow(
                     &total_assets_ref.total_assets,
                     &object::object_address(&asset_out)
                 );
@@ -882,7 +877,7 @@ module moneyfi::wallet_account {
                 *current_total_asset >= fee_amount,
                 error::invalid_argument(E_INVALID_ARGUMENT)
             );
-            simple_map::upsert(
+            ordered_map::upsert(
                 &mut total_assets_ref.total_assets,
                 object::object_address(&asset_out),
                 *current_total_asset - fee_amount
@@ -901,41 +896,43 @@ module moneyfi::wallet_account {
                     access_control::get_data_object_address(),
                     fee_amount
                 );
-                if (simple_map::contains_key(&wallet.distributed_assets, &asset)) {
+                if (ordered_map::contains(&wallet.distributed_assets, &asset)) {
                     let current_distributed =
-                        simple_map::borrow(&wallet.distributed_assets, &asset);
+                        ordered_map::borrow(&wallet.distributed_assets, &asset);
                     if (*current_distributed >= amount) {
                         if (*current_distributed == amount) {
-                            simple_map::remove(&mut wallet.distributed_assets, &asset);
+                            ordered_map::remove(&mut wallet.distributed_assets, &asset);
                         } else {
-                            simple_map::upsert(
+                            ordered_map::upsert(
                                 &mut wallet.distributed_assets,
                                 asset,
                                 *current_distributed - amount
                             );
                         }
                     };
-                    let current_wallet_amount =
-                        primary_fungible_store::balance(
-                            addr, object::address_to_object<Metadata>(asset)
-                        );
-                    simple_map::upsert(&mut wallet.assets, asset, current_wallet_amount);
+
                     access_control::add_withdraw_fee(
                         data_signer,
                         object::object_address(&asset_out),
                         fee_amount
                     );
+
+                    let current_wallet_amount =
+                        primary_fungible_store::balance(
+                            addr, object::address_to_object<Metadata>(asset)
+                        );
+                    ordered_map::upsert(&mut wallet.assets, asset, current_wallet_amount);
                 } else {
-                    if (simple_map::contains_key(&wallet.distributed_assets, &asset)) {
+                    if (ordered_map::contains(&wallet.distributed_assets, &asset)) {
                         let current_distributed =
-                            simple_map::borrow(&wallet.distributed_assets, &asset);
+                            ordered_map::borrow(&wallet.distributed_assets, &asset);
                         if (*current_distributed >= amount) {
                             if (*current_distributed == amount) {
-                                simple_map::remove(
+                                ordered_map::remove(
                                     &mut wallet.distributed_assets, &asset
                                 );
                             } else {
-                                simple_map::upsert(
+                                ordered_map::upsert(
                                     &mut wallet.distributed_assets,
                                     asset,
                                     *current_distributed - amount
@@ -946,7 +943,7 @@ module moneyfi::wallet_account {
                             primary_fungible_store::balance(
                                 addr, object::address_to_object<Metadata>(asset)
                             );
-                        simple_map::upsert(
+                        ordered_map::upsert(
                             &mut wallet.assets, asset, current_wallet_amount
                         );
                     };
@@ -955,7 +952,7 @@ module moneyfi::wallet_account {
                 i = i + 1;
             };
 
-            simple_map::remove(&mut wallet.position_opened, &position);
+            ordered_map::remove(&mut wallet.position_opened, &position);
 
             event::emit(
                 ClosePositionEvent {
@@ -998,14 +995,14 @@ module moneyfi::wallet_account {
         let wallet = borrow_global_mut<WalletAccount>(addr);
         let total_assets_ref = borrow_global_mut<TotalAssets>(@moneyfi);
         assert!(
-            simple_map::contains_key(&wallet.position_opened, &position),
+            ordered_map::contains(&wallet.position_opened, &position),
             error::not_found(E_POSITION_NOT_EXISTS)
         );
 
         // Transfer fee asset to the data object
         let fee_asset = *vector::borrow(&assets_added, 0);
-        let current_asset_deposited = simple_map::borrow(&wallet.assets, &fee_asset);
-        simple_map::upsert(
+        let current_asset_deposited = ordered_map::borrow(&wallet.assets, &fee_asset);
+        ordered_map::upsert(
             &mut wallet.assets, fee_asset, *current_asset_deposited - fee_amount
         );
         primary_fungible_store::transfer(
@@ -1015,20 +1012,20 @@ module moneyfi::wallet_account {
             fee_amount
         );
         access_control::add_distribute_fee(data_signer, fee_asset, fee_amount);
-        if (simple_map::contains_key(&total_assets_ref.total_assets, &fee_asset)) {
+        if (ordered_map::contains(&total_assets_ref.total_assets, &fee_asset)) {
             let current_total_asset =
-                simple_map::borrow(&total_assets_ref.total_assets, &fee_asset);
+                ordered_map::borrow(&total_assets_ref.total_assets, &fee_asset);
             assert!(
                 *current_total_asset >= fee_amount,
                 error::invalid_argument(E_INVALID_ARGUMENT)
             );
-            simple_map::upsert(
+            ordered_map::upsert(
                 &mut total_assets_ref.total_assets,
                 fee_asset,
                 *current_total_asset - fee_amount
             );
         };
-        let pos = simple_map::borrow_mut(&mut wallet.position_opened, &position);
+        let pos = ordered_map::borrow_mut(&mut wallet.position_opened, &position);
         let assets_map = &mut pos.assets;
         let i = 0;
         while (i < vector::length(&assets_added)) {
@@ -1036,29 +1033,29 @@ module moneyfi::wallet_account {
             let amount = *vector::borrow(&amounts_added, i);
 
             let updated =
-                if (simple_map::contains_key(assets_map, &asset)) {
-                    let current = simple_map::borrow(assets_map, &asset);
+                if (ordered_map::contains(assets_map, &asset)) {
+                    let current = ordered_map::borrow(assets_map, &asset);
                     *current + amount
                 } else { amount };
 
-            simple_map::upsert(assets_map, asset, updated);
+            ordered_map::upsert(assets_map, asset, updated);
 
             // Update distributed_assets when upgrading position
-            if (simple_map::contains_key(&wallet.distributed_assets, &asset)) {
+            if (ordered_map::contains(&wallet.distributed_assets, &asset)) {
                 let current_distributed =
-                    simple_map::borrow(&wallet.distributed_assets, &asset);
-                simple_map::upsert(
+                    ordered_map::borrow(&wallet.distributed_assets, &asset);
+                ordered_map::upsert(
                     &mut wallet.distributed_assets,
                     asset,
                     *current_distributed + amount
                 );
             } else {
-                simple_map::upsert(&mut wallet.distributed_assets, asset, amount);
+                ordered_map::upsert(&mut wallet.distributed_assets, asset, amount);
             };
 
-            if (simple_map::contains_key(&wallet.assets, &asset)) {
-                let current_wallet_asset = simple_map::borrow(&wallet.assets, &asset);
-                simple_map::upsert(
+            if (ordered_map::contains(&wallet.assets, &asset)) {
+                let current_wallet_asset = ordered_map::borrow(&wallet.assets, &asset);
+                ordered_map::upsert(
                     &mut wallet.assets, asset, *current_wallet_asset - amount
                 );
             };
@@ -1119,7 +1116,7 @@ module moneyfi::wallet_account {
         let wallet = borrow_global_mut<WalletAccount>(addr);
         let total_assets_ref = borrow_global_mut<TotalAssets>(@moneyfi);
         assert!(
-            simple_map::contains_key(&wallet.position_opened, &position),
+            ordered_map::contains(&wallet.position_opened, &position),
             error::not_found(E_POSITION_NOT_EXISTS)
         );
 
@@ -1134,21 +1131,21 @@ module moneyfi::wallet_account {
         );
         access_control::add_withdraw_fee(data_signer, fee_asset, fee_amount);
 
-        if (simple_map::contains_key(&total_assets_ref.total_assets, &fee_asset)) {
+        if (ordered_map::contains(&total_assets_ref.total_assets, &fee_asset)) {
             let current_total_asset =
-                simple_map::borrow(&total_assets_ref.total_assets, &fee_asset);
+                ordered_map::borrow(&total_assets_ref.total_assets, &fee_asset);
             assert!(
                 *current_total_asset >= fee_amount,
                 error::invalid_argument(E_INVALID_ARGUMENT)
             );
-            simple_map::upsert(
+            ordered_map::upsert(
                 &mut total_assets_ref.total_assets,
                 fee_asset,
                 *current_total_asset - fee_amount
             );
         };
 
-        let pos = simple_map::borrow_mut(&mut wallet.position_opened, &position);
+        let pos = ordered_map::borrow_mut(&mut wallet.position_opened, &position);
         let assets_map = &mut pos.assets;
         let i = 0;
         while (i < vector::length(&withdrawn_assets)) {
@@ -1159,26 +1156,26 @@ module moneyfi::wallet_account {
             // Update position assets with amounts after removal
             if (amount_after == 0) {
                 // Remove asset from position if amount is 0
-                if (simple_map::contains_key(assets_map, &asset)) {
-                    simple_map::remove(assets_map, &asset);
+                if (ordered_map::contains(assets_map, &asset)) {
+                    ordered_map::remove(assets_map, &asset);
                 };
             } else {
                 // Update position with remaining amount
-                simple_map::upsert(assets_map, asset, amount_after);
+                ordered_map::upsert(assets_map, asset, amount_after);
             };
 
             // Subtract withdrawn amount from distributed_assets
-            if (simple_map::contains_key(&wallet.distributed_assets, &asset)) {
+            if (ordered_map::contains(&wallet.distributed_assets, &asset)) {
                 let current_distributed =
-                    simple_map::borrow(&wallet.distributed_assets, &asset);
+                    ordered_map::borrow(&wallet.distributed_assets, &asset);
                 assert!(
                     *current_distributed >= withdrawn_amount,
                     error::invalid_argument(E_INVALID_ARGUMENT)
                 );
                 if (*current_distributed == withdrawn_amount) {
-                    simple_map::remove(&mut wallet.distributed_assets, &asset);
+                    ordered_map::remove(&mut wallet.distributed_assets, &asset);
                 } else {
-                    simple_map::upsert(
+                    ordered_map::upsert(
                         &mut wallet.distributed_assets,
                         asset,
                         *current_distributed - withdrawn_amount
@@ -1195,17 +1192,17 @@ module moneyfi::wallet_account {
                 };
 
             if (actual_amount > 0) {
-                if (simple_map::contains_key(&wallet.assets, &asset)) {
-                    let current_wallet_asset = simple_map::borrow(
+                if (ordered_map::contains(&wallet.assets, &asset)) {
+                    let current_wallet_asset = ordered_map::borrow(
                         &wallet.assets, &asset
                     );
-                    simple_map::upsert(
+                    ordered_map::upsert(
                         &mut wallet.assets,
                         asset,
                         *current_wallet_asset + actual_amount
                     );
                 } else {
-                    simple_map::upsert(&mut wallet.assets, asset, actual_amount);
+                    ordered_map::upsert(&mut wallet.assets, asset, actual_amount);
                 };
             };
 
@@ -1215,7 +1212,7 @@ module moneyfi::wallet_account {
             RemoveLiquidityEvent {
                 wallet_id: wallet_id,
                 position,
-                total_assets: simple_map::new_from<address, u64>(
+                total_assets: ordered_map::new_from<address, u64>(
                     withdrawn_assets, withdrawn_amounts
                 ),
                 fee_amount,
@@ -1279,44 +1276,44 @@ module moneyfi::wallet_account {
             protocol_amount - referral_fee // 75% of protocol amount
         );
         let user_amount = amount - protocol_amount;
-        if (simple_map::contains_key(&wallet_account_mut.profit_unclaimed, &asset)) {
+        if (ordered_map::contains(&wallet_account_mut.profit_unclaimed, &asset)) {
             let current_amount =
-                simple_map::borrow(&wallet_account_mut.profit_unclaimed, &asset);
-            simple_map::upsert(
+                ordered_map::borrow(&wallet_account_mut.profit_unclaimed, &asset);
+            ordered_map::upsert(
                 &mut wallet_account_mut.profit_unclaimed,
                 asset,
                 *current_amount + user_amount - fee_amount
             );
         } else {
-            simple_map::upsert(
+            ordered_map::upsert(
                 &mut wallet_account_mut.profit_unclaimed,
                 asset,
                 user_amount - fee_amount
             );
         };
-        if (simple_map::contains_key(&wallet_account_mut.assets, &asset)) {
-            let current_amount = simple_map::borrow(&wallet_account_mut.assets, &asset);
-            simple_map::upsert(
+        if (ordered_map::contains(&wallet_account_mut.assets, &asset)) {
+            let current_amount = ordered_map::borrow(&wallet_account_mut.assets, &asset);
+            ordered_map::upsert(
                 &mut wallet_account_mut.assets,
                 asset,
                 *current_amount + user_amount - fee_amount
             );
         } else {
-            simple_map::upsert(
+            ordered_map::upsert(
                 &mut wallet_account_mut.assets, asset, user_amount - fee_amount
             );
         };
 
-        if (simple_map::contains_key(&total_assets_ref.total_assets, &asset)) {
+        if (ordered_map::contains(&total_assets_ref.total_assets, &asset)) {
             let current_amount =
-                simple_map::borrow(&total_assets_ref.total_assets, &asset);
-            simple_map::upsert(
+                ordered_map::borrow(&total_assets_ref.total_assets, &asset);
+            ordered_map::upsert(
                 &mut total_assets_ref.total_assets,
                 asset,
                 *current_amount + user_amount - fee_amount
             );
         } else {
-            simple_map::upsert(
+            ordered_map::upsert(
                 &mut total_assets_ref.total_assets, asset, user_amount - fee_amount
             );
         };
@@ -1345,7 +1342,7 @@ module moneyfi::wallet_account {
         );
         let wallet_account = borrow_global<WalletAccount>(addr);
         assert!(
-            simple_map::contains_key(&wallet_account.position_opened, &position),
+            ordered_map::contains(&wallet_account.position_opened, &position),
             error::not_found(E_POSITION_NOT_EXISTS)
         );
     }
@@ -1394,7 +1391,7 @@ module moneyfi::wallet_account {
         move_to(
             sender,
             TotalAssets {
-                total_assets: simple_map::new<address, u64>()
+                total_assets: ordered_map::new<address, u64>()
             }
         );
     }
@@ -1420,11 +1417,11 @@ module moneyfi::wallet_account {
                 wallet_id: wallet_id,
                 source_domain: 9,
                 referral: referral,
-                assets: simple_map::new<address, u64>(),
-                distributed_assets: simple_map::new<address, u64>(),
-                position_opened: simple_map::new<address, PositionOpened>(),
-                total_profit_claimed: simple_map::new<address, u64>(),
-                profit_unclaimed: simple_map::new<address, u64>(),
+                assets: ordered_map::new<address, u64>(),
+                distributed_assets: ordered_map::new<address, u64>(),
+                position_opened: ordered_map::new<address, PositionOpened>(),
+                total_profit_claimed: ordered_map::new<address, u64>(),
+                profit_unclaimed: ordered_map::new<address, u64>(),
                 extend_ref: object::generate_extend_ref(constructor_ref)
             }
         );
