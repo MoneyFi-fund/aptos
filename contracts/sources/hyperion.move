@@ -318,50 +318,55 @@ module moneyfi::hyperion {
         let wallet_signer = wallet_account::get_wallet_account_signer(
             operator, wallet_id
         );
-
-        // Get amount before removal
-        let balance_before =
-            primary_fungible_store::balance(signer::address_of(&wallet_signer), asset);
-
-        let (assets, amounts) =
-            wallet_account::get_amount_by_position(
-                wallet_id, object::object_address<Info>(&position)
+        if(_lp_amount >= get_liquidity(position)) {
+            remove_liquidity_single_from_operator(
+                operator, wallet_id, position, asset, slippage_numerator, slippage_denominator, fee_amount
             );
-        let (_, index) = vector::index_of(
-            &assets, &object::object_address<Metadata>(&asset)
-        );
-        let amounts_before = *vector::borrow(&amounts, index);
+        }else {
+            // Get amount before removal
+            let balance_before =
+                primary_fungible_store::balance(signer::address_of(&wallet_signer), asset);
 
-        claim_fees_and_rewards_from_operator(operator, wallet_id, position, asset, 0);
+            let (assets, amounts) =
+                wallet_account::get_amount_by_position(
+                    wallet_id, object::object_address<Info>(&position)
+                );
+            let (_, index) = vector::index_of(
+                &assets, &object::object_address<Metadata>(&asset)
+            );
+            let amounts_before = *vector::borrow(&amounts, index);
 
-        router_v3::remove_liquidity_single(
-            &wallet_signer,
-            position,
-            _lp_amount,
-            asset,
-            slippage_numerator,
-            slippage_denominator
-        );
+            claim_fees_and_rewards_from_operator(operator, wallet_id, position, asset, 0);
 
-        let balance_after =
-            primary_fungible_store::balance(signer::address_of(&wallet_signer), asset);
+            router_v3::remove_liquidity_single(
+                &wallet_signer,
+                position,
+                _lp_amount,
+                asset,
+                slippage_numerator,
+                slippage_denominator
+            );
 
-        let withdrawn_amount = balance_after - balance_before;
-        let withdrawn_assets = vector::singleton<address>(
-            object::object_address<Metadata>(&asset)
-        );
-        let withdrawn_amounts = vector::singleton<u64>(withdrawn_amount);
-        let amounts_after = vector::singleton<u64>(amounts_before - withdrawn_amount);
-        let server_signer = access_control::get_object_data_signer();
-        wallet_account::update_position_after_partial_removal(
-            &server_signer,
-            wallet_id,
-            object::object_address<Info>(&position),
-            withdrawn_assets,
-            withdrawn_amounts,
-            amounts_after,
-            fee_amount
-        );
+            let balance_after =
+                primary_fungible_store::balance(signer::address_of(&wallet_signer), asset);
+
+            let withdrawn_amount = balance_after - balance_before;
+            let withdrawn_assets = vector::singleton<address>(
+                object::object_address<Metadata>(&asset)
+            );
+            let withdrawn_amounts = vector::singleton<u64>(withdrawn_amount);
+            let amounts_after = vector::singleton<u64>(amounts_before - withdrawn_amount);
+            let server_signer = access_control::get_object_data_signer();
+            wallet_account::update_position_after_partial_removal(
+                &server_signer,
+                wallet_id,
+                object::object_address<Info>(&position),
+                withdrawn_assets,
+                withdrawn_amounts,
+                amounts_after,
+                fee_amount
+            );
+        };
     }
 
     public entry fun claim_fees_and_rewards_from_operator(
