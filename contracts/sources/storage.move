@@ -1,8 +1,11 @@
 module moneyfi::storage {
     use std::vector;
     use std::error;
+    use std::signer;
     use aptos_framework::event;
     use aptos_framework::timestamp::now_seconds;
+    use aptos_framework::account;
+    use aptos_framework::resource_account;
     use aptos_framework::object::{
         Self,
         Object,
@@ -19,12 +22,17 @@ module moneyfi::storage {
     struct Storage has key {
         object: Object<ObjectCore>,
         extend_ref: ExtendRef,
-        transfer_ref: TransferRef
+        transfer_ref: TransferRef,
+        child_object_storage: address,
     }
 
     fun init_module(sender: &signer) {
         let constructor_ref = &object::create_sticky_object(@moneyfi);
-
+        let (resource_account, _) = account::create_resource_account(
+            sender,
+            b"child_object_storage"
+        );
+        resource_account::retrieve_resource_account_cap(&resource_account, @moneyfi);
         let transfer_ref = object::generate_transfer_ref(constructor_ref);
         object::disable_ungated_transfer(&transfer_ref);
         move_to(
@@ -32,7 +40,8 @@ module moneyfi::storage {
             Storage {
                 object: object::object_from_constructor_ref(constructor_ref),
                 extend_ref: object::generate_extend_ref(constructor_ref),
-                transfer_ref
+                transfer_ref,
+                child_object_storage: signer::address_of(&resource_account)
             }
         );
     }
@@ -69,6 +78,11 @@ module moneyfi::storage {
 
         let constructor_ref = &object::create_named_object(&signer, seed);
         let transfer_ref = object::generate_transfer_ref(constructor_ref);
+        let child_object_storage = borrow_global<Storage>(@moneyfi).child_object_storage;
+        object::transfer_with_ref(
+            object::generate_linear_transfer_ref(&transfer_ref),
+            child_object_storage
+        );
         object::disable_ungated_transfer(&transfer_ref);
 
         object::generate_extend_ref(constructor_ref)

@@ -189,7 +189,7 @@ module moneyfi::access_control {
             &values,
             |v| {
                 if (vector::contains(v, &role)) {
-                    n += 1;
+                    n = n + 1;
                 }
             }
         );
