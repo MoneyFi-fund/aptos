@@ -84,14 +84,6 @@ module moneyfi::wallet_account {
     }
 
     #[event]
-    struct WalletAccountConnectedEvent has drop, store {
-        wallet_id: vector<u8>,
-        wallet_object: address,
-        wallet_address: address,
-        timestamp: u64
-    }
-
-    #[event]
     struct DepositToWalletAccountEvent has drop, store {
         sender: address,
         wallet_id: vector<u8>,
@@ -268,7 +260,8 @@ module moneyfi::wallet_account {
         let total_assets = borrow_global_mut<TotalAssets>(@moneyfi).total_assets;
 
         // Get stablecoin metadata list
-        let stablecoin_metadata = access_control::get_asset_supported();
+        // let stablecoin_metadata = access_control::get_asset_supported();
+        let stablecoin_metadata = vector[];
         let fee_deducted = false;
         let fee_asset_addr = @0x0;
 
@@ -538,10 +531,7 @@ module moneyfi::wallet_account {
     // Get the WalletAccount object address for a given wallet_id
     #[view]
     public fun get_wallet_account_object_address(wallet_id: vector<u8>): address {
-        let data_object_addr = storage::get_address();
-        object::create_object_address(
-            &data_object_addr, get_wallet_account_object_seed(wallet_id)
-        )
+        storage::get_child_address(get_wallet_account_object_seed(wallet_id))
     }
 
     // Get the WalletAccount object address for a given wallet_id

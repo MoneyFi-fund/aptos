@@ -8,12 +8,20 @@ module moneyfi::access_control {
     use aptos_framework::timestamp::now_seconds;
 
     // -- Roles
+
+    // ADMIN can ocnfigure the first ROLE_MANAGER account,
+    // change critical configurations
+    // Default ADMIN is contract deployer
     const ROLE_ADMIN: u8 = 1;
+    // ROLE_MANAGER can manage account roles
     const ROLE_ROLE_MANAGER: u8 = 2;
+    // SERVICE_ACCOUNT is backend service
     const ROLE_SERVICE_ACCOUNT: u8 = 3;
+    // OPERATOR_ADMIN can manage operation configs
+    const ROLE_OPERATOR_ADMIN: u8 = 4;
 
     // IMPORTANT: increse this value when add/remove role
-    const ROLE_COUNT: u8 = 3;
+    const ROLE_COUNT: u8 = 4;
 
     // -- Error Codes
     const E_ALREADY_INITIALIZED: u64 = 1;
@@ -159,6 +167,15 @@ module moneyfi::access_control {
         let addr = signer::address_of(sender);
         assert!(
             registry.has_role(addr, ROLE_SERVICE_ACCOUNT),
+            error::permission_denied(E_NOT_AUTHORIZED)
+        )
+    }
+
+    public fun must_be_operator_admin(sender: &signer) acquires Registry {
+        let registry = borrow_global<Registry>(@moneyfi);
+        let addr = signer::address_of(sender);
+        assert!(
+            registry.has_role(addr, ROLE_OPERATOR_ADMIN),
             error::permission_denied(E_NOT_AUTHORIZED)
         )
     }

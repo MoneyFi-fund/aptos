@@ -60,8 +60,19 @@ module moneyfi::vault {
     }
 
     //  -- events
+
     #[event]
-    struct Deposited has drop, store {
+    struct DepositedEvent has drop, store {
+        sender: address,
+        wallet_account: Object<wallet_account::WalletAccount>,
+        asset: Object<Metadata>,
+        amount: u64,
+        lp_amount: u64,
+        timestamp: u64
+    }
+
+    #[event]
+    struct WithdrawnEvent has drop, store {
         sender: address,
         wallet_account: Object<wallet_account::WalletAccount>,
         asset: Object<Metadata>,
@@ -92,8 +103,16 @@ module moneyfi::vault {
 
     // -- Entries
 
-    public entry fun configure(sender: &signer) {
-        // TODO
+    public entry fun configure(
+        sender: &signer, enable_deposit: bool, enable_withdraw: bool
+    ) acquires Config {
+        access_control::must_be_operator_admin(sender);
+        let config = borrow_global_mut<Config>(@moneyfi);
+
+        config.enable_deposit = enable_deposit;
+        config.enable_withdraw = enable_withdraw;
+
+        // TODO: distpatch event?
     }
 
     public entry fun upsert_supported_asset(
@@ -106,7 +125,7 @@ module moneyfi::vault {
         max_withdraw: u64,
         lp_exchange_rate: u64
     ) acquires Config {
-        access_control::must_be_service_account(sender);
+        access_control::must_be_operator_admin(sender);
         let config = borrow_global_mut<Config>(@moneyfi);
 
         config.upsert_asset(
@@ -152,7 +171,7 @@ module moneyfi::vault {
         // TODO: mint LP
 
         event::emit(
-            Deposited {
+            DepositedEvent {
                 sender: wallet_addr,
                 wallet_account: account,
                 asset,
@@ -161,6 +180,18 @@ module moneyfi::vault {
                 timestamp: timestamp::now_seconds()
             }
         );
+    }
+
+    /// send amount = u64::max to withdraw all
+    public entry fun withdraw(
+        sender: &signer, asset: Object<Metadata>, amount: u64
+    ) acquires Config {
+        let config = borrow_global<Config>(@moneyfi);
+        assert!(
+            config.can_withdraw(asset, amount),
+            error::permission_denied(E_WITHDRAW_NOT_ALLOWED)
+        );
+        // TODO
     }
 
     // -- Views
@@ -209,6 +240,7 @@ module moneyfi::vault {
 
     fun can_deposit(self: &Config, asset: Object<Metadata>, amount: u64): bool {
         if (amount == 0) return false;
+        if (!self.enable_deposit) return false;
 
         let addr = object::object_address(&asset);
         if (ordered_map::contains(&self.supported_assets, &addr)) {
@@ -219,6 +251,26 @@ module moneyfi::vault {
                     || config.max_deposit >= amount)
                 && (config.min_deposit == 0
                     || config.min_deposit <= amount);
+        };
+
+        false
+    }
+
+    fun can_withdraw(
+        self: &Config, asset: Object<Metadata>, amount: u64
+    ): bool {
+        if (amount == 0) return false;
+        if (!self.enable_withdraw) return false;
+
+        let addr = object::object_address(&asset);
+        if (ordered_map::contains(&self.supported_assets, &addr)) {
+            let config = ordered_map::borrow(&self.supported_assets, &addr);
+
+            return config.enabled
+                && (config.max_withdraw == 0
+                    || config.max_withdraw >= amount)
+                && (config.min_withdraw == 0
+                    || config.min_withdraw <= amount);
         };
 
         false
