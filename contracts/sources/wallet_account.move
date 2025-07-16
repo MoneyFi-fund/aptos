@@ -190,7 +190,7 @@ module moneyfi::wallet_account {
         source_domain: u32,
         referral: bool
     ) {
-        access_control::must_be_operator(sender);
+        access_control::must_be_service_account(sender);
         let addr = get_wallet_account_object_address(wallet_id);
         assert!(
             !object::object_exists<WalletAccount>(addr),
@@ -226,15 +226,6 @@ module moneyfi::wallet_account {
         );
     }
 
-    // Connect user wallet to a WalletAccount
-    //   public entry fun connect_wallet(
-    //       sender: &signer, wallet_id: vector<u8>, signature: vector<u8>
-    //   ) acquires WalletAccount {
-    //
-    //       // TODO: verify signature
-    //       //connect_wallet_internal(sender, wallet_id);
-    //   }
-
     // Connect Aptos wallet to a WalletAccount
     // This function has to be called before claim assets
     public entry fun connect_aptos_wallet(
@@ -257,7 +248,7 @@ module moneyfi::wallet_account {
         connect_wallet_internal(sender, wallet_account);
     }
 
-    public entry fun deposit_to_wallet_account(
+    public fun deposit_to_wallet_account(
         sender: &signer,
         wallet_id: vector<u8>,
         assets: vector<Object<Metadata>>,
@@ -276,8 +267,6 @@ module moneyfi::wallet_account {
         let wallet_account = borrow_global_mut<WalletAccount>(wallet_account_addr);
         let total_assets_ref = borrow_global_mut<TotalAssets>(@moneyfi);
 
-        // Get stablecoin metadata list
-        let stablecoin_metadata = access_control::get_asset_supported();
         let fee_deducted = false;
         let fee_asset_addr = @0x0;
 
@@ -286,19 +275,15 @@ module moneyfi::wallet_account {
             let asset = *vector::borrow(&assets, i);
             let asset_addr = object::object_address(&asset);
             let amount = *vector::borrow(&amounts, i);
-            access_control::check_asset_supported(asset_addr);
-            // Check if this asset is a stablecoin and we haven't deducted fee yet
-            let is_stablecoin = vector::contains(&stablecoin_metadata, &asset_addr);
 
-            if (is_stablecoin && !fee_deducted && amount >= fee_amount) {
-                // Deduct fee from this stablecoin
+            if (!fee_deducted && amount >= fee_amount) {
                 assert!(
                     amount >= fee_amount, error::invalid_argument(E_INVALID_ARGUMENT)
                 );
                 primary_fungible_store::transfer(
                     sender,
                     asset,
-                    access_control::get_data_object_address(),
+                    storage::get_address(),
                     fee_amount
                 );
                 primary_fungible_store::transfer(
@@ -373,8 +358,7 @@ module moneyfi::wallet_account {
         };
         // Add fee to system if fee was deducted
         if (fee_deducted) {
-            let server_signer = access_control::get_object_data_signer();
-            access_control::add_rebalance_fee(&server_signer, fee_asset_addr, fee_amount);
+            fee_manager::add_rebalance_fee(fee_asset_addr, fee_amount);
         };
 
         event::emit(
@@ -390,7 +374,7 @@ module moneyfi::wallet_account {
         );
     }
 
-    public entry fun withdraw_from_wallet_account_by_user(
+    public fun withdraw_from_wallet_account_by_user(
         sender: &signer,
         wallet_id: vector<u8>,
         assets: vector<Object<Metadata>>,
@@ -468,7 +452,7 @@ module moneyfi::wallet_account {
         );
     }
 
-    public entry fun claim_rewards(
+    public fun claim_rewards(
         sender: &signer, wallet_id: vector<u8>
     ) acquires WalletAccount, WalletAccountObject, TotalAssets {
         if (!is_connected(signer::address_of(sender), wallet_id)) {
@@ -571,7 +555,7 @@ module moneyfi::wallet_account {
     // Get the WalletAccount object address for a given wallet_id
     #[view]
     public fun get_wallet_account_object_address(wallet_id: vector<u8>): address {
-        let data_object_addr = access_control::get_data_object_address();
+        let data_object_addr = storage::get_address();
         object::create_object_address(
             &data_object_addr, get_wallet_account_object_seed(wallet_id)
         )
@@ -684,7 +668,7 @@ module moneyfi::wallet_account {
     public fun get_wallet_account_signer(
         sender: &signer, wallet_id: vector<u8>
     ): signer acquires WalletAccount {
-        access_control::must_be_operator(sender);
+        access_control::must_be_service_account(sender);
         let addr = get_wallet_account_object_address(wallet_id);
 
         assert!(
@@ -798,10 +782,10 @@ module moneyfi::wallet_account {
         primary_fungible_store::transfer(
             &get_wallet_account_signer_internal(wallet),
             object::address_to_object<Metadata>(fee_asset),
-            access_control::get_data_object_address(),
+            storage::get_address(),
             fee_amount
         );
-        access_control::add_distribute_fee(data_signer, fee_asset, fee_amount);
+        fee_manager::add_distribute_fee(fee_asset, fee_amount);
 
         event::emit(
             OpenPositionEvent {
@@ -879,7 +863,7 @@ module moneyfi::wallet_account {
                 primary_fungible_store::transfer(
                     &get_wallet_account_signer_internal(wallet),
                     asset_out,
-                    access_control::get_data_object_address(),
+                    storage::get_address(),
                     fee_amount
                 );
                 if (ordered_map::contains(&wallet.distributed_assets, &asset)) {
@@ -897,8 +881,7 @@ module moneyfi::wallet_account {
                         }
                     };
 
-                    access_control::add_withdraw_fee(
-                        data_signer,
+                    fee_manager::add_withdraw_fee(
                         object::object_address(&asset_out),
                         fee_amount
                     );
@@ -988,10 +971,10 @@ module moneyfi::wallet_account {
         primary_fungible_store::transfer(
             &get_wallet_account_signer_internal(wallet),
             object::address_to_object<Metadata>(fee_asset),
-            access_control::get_data_object_address(),
+            storage::get_address(),
             fee_amount
         );
-        access_control::add_distribute_fee(data_signer, fee_asset, fee_amount);
+        fee_manager::add_distribute_fee(fee_asset, fee_amount);
         if (ordered_map::contains(&total_assets_ref.total_assets, &fee_asset)) {
             let current_total_asset =
                 ordered_map::borrow(&total_assets_ref.total_assets, &fee_asset);
@@ -1100,10 +1083,10 @@ module moneyfi::wallet_account {
         primary_fungible_store::transfer(
             &get_wallet_account_signer_internal(wallet),
             object::address_to_object<Metadata>(fee_asset),
-            access_control::get_data_object_address(),
+            storage::get_address(),
             fee_amount
         );
-        access_control::add_withdraw_fee(data_signer, fee_asset, fee_amount);
+        fee_manager::add_withdraw_fee(fee_asset, fee_amount);
 
         if (ordered_map::contains(&total_assets_ref.total_assets, &fee_asset)) {
             let current_total_asset =
@@ -1216,30 +1199,29 @@ module moneyfi::wallet_account {
         primary_fungible_store::transfer(
             &get_wallet_account_signer_internal(wallet_account_mut),
             object::address_to_object<Metadata>(asset),
-            access_control::get_data_object_address(),
+            storage::get_address(),
             fee_amount
         );
 
-        access_control::add_withdraw_fee(data_signer, asset, fee_amount);
+        fee_manager::add_withdraw_fee(asset, fee_amount);
 
-        let protocol_amount = access_control::calculate_protocol_fee(amount);
+        let protocol_amount = fee_manager::calculate_protocol_fee(amount);
 
         primary_fungible_store::transfer(
             &get_wallet_account_signer_internal(wallet_account_mut),
             object::address_to_object<Metadata>(asset),
-            access_control::get_data_object_address(),
+            storage::get_address(),
             protocol_amount
         );
 
         let referral_fee =
             if (wallet_account_mut.referral) {
-                access_control::calculate_referral_fee(protocol_amount) // 25% of protocol amount
+                fee_manager::calculate_referral_fee(protocol_amount) // 25% of protocol amount
             } else { 0 };
 
-        access_control::add_referral_fee(data_signer, asset, referral_fee);
+        fee_manager::add_referral_fee(asset, referral_fee);
 
-        access_control::add_protocol_fee(
-            data_signer,
+        fee_manager::add_protocol_fee(
             asset,
             protocol_amount - referral_fee // 75% of protocol amount
         );

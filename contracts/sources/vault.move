@@ -1,13 +1,9 @@
 module moneyfi::vault {
-    use std::bcs;
     use std::signer;
-    use std::debug;
     use std::error;
     use std::vector;
-    use std::string::{Self, String};
-    use std::option::{Self, Option};
-    use aptos_std::string_utils;
-    use aptos_framework::account;
+    use std::string;
+    use std::option;
     use aptos_framework::ordered_map::{Self, OrderedMap};
     use aptos_framework::object::{Self, Object, ObjectCore, ExtendRef};
     use aptos_framework::event;
@@ -20,6 +16,7 @@ module moneyfi::vault {
         BurnRef
     };
     use aptos_framework::primary_fungible_store;
+    use aptos_framework::timestamp::now_seconds;
 
     use moneyfi::access_control;
     use moneyfi::wallet_account;
@@ -33,6 +30,7 @@ module moneyfi::vault {
     const E_ALREADY_INITIALIZED: u64 = 1;
     const E_DEPOSIT_NOT_ALLOWED: u64 = 2;
     const E_WITHDRAW_NOT_ALLOWED: u64 = 3;
+    const E_ASSET_NOT_SUPPORTED: u64 = 4;
 
     // -- Structs
     struct Config has key {
@@ -46,7 +44,8 @@ module moneyfi::vault {
         min_deposit: u64,
         max_deposit: u64,
         min_withdraw: u64,
-        max_withdraw: u64
+        max_withdraw: u64,
+        lp_exchange_rate: u64
     }
 
     struct LPToken has key {
@@ -55,6 +54,24 @@ module moneyfi::vault {
         transfer_ref: TransferRef,
         burn_ref: BurnRef,
         extend_ref: ExtendRef
+    }
+
+    //-- Events
+    #[event]
+    struct UpsertAssetSupportedEvent has drop, store {
+        asset_addr: address,
+        min_deposit: u64,
+        max_deposit: u64,
+        min_withdraw: u64,
+        max_withdraw: u64,
+        lp_exchange_rate: u64,
+        timestamp: u64
+    }
+
+    #[event]
+    struct RemoveAssetSupportedEvent has drop, store {
+        asset_addr: address,
+        timestamp: u64
     }
 
     // -- init
@@ -79,10 +96,6 @@ module moneyfi::vault {
 
     // -- Entries
 
-    public entry fun configure(sender: &signer) {
-        // TODO
-    }
-
     public entry fun upsert_supported_asset(
         sender: &signer,
         asset: Object<Metadata>,
@@ -90,23 +103,47 @@ module moneyfi::vault {
         min_deposit: u64,
         max_deposit: u64,
         min_withdraw: u64,
-        max_withdraw: u64
+        max_withdraw: u64,
+        lp_exchange_rate: u64
     ) acquires Config {
         access_control::must_be_service_account(sender);
         let config = borrow_global_mut<Config>(@moneyfi);
 
         config.upsert_asset(
             asset,
-            AssetConfig { enabled, min_deposit, max_deposit, min_withdraw, max_withdraw }
+            AssetConfig {
+                enabled,
+                min_deposit,
+                max_deposit,
+                min_withdraw,
+                max_withdraw,
+                lp_exchange_rate
+            }
         )
-        // TODO: distpatch event
+        event::emit(UpsertAssetSupportedEvent{
+            asset_addr: object::object_address<Metadata>(&asset),
+            in_deposit,
+            max_deposit,
+            min_withdraw,
+            max_withdraw,
+            lp_exchange_rate,
+            timestamp: now_seconds()
+        });
     }
 
     public entry fun remove_supported_asset(
         sender: &signer, token: Object<Metadata>
     ) {
         access_control::must_be_service_account(sender);
-        // TODO
+        let config = borrow_global_mut<Config>(@moneyfi);
+        let asset_addr = object::object_address<Metadata>(&token)
+        if(ordered_map::contains(&config.supported_assets, )) {
+            ordered_map::remove(&mut config.supported_assets, asset_addr);
+            event::emit(RemoveAssetSupportedEvent {
+                asset_addr,
+                timestamp: now_seconds()
+            })
+        };
     }
 
     public entry fun deposit(
@@ -114,7 +151,7 @@ module moneyfi::vault {
     ) acquires Config {
         let config = borrow_global<Config>(@moneyfi);
         assert!(
-            config.can_deposit(asset, amount),
+            can_deposit(config, asset, amount),
             error::permission_denied(E_DEPOSIT_NOT_ALLOWED)
         );
 
@@ -128,7 +165,18 @@ module moneyfi::vault {
             amount
         );
 
-        // TODO: mint LP, dispatch event
+        // TODO: mint LP
+
+        event::emit(
+            Deposited {
+                sender: wallet_addr,
+                wallet_account: account,
+                asset,
+                amount,
+                lp_amount: 0,
+                timestamp: now_seconds()
+            }
+        );
     }
 
     // -- Views

@@ -241,7 +241,6 @@ module moneyfi::fee_manager {
 
     //-- Private
     public(friend) fun add_distribute_fee(asset: address, amount: u64) acquires SystemFee {
-        storage::check_asset_supported(asset);
         let system_fee = borrow_global_mut<SystemFee>(@moneyfi);
         if (!ordered_map::contains(&system_fee.distribute_fee, &asset)) {
             ordered_map::add(&mut system_fee.distribute_fee, asset, amount);
@@ -256,7 +255,6 @@ module moneyfi::fee_manager {
     }
 
     public(friend) fun add_withdraw_fee(asset: address, amount: u64) acquires SystemFee {
-        storage::check_asset_supported(asset);
         let system_fee = borrow_global_mut<SystemFee>(@moneyfi);
         if (!ordered_map::contains(&system_fee.withdraw_fee, &asset)) {
             ordered_map::add(&mut system_fee.withdraw_fee, asset, amount);
@@ -269,7 +267,6 @@ module moneyfi::fee_manager {
     }
 
     public(friend) fun add_rebalance_fee(asset: address, amount: u64) acquires SystemFee {
-        storage::check_asset_supported(asset);
         let system_fee = borrow_global_mut<SystemFee>(@moneyfi);
         if (!ordered_map::contains(&system_fee.rebalance_fee, &asset)) {
             ordered_map::add(&mut system_fee.rebalance_fee, asset, amount);
@@ -282,9 +279,8 @@ module moneyfi::fee_manager {
     }
 
     public(friend) fun add_referral_fee(
-        sender: &signer, asset: address, amount: u64
+        asset: address, amount: u64
     ) acquires SystemFee {
-        storage::check_asset_supported(asset);
         let system_fee = borrow_global_mut<SystemFee>(@moneyfi);
 
         // Add to referral_fee
@@ -310,9 +306,8 @@ module moneyfi::fee_manager {
     }
 
     public(friend) fun add_protocol_fee(
-        sender: &signer, asset: address, amount: u64
+        asset: address, amount: u64
     ) acquires SystemFee {
-        storage::check_asset_supported(asset);
         let system_fee = borrow_global_mut<SystemFee>(@moneyfi);
 
         // Add to protocol_fee
