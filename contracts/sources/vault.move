@@ -39,16 +39,23 @@ module moneyfi::vault {
     struct Config has key {
         enable_deposit: bool,
         enable_withdraw: bool,
+        system_fee_percent: u64, // 100 => 1%
         supported_assets: OrderedMap<address, AssetConfig>
     }
 
-    struct AssetConfig has store, drop {
+    struct AssetConfig has store, copy, drop {
         enabled: bool,
         min_deposit: u64,
         max_deposit: u64,
         min_withdraw: u64,
         max_withdraw: u64,
         lp_exchange_rate: u64
+    }
+
+    struct Stats has key {
+        assets: OrderedMap<address, u64>,
+        lp_amount: OrderedMap<address, u64>,
+        fee_amount: OrderedMap<address, u64>
     }
 
     struct LPToken has key {
@@ -94,7 +101,17 @@ module moneyfi::vault {
             Config {
                 enable_deposit: true,
                 enable_withdraw: true,
+                system_fee_percent: 2500, // 25%
                 supported_assets: ordered_map::new()
+            }
+        );
+
+        move_to(
+            sender,
+            Stats {
+                assets: ordered_map::new(),
+                lp_amount: ordered_map::new(),
+                fee_amount: ordered_map::new()
             }
         );
 
@@ -104,13 +121,19 @@ module moneyfi::vault {
     // -- Entries
 
     public entry fun configure(
-        sender: &signer, enable_deposit: bool, enable_withdraw: bool
+        sender: &signer,
+        enable_deposit: bool,
+        enable_withdraw: bool,
+        system_fee_percent: u64
     ) acquires Config {
+        assert!(system_fee_percent <= 10000);
+
         access_control::must_be_operator_admin(sender);
         let config = borrow_global_mut<Config>(@moneyfi);
 
         config.enable_deposit = enable_deposit;
         config.enable_withdraw = enable_withdraw;
+        config.system_fee_percent = system_fee_percent;
 
         // TODO: distpatch event?
     }
@@ -145,13 +168,13 @@ module moneyfi::vault {
     public entry fun remove_supported_asset(
         sender: &signer, token: Object<Metadata>
     ) {
-        access_control::must_be_service_account(sender);
+        access_control::must_be_operator_admin(sender);
         // TODO
     }
 
     public entry fun deposit(
         sender: &signer, asset: Object<Metadata>, amount: u64
-    ) acquires Config {
+    ) acquires Config, LPToken, Stats {
         let config = borrow_global<Config>(@moneyfi);
         assert!(
             config.can_deposit(asset, amount),
@@ -161,14 +184,16 @@ module moneyfi::vault {
         let wallet_addr = signer::address_of(sender);
         let account = wallet_account::get_wallet_account_by_address(wallet_addr);
 
-        primary_fungible_store::transfer(
-            sender,
-            asset,
-            object::object_address(&account),
-            amount
-        );
+        let asset_config = config.get_asset_config(asset);
+        let lp_amount = asset_config.calc_lp_amount(amount);
+        let account_addr = object::object_address(&account);
+        wallet_account::deposit(sender, asset, amount, lp_amount);
+        mint_lp(account_addr, lp_amount);
 
-        // TODO: mint LP
+        let stats = borrow_global_mut<Stats>(@moneyfi);
+        stats.increase_amount(
+            asset, amount, lp_amount, 0
+        );
 
         event::emit(
             DepositedEvent {
@@ -176,7 +201,7 @@ module moneyfi::vault {
                 wallet_account: account,
                 asset,
                 amount,
-                lp_amount: 0,
+                lp_amount,
                 timestamp: timestamp::now_seconds()
             }
         );
@@ -198,6 +223,12 @@ module moneyfi::vault {
 
     // -- Public
 
+    public fun get_lp_token(): Object<Metadata> acquires LPToken {
+        let lptoken = borrow_global<LPToken>(@moneyfi);
+
+        lptoken.token
+    }
+
     // -- Private
 
     fun init_lp_token(sender: &signer) {
@@ -213,6 +244,7 @@ module moneyfi::vault {
             string::utf8(b""),
             string::utf8(b"")
         );
+        fungible_asset::set_untransferable(constructor_ref);
 
         let mint_ref = fungible_asset::generate_mint_ref(constructor_ref);
         let burn_ref = fungible_asset::generate_burn_ref(constructor_ref);
@@ -236,6 +268,11 @@ module moneyfi::vault {
     ) {
         let addr = object::object_address(&asset);
         ordered_map::upsert(&mut self.supported_assets, addr, config);
+    }
+
+    fun get_asset_config(self: &Config, asset: Object<Metadata>): AssetConfig {
+        let addr = object::object_address(&asset);
+        *ordered_map::borrow(&self.supported_assets, &addr)
     }
 
     fun can_deposit(self: &Config, asset: Object<Metadata>, amount: u64): bool {
@@ -276,10 +313,95 @@ module moneyfi::vault {
         false
     }
 
+    fun mint_lp(recipient: address, amount: u64) acquires LPToken {
+        let lptoken = borrow_global<LPToken>(@moneyfi);
+
+        primary_fungible_store::set_frozen_flag(&lptoken.transfer_ref, recipient, true);
+        primary_fungible_store::mint(&lptoken.mint_ref, recipient, amount);
+    }
+
+    fun calc_lp_amount(self: &AssetConfig, token_amount: u64): u64 {
+        self.lp_exchange_rate * token_amount
+    }
+
+    fun increase_amount(
+        self: &mut Stats,
+        asset: Object<Metadata>,
+        token_amount: u64,
+        lp_amount: u64,
+        fee_amount: u64
+    ) {
+        let addr = object::object_address(&asset);
+        if (token_amount > 0) {
+            let current_vaule =
+                if (ordered_map::contains(&self.assets, &addr)) {
+                    *ordered_map::borrow(&self.assets, &addr)
+                } else { 0 };
+            ordered_map::upsert(&mut self.assets, addr, current_vaule + token_amount);
+        };
+
+        if (lp_amount > 0) {
+            let current_vaule =
+                if (ordered_map::contains(&self.lp_amount, &addr)) {
+                    *ordered_map::borrow(&self.lp_amount, &addr)
+                } else { 0 };
+            ordered_map::upsert(&mut self.lp_amount, addr, current_vaule + lp_amount);
+        };
+
+        if (fee_amount > 0) {
+            let current_vaule =
+                if (ordered_map::contains(&self.fee_amount, &addr)) {
+                    *ordered_map::borrow(&self.fee_amount, &addr)
+                } else { 0 };
+            ordered_map::upsert(&mut self.fee_amount, addr, current_vaule + fee_amount);
+        };
+    }
+
+    fun decrease_amount(
+        self: &mut Stats,
+        asset: Object<Metadata>,
+        token_amount: u64,
+        lp_amount: u64,
+        fee_amount: u64
+    ) {
+        let addr = object::object_address(&asset);
+        if (token_amount > 0) {
+            let current_vaule =
+                if (ordered_map::contains(&self.assets, &addr)) {
+                    *ordered_map::borrow(&self.assets, &addr)
+                } else { 0 };
+            assert!(current_vaule >= token_amount);
+            ordered_map::upsert(&mut self.assets, addr, current_vaule - token_amount);
+        };
+
+        if (lp_amount > 0) {
+            let current_vaule =
+                if (ordered_map::contains(&self.lp_amount, &addr)) {
+                    *ordered_map::borrow(&self.lp_amount, &addr)
+                } else { 0 };
+            assert!(current_vaule >= lp_amount);
+            ordered_map::upsert(&mut self.lp_amount, addr, current_vaule - lp_amount);
+        };
+
+        if (fee_amount > 0) {
+            let current_vaule =
+                if (ordered_map::contains(&self.fee_amount, &addr)) {
+                    *ordered_map::borrow(&self.fee_amount, &addr)
+                } else { 0 };
+            assert!(current_vaule >= fee_amount);
+            ordered_map::upsert(&mut self.fee_amount, addr, current_vaule - fee_amount);
+        };
+    }
+
     // -- test only
 
     #[test_only]
     public fun init_module_for_testing(sender: &signer) {
         init_module(sender)
+    }
+
+    #[test_only]
+    public fun mint_lp_for_testing(recipient: address, amount: u64) acquires LPToken {
+        mint_lp(recipient, amount);
     }
 }
