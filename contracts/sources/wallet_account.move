@@ -397,6 +397,7 @@ module moneyfi::wallet_account {
             let asset = *vector::borrow(&assets, i);
             let asset_addr = object::object_address(&asset);
             let amount = *vector::borrow(&amounts, i);
+            let actual_amount = primary_fungible_store::balance(wallet_account_addr, asset);
             let transfer_amount = if(actual_amount < amount) {
                     actual_amount
                 }else{

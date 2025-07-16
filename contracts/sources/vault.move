@@ -119,10 +119,10 @@ module moneyfi::vault {
                 max_withdraw,
                 lp_exchange_rate
             }
-        )
+        );
         event::emit(UpsertAssetSupportedEvent{
             asset_addr: object::object_address<Metadata>(&asset),
-            in_deposit,
+            min_deposit,
             max_deposit,
             min_withdraw,
             max_withdraw,
@@ -133,12 +133,12 @@ module moneyfi::vault {
 
     public entry fun remove_supported_asset(
         sender: &signer, token: Object<Metadata>
-    ) {
+    ) acquires Config{
         access_control::must_be_service_account(sender);
         let config = borrow_global_mut<Config>(@moneyfi);
-        let asset_addr = object::object_address<Metadata>(&token)
-        if(ordered_map::contains(&config.supported_assets, )) {
-            ordered_map::remove(&mut config.supported_assets, asset_addr);
+        let asset_addr = object::object_address<Metadata>(&token);
+        if(ordered_map::contains(&config.supported_assets, &asset_addr)) {
+            ordered_map::remove(&mut config.supported_assets, &asset_addr);
             event::emit(RemoveAssetSupportedEvent {
                 asset_addr,
                 timestamp: now_seconds()
@@ -167,8 +167,8 @@ module moneyfi::vault {
     public entry fun withdraw(
         sender: &signer,
         wallet_id: vector<u8>,
-        assets: Object<Metadata>,
-        amounts: u64
+        asset: Object<Metadata>,
+        amount: u64
     ) acquires Config {
         let config = borrow_global<Config>(@moneyfi);
         assert!(
@@ -181,6 +181,12 @@ module moneyfi::vault {
             vector::singleton<Object<Metadata>>(asset),
             vector::singleton<u64>(amount)
         );
+    }
+
+    public entry fun claim_rewards(
+        sender: &signer, wallet_id: vector<u8>
+    ) {
+        wallet_account::claim_rewards(sender, wallet_id);
     }
     
 
