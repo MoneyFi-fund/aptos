@@ -215,7 +215,9 @@ module moneyfi::vault {
     }
 
     public entry fun deposit(
-        sender: &signer, asset: Object<Metadata>, amount: u64
+        sender: &signer, 
+        asset: Object<Metadata>, 
+        amount: u64
     ) acquires Config, LPToken, Stats {
         let config = borrow_global<Config>(@moneyfi);
         assert!(
@@ -306,6 +308,12 @@ module moneyfi::vault {
     public fun get_total_assets(): (vector<address>, vector<u64>) acquires Stats {
         let stats = borrow_global<Stats>(@moneyfi);
         ordered_map::to_vec_pair<address, u64>(stats.assets)
+    }
+
+    #[view]
+    public fun get_supported_assets(): vector<address> acquires Config {
+        let config = borrow_global<Config>(@moneyfi);
+        ordered_map::keys(&config.supported_assets)
     }
 
     // -- Public
