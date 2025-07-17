@@ -47,7 +47,7 @@ module moneyfi::vault_test {
         account::create_account_for_test(wallet1_addr);
         account::create_account_for_test(wallet2_addr);
 
-        access_control::upsert_account(deployer, deployer_addr, vector[1, 3]);
+        access_control::upsert_account(deployer, deployer_addr, vector[1, 3, 4]);
 
         // setup asset
         let usdc = create_fake_USDC(deployer);
@@ -142,5 +142,23 @@ module moneyfi::vault_test {
         let acc_store =
             primary_fungible_store::ensure_primary_store_exists(acc_addr, usdc);
         fungible_asset::transfer(deployer, acc_store, wallet2_store, 1000);
+    }
+
+    #[test(deployer = @moneyfi, wallet1 = @0x111, wallet2 = @0x222)]
+    #[expected_failure]
+    fun test_lp_should_not_transferable(
+        deployer: &signer, wallet1: &signer, wallet2: &signer
+    ) {
+        test_deposit(deployer, wallet1, wallet2);
+
+        let wallet1_addr = signer::address_of(wallet1);
+        let wallet2_addr = signer::address_of(wallet2);
+
+        vault::mint_lp_for_testing(wallet1_addr, 1000);
+        let lptoken = vault::get_lp_token();
+
+        primary_fungible_store::transfer(wallet1, lptoken, wallet2_addr, 100);
+        let balance = primary_fungible_store::balance(wallet1_addr, lptoken);
+        debug::print(&balance);
     }
 }

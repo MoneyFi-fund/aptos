@@ -165,12 +165,12 @@ module moneyfi::vault {
         // TODO: distpatch event
     }
 
-    public entry fun remove_supported_asset(
-        sender: &signer, token: Object<Metadata>
-    ) {
-        access_control::must_be_operator_admin(sender);
-        // TODO
-    }
+    // public entry fun remove_supported_asset(
+    //     sender: &signer, token: Object<Metadata>
+    // ) {
+    //     access_control::must_be_operator_admin(sender);
+    //     // TODO
+    // }
 
     public entry fun deposit(
         sender: &signer, asset: Object<Metadata>, amount: u64
@@ -187,8 +187,9 @@ module moneyfi::vault {
         let asset_config = config.get_asset_config(asset);
         let lp_amount = asset_config.calc_lp_amount(amount);
         let account_addr = object::object_address(&account);
+
         wallet_account::deposit(sender, asset, amount, lp_amount);
-        mint_lp(account_addr, lp_amount);
+        mint_lp(wallet_addr, lp_amount);
 
         let stats = borrow_global_mut<Stats>(@moneyfi);
         stats.increase_amount(
@@ -210,13 +211,36 @@ module moneyfi::vault {
     /// send amount = u64::max to withdraw all
     public entry fun withdraw(
         sender: &signer, asset: Object<Metadata>, amount: u64
-    ) acquires Config {
+    ) acquires Config, LPToken {
+        let wallet_addr = signer::address_of(sender);
+        let balance = primary_fungible_store::balance(wallet_addr, asset);
+        if (amount > balance) {
+            amount = balance;
+        };
+
         let config = borrow_global<Config>(@moneyfi);
         assert!(
             config.can_withdraw(asset, amount),
             error::permission_denied(E_WITHDRAW_NOT_ALLOWED)
         );
-        // TODO
+
+        let account = wallet_account::get_wallet_account_by_address(wallet_addr);
+        let asset_config = config.get_asset_config(asset);
+        let lp_amount = asset_config.calc_lp_amount(amount);
+        let account_addr = object::object_address(&account);
+        wallet_account::withdraw(sender, asset, amount, lp_amount);
+        burn_lp(wallet_addr, lp_amount);
+
+        event::emit(
+            WithdrawnEvent {
+                sender: wallet_addr,
+                wallet_account: account,
+                asset,
+                amount,
+                lp_amount,
+                timestamp: timestamp::now_seconds()
+            }
+        );
     }
 
     // -- Views
@@ -318,6 +342,12 @@ module moneyfi::vault {
 
         primary_fungible_store::set_frozen_flag(&lptoken.transfer_ref, recipient, true);
         primary_fungible_store::mint(&lptoken.mint_ref, recipient, amount);
+    }
+
+    fun burn_lp(owner: address, amount: u64) acquires LPToken {
+        let lptoken = borrow_global<LPToken>(@moneyfi);
+
+        primary_fungible_store::burn(&lptoken.burn_ref, owner, amount);
     }
 
     fun calc_lp_amount(self: &AssetConfig, token_amount: u64): u64 {

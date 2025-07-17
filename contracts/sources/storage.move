@@ -68,7 +68,7 @@ module moneyfi::storage {
         object::generate_signer_for_extending(&storage.extend_ref)
     }
 
-    public(friend) fun create_child_object(seed: vector<u8>): ExtendRef acquires Storage {
+    public(friend) fun create_wallet_account_object(seed: vector<u8>): ExtendRef acquires Storage {
         assert!(seed != OBJECT_OWNER_SEED);
 
         let storage_signer = get_signer();

@@ -1223,6 +1223,21 @@ module moneyfi::wallet_account {
         obj.wallet_account
     }
 
+    public fun get_balance(
+        account: Object<WalletAccount>, asset: Object<Metadata>
+    ): u64 {
+        let addr = object::object_address(&account);
+        primary_fungible_store::balance(addr, asset)
+    }
+
+    public fun get_lp_balance_by_asset(
+        account_obj: &Object<WalletAccount>, asset: &Object<Metadata>
+    ): u64 acquires WalletAccount {
+        let account_addr = object::object_address(account_obj);
+        let account = borrow_global<WalletAccount>(account_addr);
+        account.get_lp_balance(asset)
+    }
+
     // -- Private
 
     public(friend) fun deposit(
@@ -1244,11 +1259,47 @@ module moneyfi::wallet_account {
             } else { 0 };
         ordered_map::upsert(&mut account.assets, asset_addr, amount + balance);
 
-        let lp_balance =
-            if (ordered_map::contains(&account.lp_amount, &asset_addr)) {
-                *ordered_map::borrow(&account.lp_amount, &asset_addr)
-            } else { 0 };
+        let lp_balance = account.get_lp_balance(&asset);
         ordered_map::upsert(&mut account.lp_amount, asset_addr, lp_balance + lp_amount);
+    }
+
+    public(friend) fun withdraw(
+        sender: &signer,
+        asset: Object<Metadata>,
+        amount: u64,
+        lp_amount: u64
+    ) acquires WalletAccount, WalletAccountObject {
+        let addr = signer::address_of(sender);
+        let account_obj = get_wallet_account_by_address(addr);
+        let account_addr = object::object_address(&account_obj);
+        let account = borrow_global_mut<WalletAccount>(account_addr);
+        let asset_addr = object::object_address(&asset);
+
+        let balance = get_balance(account_obj, asset);
+        assert!(balance >= amount);
+        let lp_balance = account.get_lp_balance(&asset);
+        assert!(lp_balance >= lp_amount);
+
+        let account_signer = account.generate_signer();
+        primary_fungible_store::transfer(&account_signer, asset, addr, amount);
+
+        let balance =
+            if (ordered_map::contains(&account.assets, &asset_addr)) {
+                *ordered_map::borrow(&account.assets, &asset_addr)
+            } else { 0 };
+        ordered_map::upsert(&mut account.assets, asset_addr, balance - amount);
+        ordered_map::upsert(&mut account.lp_amount, asset_addr, lp_balance - lp_amount);
+    }
+
+    fun get_lp_balance(self: &WalletAccount, asset: &Object<Metadata>): u64 {
+        let asset_addr = object::object_address(asset);
+        if (ordered_map::contains(&self.lp_amount, &asset_addr)) {
+            *ordered_map::borrow(&self.lp_amount, &asset_addr)
+        } else { 0 }
+    }
+
+    fun generate_signer(self: &WalletAccount): signer {
+        object::generate_signer_for_extending(&self.extend_ref)
     }
 
     fun verify_wallet_position(wallet_id: vector<u8>, position: address) acquires WalletAccount {
@@ -1281,7 +1332,9 @@ module moneyfi::wallet_account {
         referee_count: u64
     ) {
         let extend_ref =
-            storage::create_child_object(get_wallet_account_object_seed(wallet_id));
+            storage::create_wallet_account_object(
+                get_wallet_account_object_seed(wallet_id)
+            );
         let wallet_signer = &object::generate_signer_for_extending(&extend_ref);
 
         move_to(
