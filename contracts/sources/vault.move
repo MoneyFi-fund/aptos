@@ -241,7 +241,7 @@ module moneyfi::vault {
             0
         );
 
-        mint_lp(account_addr, lp_amount);
+        mint_lp(wallet_addr, lp_amount);
 
         let stats = borrow_global_mut<Stats>(@moneyfi);
         stats.increase_amount(
@@ -286,11 +286,22 @@ module moneyfi::vault {
             vector::singleton<u64>(amount)
         );
 
-        burn_lp(account_addr, lp_amount);
+        burn_lp(wallet_addr, lp_amount);
 
         let stats = borrow_global_mut<Stats>(@moneyfi);
         stats.decrease_amount(
             asset, amount, lp_amount, 0
+        );
+
+        event::emit(
+            WithdrawnEvent {
+                sender: wallet_addr,
+                wallet_account: account,
+                asset,
+                amount,
+                lp_amount,
+                timestamp: now_seconds()
+            }
         );
     }
 
