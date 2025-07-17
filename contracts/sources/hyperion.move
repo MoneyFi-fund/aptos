@@ -485,6 +485,31 @@ module moneyfi::hyperion {
 
     //-- Views
     #[view]
+    public fun get_profit(wallet_id: vector<u8>): u64 {
+        let (position_addrs, strategy_ids) = wallet_account::get_position_opened(wallet_id);
+        let total_profit: u64 = 0;
+        
+        let i = 0;
+        let len = vector::length(&position_addrs);
+        
+        while (i < len) {
+            let strategy_id = *vector::borrow(&strategy_ids, i);
+
+            if (strategy_id == 1) {
+                let position_addr = *vector::borrow(&position_addrs, i);
+                let position = object::address_to_object<Info>(position_addr);
+
+                let position_profit = get_pending_rewards_and_fees_usdc(position);
+                total_profit = total_profit + position_profit;
+            };
+            
+            i = i + 1;
+        };
+        
+        total_profit
+    }
+
+    #[view]
     public fun get_pending_rewards_and_fees_usdc(position: Object<Info>): u64 {
         let stablecoin_metadata = object::address_to_object<Metadata>(USDC_ADDRESS);
         let total_stablecoin_amount: u64 = 0;
