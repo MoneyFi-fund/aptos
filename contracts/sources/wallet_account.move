@@ -351,7 +351,7 @@ module moneyfi::wallet_account {
         wallet_id: vector<u8>,
         assets: vector<Object<Metadata>>,
         amounts: vector<u64>
-    ) acquires WalletAccount, WalletAccountObject, TotalAssets {
+    ) acquires WalletAccount, WalletAccountObject {
         if (!is_connected(signer::address_of(sender), wallet_id)) {
             connect_aptos_wallet(sender, wallet_id);
         };
@@ -413,7 +413,7 @@ module moneyfi::wallet_account {
 
     public fun claim_rewards(
         sender: &signer, wallet_id: vector<u8>
-    ) acquires WalletAccount, WalletAccountObject, TotalAssets {
+    ) acquires WalletAccount, WalletAccountObject {
         if (!is_connected(signer::address_of(sender), wallet_id)) {
             connect_aptos_wallet(sender, wallet_id);
         };
@@ -672,7 +672,7 @@ module moneyfi::wallet_account {
         amounts: vector<u64>,
         strategy_id: u8,
         fee_amount: u64
-    ) acquires WalletAccount, TotalAssets {
+    ) acquires WalletAccount {
         let addr = get_wallet_account_object_address(wallet_id);
         assert!(
             object::object_exists<WalletAccount>(addr),
@@ -763,7 +763,7 @@ module moneyfi::wallet_account {
         position: address,
         asset_out: Object<Metadata>,
         fee_amount: u64
-    ) acquires WalletAccount, TotalAssets {
+    ) acquires WalletAccount {
         verify_wallet_position(wallet_id, position);
         let addr = get_wallet_account_object_address(wallet_id);
         assert!(
@@ -871,7 +871,7 @@ module moneyfi::wallet_account {
         assets_added: vector<address>,
         amounts_added: vector<u64>,
         fee_amount: u64
-    ) acquires WalletAccount, TotalAssets {
+    ) acquires WalletAccount {
         verify_wallet_position(wallet_id, position);
         let addr = get_wallet_account_object_address(wallet_id);
         assert!(
@@ -968,7 +968,7 @@ module moneyfi::wallet_account {
         withdrawn_amounts: vector<u64>,
         amounts_after: vector<u64>,
         fee_amount: u64
-    ) acquires WalletAccount, TotalAssets {
+    ) acquires WalletAccount {
         verify_wallet_position(wallet_id, position);
         let addr = get_wallet_account_object_address(wallet_id);
         assert!(
@@ -1085,7 +1085,7 @@ module moneyfi::wallet_account {
         asset: address,
         amount: u64,
         fee_amount: u64
-    ) acquires WalletAccount, TotalAssets {
+    ) acquires WalletAccount {
         verify_wallet_position(wallet_id, position);
         let addr = get_wallet_account_object_address(wallet_id);
         assert!(
