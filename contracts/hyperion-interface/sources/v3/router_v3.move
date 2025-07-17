@@ -20,22 +20,19 @@ module dex_contract::router_v3 {
         _token_a: Object<Metadata>,
         _token_b: Object<Metadata>,
         _fee_tier: u8,
-        _tick: u32,
+        _tick: u32
     ) {
         abort(0);
     }
 
     public entry fun create_pool_coin<CoinType>(
-        _token_b: Object<Metadata>,
-        _fee_tier: u8,
-        _tick: u32,
+        _token_b: Object<Metadata>, _fee_tier: u8, _tick: u32
     ) {
         abort(0);
     }
 
     public entry fun create_pool_both_coins<CoinType1, CoinType2>(
-        _fee_tier: u8,
-        _tick: u32,
+        _fee_tier: u8, _tick: u32
     ) {
         abort(0);
     }
@@ -138,15 +135,15 @@ module dex_contract::router_v3 {
 
     ///--- agruments unverify
     public entry fun add_liquidity_single(
-       _user: &signer,
-       _position: Object<position_v3::Info>,
-       _token_input: Object<Metadata>,
-       _token_pair: Object<Metadata>,
-       _amount_in: u64,
-       _amount_out_min: u256,
-       _amount_out_max: u256,
-       _slippage_numerator: u256,
-       _slippage_denominator: u256,
+        _user: &signer,
+        _position: Object<position_v3::Info>,
+        _token_input: Object<Metadata>,
+        _token_pair: Object<Metadata>,
+        _amount_in: u64,
+        _slippage_numerator: u256,
+        _slippage_denominator: u256,
+        _threshold_numerator: u256,
+        _threshold_denominator: u256
     ) {
         abort(0);
     }
@@ -157,17 +154,17 @@ module dex_contract::router_v3 {
         _liquidity_delta: u128,
         _token: Object<Metadata>,
         _slippage_numerator: u256,
-        _slippage_denominator: u256,
+        _slippage_denominator: u256
     ) {
         abort(0);
     }
 
     public entry fun claim_fees_and_rewards_directly_deposit(
-        _lp: &signer,
-        _lp_objects: Object<position_v3::Info>,
+        _lp: &signer, _lp_objects: vector<address>
     ) {
         abort(0);
     }
+
     ///--- arguments unverify
 
     public entry fun add_liquidity_coin<CoinType>(
@@ -232,6 +229,7 @@ module dex_contract::router_v3 {
     ) {
         abort(0);
     }
+
     public fun remove_liquidity_by_contract(
         lp: &signer,
         lp_object: Object<position_v3::Info>,
@@ -240,8 +238,9 @@ module dex_contract::router_v3 {
         amount_b_min: u64,
         _deadline: u64
     ): (Option<FungibleAsset>, Option<FungibleAsset>) {
-        (none<FungibleAsset>(),none<FungibleAsset>())
+        (none<FungibleAsset>(), none<FungibleAsset>())
     }
+
     public fun add_liquidity_by_contract(
         lp: &signer,
         lp_object: Object<position_v3::Info>,
@@ -252,19 +251,16 @@ module dex_contract::router_v3 {
         fa_a: FungibleAsset,
         fa_b: FungibleAsset,
         _deadline: u64
-    ): (u64, u64, FungibleAsset, FungibleAsset){
-        (0,0,fa_a,fa_b)
+    ): (u64, u64, FungibleAsset, FungibleAsset) {
+        (0, 0, fa_a, fa_b)
     }
+
     public entry fun claim_fees(
-        _lp: &signer,
-        _lp_objects: vector<address>,
-        _to: address
+        _lp: &signer, _lp_objects: vector<address>, _to: address
     ) {
 
         abort(0);
     }
-
-
 
     /////////////////////////////////////////////////// USERS /////////////////////////////////////////////////////////
     /// Swap an amount of fungible assets for another fungible asset. User can specifies the minimum amount they
@@ -386,7 +382,7 @@ module dex_contract::router_v3 {
         _to_token: Object<Metadata>,
         _amount_in: u64,
         _amount_out_min: u64,
-        _recipient: address,
+        _recipient: address
     ) {
         abort(0)
     }
@@ -398,17 +394,13 @@ module dex_contract::router_v3 {
         _to_token: Object<Metadata>,
         _amount_in: u64,
         _amount_out_min: u64,
-        _recipient: address,
+        _recipient: address
     ) {
         abort(0);
     }
 
-
-
     public entry fun claim_rewards(
-        _user: &signer,
-        _position: Object<position_v3::Info>,
-        _receiver: address
+        _user: &signer, _position: Object<position_v3::Info>, _receiver: address
     ) {
         abort(0);
     }
@@ -416,7 +408,9 @@ module dex_contract::router_v3 {
     // TODO: get_amount_by_liquidity_active
     ///////////////////////////////  view  /////////////////////////////////
     #[view]
-    public fun get_amount_by_liquidity(_position: Object<position_v3::Info>): (u64, u64) {
+    public fun get_amount_by_liquidity(
+        _position: Object<position_v3::Info>
+    ): (u64, u64) {
         (0, 0)
     }
 
@@ -430,7 +424,7 @@ module dex_contract::router_v3 {
         _amount_a_desired: u64,
         _amount_b_desired: u64,
         _amount_a_min: u64,
-        _amount_b_min: u64,
+        _amount_b_min: u64
     ): (u128, u64, u64) {
         (0, 0, 0)
     }
@@ -445,7 +439,7 @@ module dex_contract::router_v3 {
         _fee_tier: u8,
         _amount_a_desired: u64,
         _amount_a_min: u64,
-        _amount_b_min: u64,
+        _amount_b_min: u64
     ): (u128, u64) {
         (0, 0)
     }
@@ -460,7 +454,7 @@ module dex_contract::router_v3 {
         _fee_tier: u8,
         _amount_b_desired: u64,
         _amount_a_min: u64,
-        _amount_b_min: u64,
+        _amount_b_min: u64
     ): (u128, u64) {
         (0, 0)
     }
@@ -470,7 +464,7 @@ module dex_contract::router_v3 {
         _lp_path: vector<address>,
         _amount_in: u64,
         _from_token: Object<Metadata>,
-        _to_token: Object<Metadata>,
+        _to_token: Object<Metadata>
     ): u64 {
         0
     }
