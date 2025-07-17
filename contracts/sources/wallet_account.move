@@ -181,7 +181,7 @@ module moneyfi::wallet_account {
         verifier: &signer,
         wallet_id: vector<u8>,
         referral: bool
-    ) {
+    ) acquires WalletAccount {
         create_wallet_account(verifier, wallet_id, APT_SRC_DOMAIN, referral);
         connect_aptos_wallet(sender, wallet_id);
     }

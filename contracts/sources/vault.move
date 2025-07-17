@@ -149,7 +149,7 @@ module moneyfi::vault {
     ) acquires Config {
         assert!(system_fee_percent <= 10000);
 
-        access_control::must_be_operator_admin(sender);
+        access_control::must_be_admin(sender);
         let config = borrow_global_mut<Config>(@moneyfi);
 
         config.enable_deposit = enable_deposit;
@@ -216,7 +216,7 @@ module moneyfi::vault {
 
     public entry fun deposit(
         sender: &signer, asset: Object<Metadata>, amount: u64
-    ) acquires Config {
+    ) acquires Config, LPToken, Stats {
         let config = borrow_global<Config>(@moneyfi);
         assert!(
             can_deposit(config, asset, amount),
@@ -253,7 +253,7 @@ module moneyfi::vault {
                 asset,
                 amount,
                 lp_amount,
-                timestamp: timestamp::now_seconds()
+                timestamp: now_seconds()
             }
         );
     }
@@ -262,7 +262,7 @@ module moneyfi::vault {
         sender: &signer,
         asset: Object<Metadata>,
         amount: u64
-    ) acquires Config {
+    ) acquires Config, LPToken, Stats {
         let config = borrow_global<Config>(@moneyfi);
         assert!(
             can_deposit(config, asset, amount),
@@ -407,7 +407,7 @@ module moneyfi::vault {
 
     fun burn_lp(owner: address, amount: u64)acquires LPToken {
         let lptoken = borrow_global<LPToken>(@moneyfi);
-        primary_fungible_store::set_frozen_flag(&lptoken.transfer_ref, recipient, false);
+        primary_fungible_store::set_frozen_flag(&lptoken.transfer_ref, owner, false);
         primary_fungible_store::burn(&lptoken.burn_ref, owner, amount);
     }
 
