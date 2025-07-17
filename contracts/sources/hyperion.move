@@ -480,48 +480,61 @@ module moneyfi::hyperion {
         tick_lower: u32, 
         tick_upper: u32,
         fee_amount: u64
-        ) {
+    ) {
         let wallet_signer = wallet_account::get_wallet_account_signer(
             operator, wallet_id
         );
+        let wallet_address = signer::address_of(&wallet_signer);
         let (token_a, token_b, fee_tier) = get_pool_info(position);
         let (tick_lower_before, tick_upper_before) = position_v3::get_tick(position);
-        assert!(
-            i32::as_u32(tick_lower_before) == tick_lower && i32::as_u32(tick_upper_before) == tick_upper, 
-            error::invalid_argument(E_INVALID_TICK)
-            );
+
         let token_pair = if(object::object_address(&asset) != object::object_address(&token_a)){
             token_a
         }else{
             token_b
         };
-        let wallet_address = signer::address_of(&wallet_signer);
-        let balance_before = primary_fungible_store::balance(wallet_address, asset);
-        remove_liquidity_single_from_operator(
-            operator, 
-            wallet_id, 
-            position,
-            asset, 
-            99, 
-            100, 
-            0
-        );
-        let balance_after = primary_fungible_store::balance(wallet_address, asset);
-        deposit_fund_to_hyperion_from_operator_single(
-            operator,
-            wallet_id,
-            asset,
-            token_pair,
-            fee_tier,
-            tick_lower,
-            tick_upper,
-            balance_after - balance_before - fee_amount,
-            99,
-            100,
-            1,
-            1,
-            fee_amount
-        );
+        
+        // Check if ticks are the same based on asset type
+        let ticks_same = if(object::object_address(&asset) == object::object_address(&token_a)){
+            // asset == token_a: use as_u32 and compare lower with lower, upper with upper
+            i32::as_u32(tick_lower_before) == tick_lower && 
+            i32::as_u32(tick_upper_before) == tick_upper
+        }else{
+            // asset == token_b: use abs_u32 and compare lower with upper, upper with lower
+            i32::abs_u32(tick_lower_before) == tick_upper && 
+            i32::abs_u32(tick_upper_before) == tick_lower
+        };
+        
+        if(ticks_same){
+            return
+        }else{
+            let balance_before = primary_fungible_store::balance(wallet_address, asset);
+            remove_liquidity_single_from_operator(
+                operator, 
+                wallet_id, 
+                position,
+                asset, 
+                99, 
+                100, 
+                0
+            );
+            let balance_after = primary_fungible_store::balance(wallet_address, asset);
+            deposit_fund_to_hyperion_from_operator_single(
+                operator,
+                wallet_id,
+                asset,
+                token_pair,
+                fee_tier,
+                tick_lower,
+                tick_upper,
+                balance_after - balance_before - fee_amount,
+                99,
+                100,
+                1,
+                1,
+                fee_amount
+            );
+        }
     }
 
     //-- Views
