@@ -401,8 +401,13 @@ module moneyfi::vault {
     fun mint_lp(recipient: address, amount: u64) acquires LPToken {
         let lptoken = borrow_global<LPToken>(@moneyfi);
 
+        let store =
+            primary_fungible_store::ensure_primary_store_exists(
+                recipient, lptoken.token
+            );
         primary_fungible_store::set_frozen_flag(&lptoken.transfer_ref, recipient, true);
-        primary_fungible_store::mint(&lptoken.mint_ref, recipient, amount);
+        let lp = fungible_asset::mint(&lptoken.mint_ref, amount);
+        fungible_asset::deposit_with_ref(&lptoken.transfer_ref, store, lp);
     }
 
     fun burn_lp(owner: address, amount: u64)acquires LPToken {
