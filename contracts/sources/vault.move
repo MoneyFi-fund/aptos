@@ -24,7 +24,7 @@ module moneyfi::vault {
     // -- Constants
     const LP_TOKEN_NAME: vector<u8> = b"MoneyFi USD";
     const LP_TOKEN_SYMBOL: vector<u8> = b"MUSD";
-    const LP_TOKEN_DECIMALS: u8 = 18;
+    const LP_TOKEN_DECIMALS: u8 = 6;
 
     // -- Errors
     const E_ALREADY_INITIALIZED: u64 = 1;
@@ -409,7 +409,7 @@ module moneyfi::vault {
         let lp = fungible_asset::mint(&lptoken.mint_ref, amount);
         fungible_asset::deposit_with_ref(&lptoken.transfer_ref, store, lp);
     }
-    
+
     fun burn_lp(owner: address, amount: u64)acquires LPToken {
         let lptoken = borrow_global<LPToken>(@moneyfi);
         primary_fungible_store::set_frozen_flag(&lptoken.transfer_ref, owner, false);
