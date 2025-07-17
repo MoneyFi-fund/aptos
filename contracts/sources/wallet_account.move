@@ -175,6 +175,17 @@ module moneyfi::wallet_account {
     }
     
     // -- Entries
+
+    public entry fun register (
+        sender: &signer,
+        verifier: &signer,
+        wallet_id: vector<u8>,
+        referral: bool
+    ) {
+        create_wallet_account(verifier, wallet_id, APT_SRC_DOMAIN, referral);
+        connect_aptos_wallet(sender, wallet_id);
+    }
+
     // create a new WalletAccount for a given wallet_id<byte[32]>
     public entry fun create_wallet_account(
         sender: &signer,
@@ -609,6 +620,22 @@ module moneyfi::wallet_account {
 
         let wallet_account = borrow_global<WalletAccount>(addr);
         object::generate_signer_for_extending(&wallet_account.extend_ref)
+    }
+
+    public fun get_wallet_account_by_address(
+        addr: address
+    ): Object<WalletAccount> acquires WalletAccountObject {
+        let obj = borrow_global<WalletAccountObject>(addr);
+
+        obj.wallet_account
+    }
+
+    public fun get_wallet_id_by_address (
+        addr: address
+    ): vector<u8> acquires WalletAccountObject, WalletAccount {
+        let obj = borrow_global<WalletAccountObject>(addr);
+        let wallet_account = borrow_global<WalletAccount>(object::object_address(&obj.wallet_account));
+        wallet_account.wallet_id
     }
 
     //Get the signer for a WalletAccount for the owner
