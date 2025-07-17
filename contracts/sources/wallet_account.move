@@ -383,17 +383,14 @@ module moneyfi::wallet_account {
             if (ordered_map::contains(&wallet_account.assets, &asset_addr)) {
                 let current_amount =
                     ordered_map::borrow(&wallet_account.assets, &asset_addr);
-                assert!(
-                    *current_amount >= amount,
-                    error::invalid_argument(E_INVALID_ARGUMENT)
-                );
-                if (*current_amount == amount) {
+
+                if (*current_amount <= transfer_amount) {
                     ordered_map::remove(&mut wallet_account.assets, &asset_addr);
                 } else {
                     ordered_map::upsert(
                         &mut wallet_account.assets,
                         asset_addr,
-                        *current_amount - amount
+                        *current_amount - transfer_amount
                     );
                 }
             };
