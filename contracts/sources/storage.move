@@ -32,7 +32,7 @@ module moneyfi::storage {
             sender,
             b"child_object_storage"
         );
-        resource_account::retrieve_resource_account_cap(&resource_account, @moneyfi);
+        
         let transfer_ref = object::generate_transfer_ref(constructor_ref);
         object::disable_ungated_transfer(&transfer_ref);
         move_to(
