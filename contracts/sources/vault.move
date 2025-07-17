@@ -293,8 +293,10 @@ module moneyfi::vault {
     }
 
     public entry fun claim_rewards(
-        sender: &signer, wallet_id: vector<u8>
+        sender: &signer
     ) {
+        let wallet_addr = signer::address_of(sender);
+        let wallet_id = wallet_account::get_wallet_id_by_address(wallet_addr);
         wallet_account::claim_rewards(sender, wallet_id);
     }
     

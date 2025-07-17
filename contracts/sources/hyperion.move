@@ -4,6 +4,7 @@ module moneyfi::hyperion {
     use aptos_framework::object::{Self, Object};
     use aptos_framework::primary_fungible_store;
     use aptos_framework::timestamp;
+    use aptos_framework::error;
     use aptos_framework::fungible_asset::Metadata;
     use dex_contract::i32::{Self, I32};
     use dex_contract::router_v3;
@@ -17,6 +18,9 @@ module moneyfi::hyperion {
     const USDC_ADDRESS: address = @stablecoin;
 
     const STRATEGY_ID: u8 = 1; // Hyperion strategy id
+
+    //--Error
+    const E_INVALID_TICK: u64 = 1;
 
     //const FEE_RATE_VEC: vector<u64> = vector[100, 500, 3000, 10000]; fee_tier is [0, 1, 2, 3] for [0.01%, 0.05%, 0.3%, 1%] ??
     //-- Entries
@@ -464,6 +468,58 @@ module moneyfi::hyperion {
             object::object_address<Info>(&position),
             object::object_address<Metadata>(&asset),
             total_stablecoin_amount,
+            fee_amount
+        );
+    }
+
+    public entry fun update_tick(
+        operator: &signer, 
+        wallet_id: vector<u8>, 
+        position: Object<Info>,
+        asset: Object<Metadata>, 
+        tick_lower: u32, 
+        tick_upper: u32,
+        fee_amount: u64
+        ) {
+        let wallet_signer = wallet_account::get_wallet_account_signer(
+            operator, wallet_id
+        );
+        let (token_a, token_b, fee_tier) = get_pool_info(position);
+        let (tick_lower_before, tick_upper_before) = position_v3::get_tick(position);
+        assert!(
+            i32::as_u32(tick_lower_before) == tick_lower && i32::as_u32(tick_upper_before) == tick_upper, 
+            error::invalid_argument(E_INVALID_TICK)
+            );
+        let token_pair = if(object::object_address(&asset) != object::object_address(&token_a)){
+            token_a
+        }else{
+            token_b
+        };
+        let wallet_address = signer::address_of(&wallet_signer);
+        let balance_before = primary_fungible_store::balance(wallet_address, asset);
+        remove_liquidity_single_from_operator(
+            operator, 
+            wallet_id, 
+            position,
+            asset, 
+            99, 
+            100, 
+            0
+        );
+        let balance_after = primary_fungible_store::balance(wallet_address, asset);
+        deposit_fund_to_hyperion_from_operator_single(
+            operator,
+            wallet_id,
+            asset,
+            token_pair,
+            fee_tier,
+            tick_lower,
+            tick_upper,
+            balance_after - balance_before - fee_amount,
+            99,
+            100,
+            1,
+            1,
             fee_amount
         );
     }
