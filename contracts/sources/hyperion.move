@@ -494,18 +494,7 @@ module moneyfi::hyperion {
             token_b
         };
         
-        // Check if ticks are the same based on asset type
-        let ticks_same = if(object::object_address(&asset) == object::object_address(&token_a)){
-            // asset == token_a: use as_u32 and compare lower with lower, upper with upper
-            i32::as_u32(tick_lower_before) == tick_lower && 
-            i32::as_u32(tick_upper_before) == tick_upper
-        }else{
-            // asset == token_b: use abs_u32 and compare lower with upper, upper with lower
-            i32::abs_u32(tick_lower_before) == tick_upper && 
-            i32::abs_u32(tick_upper_before) == tick_lower
-        };
-        
-        if(ticks_same){
+        if(i32::as_u32(tick_lower_before) == tick_lower && i32::as_u32(tick_upper_before) == tick_upper){
             return
         }else{
             let balance_before = primary_fungible_store::balance(wallet_address, asset);
