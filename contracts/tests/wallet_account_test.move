@@ -24,7 +24,6 @@ module moneyfi::wallet_account_test {
         // Simulate module deployment
         account::create_account_for_test(deployer_addr);
         access_control::initialize(deployer);
-        access_control::set_fee_to(deployer, fee_to);
         wallet_account::initialize(deployer);
 
         let fa = test_helpers::create_fungible_asset_and_mint(
