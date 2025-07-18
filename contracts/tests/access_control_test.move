@@ -1,6 +1,6 @@
-#[test_only]
 module moneyfi::access_control_test {
     use std::signer;
+    use aptos_std::table;
     use aptos_framework::account;
     use std::error;
     use aptos_framework::timestamp;
@@ -29,6 +29,7 @@ module moneyfi::access_control_test {
         );
 
         let deployer_addr = signer::address_of(deployer);
+        let user1_addr = signer::address_of(user1);
 
         // Simulate module deployment
         account::create_account_for_test(deployer_addr);

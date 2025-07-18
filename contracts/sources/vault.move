@@ -22,9 +22,9 @@ module moneyfi::vault {
     use moneyfi::wallet_account;
 
     // -- Constants
-    const LP_TOKEN_NAME: vector<u8> = b"MoneyFi USD";
-    const LP_TOKEN_SYMBOL: vector<u8> = b"MUSD";
-    const LP_TOKEN_DECIMALS: u8 = 6;
+    const LP_TOKEN_NAME: vector<u8> = b"MoneyFi LP";
+    const LP_TOKEN_SYMBOL: vector<u8> = b"MoneyFiLP";
+    const LP_TOKEN_DECIMALS: u8 = 9;
 
     // -- Errors
     const E_ALREADY_INITIALIZED: u64 = 1;
@@ -96,14 +96,14 @@ module moneyfi::vault {
         timestamp: u64
     }
 
-    #[event]
-    struct RemoveAssetSupportedEvent has drop, store {
-        asset_addr: address,
-        timestamp: u64
-    }
+    // #[event]
+    // struct RemoveAssetSupportedEvent has drop, store {
+    //     asset_addr: address,
+    //     timestamp: u64
+    // }
 
     #[event]
-    struct ConfigureEvent has drop, store{
+    struct ConfigureEvent has drop, store {
         enable_deposit: bool,
         enable_withdraw: bool,
         system_fee_percent: u64,
@@ -156,12 +156,14 @@ module moneyfi::vault {
         config.enable_withdraw = enable_withdraw;
         config.system_fee_percent = system_fee_percent;
 
-        event::emit(ConfigureEvent {
-            enable_deposit,
-            enable_withdraw,
-            system_fee_percent,
-            timestamp: now_seconds()
-        });
+        event::emit(
+            ConfigureEvent {
+                enable_deposit,
+                enable_withdraw,
+                system_fee_percent,
+                timestamp: now_seconds()
+            }
+        );
     }
 
     public entry fun upsert_supported_asset(
@@ -188,36 +190,35 @@ module moneyfi::vault {
                 lp_exchange_rate
             }
         );
-        event::emit(UpsertAssetSupportedEvent{
-            asset_addr: object::object_address<Metadata>(&asset),
-            min_deposit,
-            max_deposit,
-            min_withdraw,
-            max_withdraw,
-            lp_exchange_rate,
-            timestamp: now_seconds()
-        });
+        event::emit(
+            UpsertAssetSupportedEvent {
+                asset_addr: object::object_address<Metadata>(&asset),
+                min_deposit,
+                max_deposit,
+                min_withdraw,
+                max_withdraw,
+                lp_exchange_rate,
+                timestamp: now_seconds()
+            }
+        );
     }
 
-    public entry fun remove_supported_asset(
-        sender: &signer, token: Object<Metadata>
-    ) acquires Config{
-        access_control::must_be_service_account(sender);
-        let config = borrow_global_mut<Config>(@moneyfi);
-        let asset_addr = object::object_address<Metadata>(&token);
-        if(ordered_map::contains(&config.supported_assets, &asset_addr)) {
-            ordered_map::remove(&mut config.supported_assets, &asset_addr);
-            event::emit(RemoveAssetSupportedEvent {
-                asset_addr,
-                timestamp: now_seconds()
-            })
-        };
-    }
+    // public entry fun remove_supported_asset(
+    //     sender: &signer, token: Object<Metadata>
+    // ) acquires Config {
+    //     access_control::must_be_service_account(sender);
+    //     let config = borrow_global_mut<Config>(@moneyfi);
+    //     let asset_addr = object::object_address<Metadata>(&token);
+    //     if (ordered_map::contains(&config.supported_assets, &asset_addr)) {
+    //         ordered_map::remove(&mut config.supported_assets, &asset_addr);
+    //         event::emit(
+    //             RemoveAssetSupportedEvent { asset_addr, timestamp: now_seconds() }
+    //         )
+    //     };
+    // }
 
     public entry fun deposit(
-        sender: &signer, 
-        asset: Object<Metadata>, 
-        amount: u64
+        sender: &signer, asset: Object<Metadata>, amount: u64
     ) acquires Config, LPToken, Stats {
         let config = borrow_global<Config>(@moneyfi);
         assert!(
@@ -261,9 +262,7 @@ module moneyfi::vault {
     }
 
     public entry fun withdraw(
-        sender: &signer,
-        asset: Object<Metadata>,
-        amount: u64
+        sender: &signer, asset: Object<Metadata>, amount: u64
     ) acquires Config, LPToken, Stats {
         let config = borrow_global<Config>(@moneyfi);
         assert!(
@@ -305,14 +304,11 @@ module moneyfi::vault {
         );
     }
 
-    public entry fun claim_rewards(
-        sender: &signer
-    ) {
+    public entry fun claim_rewards(sender: &signer) {
         let wallet_addr = signer::address_of(sender);
         let wallet_id = wallet_account::get_wallet_id_by_address(wallet_addr);
         wallet_account::claim_rewards(sender, wallet_id);
     }
-    
 
     // -- Views
     #[view]
@@ -431,7 +427,7 @@ module moneyfi::vault {
         fungible_asset::deposit_with_ref(&lptoken.transfer_ref, store, lp);
     }
 
-    fun burn_lp(owner: address, amount: u64)acquires LPToken {
+    fun burn_lp(owner: address, amount: u64) acquires LPToken {
         let lptoken = borrow_global<LPToken>(@moneyfi);
         primary_fungible_store::set_frozen_flag(&lptoken.transfer_ref, owner, false);
         primary_fungible_store::burn(&lptoken.burn_ref, owner, amount);

@@ -70,5 +70,5 @@ function download_package() {
 # download_package --account "$AMNIS_ADDRESS" --package amnis --output-dir deps/amnis
 
 ### Hyperion
-download_package --account "$HYPERION_ADDRESS" --package dex --output-dir deps/hyperion
-git checkout deps/hyperion
+# download_package --account "$HYPERION_ADDRESS" --package dex --output-dir deps/hyperion
+# git checkout deps/hyperion
