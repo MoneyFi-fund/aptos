@@ -49,8 +49,8 @@ module moneyfi::hyperion {
         let position =
             pool_v3::open_position(
                 &wallet_signer,
-                token_a,
                 token_b,
+                token_a,
                 fee_tier,
                 tick_lower,
                 tick_upper
