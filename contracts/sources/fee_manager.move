@@ -28,9 +28,7 @@ module moneyfi::fee_manager {
         withdraw_fee: OrderedMap<address, u64>,
         rebalance_fee: OrderedMap<address, u64>,
         referral_fee: OrderedMap<address, u64>,
-        pending_referral_fee: OrderedMap<address, u64>,
         protocol_fee: OrderedMap<address, u64>,
-        pending_protocol_fee: OrderedMap<address, u64>,
         fee_to: address
     }
 
@@ -62,14 +60,6 @@ module moneyfi::fee_manager {
         timestamp: u64
     }
 
-    #[event]
-    struct ClaimReferralFeeEvent has drop, store {
-        referral: address,
-        asset: address,
-        amount: u64,
-        timestamp: u64
-    }
-
     //-- Init
     fun init_module(sender: &signer) {
         let addr = signer::address_of(sender);
@@ -85,9 +75,7 @@ module moneyfi::fee_manager {
                 withdraw_fee: ordered_map::new<address, u64>(),
                 rebalance_fee: ordered_map::new<address, u64>(),
                 referral_fee: ordered_map::new<address, u64>(),
-                pending_referral_fee: ordered_map::new<address, u64>(),
                 protocol_fee: ordered_map::new<address, u64>(),
-                pending_protocol_fee: ordered_map::new<address, u64>(),
                 fee_to: admin_addr
             }
         );
@@ -112,11 +100,6 @@ module moneyfi::fee_manager {
         let object_signer = storage::get_signer();
         let asset_addr = object::object_address(&asset);
 
-        // Reset pending protocol fee to 0
-        if (ordered_map::contains(&system_fee.pending_protocol_fee, &asset_addr)) {
-            ordered_map::upsert(&mut system_fee.pending_protocol_fee, asset_addr, 0);
-        };
-
         primary_fungible_store::transfer(
             &object_signer,
             asset,
@@ -126,45 +109,6 @@ module moneyfi::fee_manager {
 
         // Emit event
         event::emit(ClaimFeeEvent { asset: asset_addr, amount, timestamp: now_seconds() });
-    }
-
-    public entry fun claim_referral_fee(
-        operator: &signer,
-        referral: &signer,
-        asset: Object<Metadata>,
-        amount: u64
-    ) acquires SystemFee{
-        access_control::must_be_service_account(operator);
-        let system_fee = borrow_global_mut<SystemFee>(@moneyfi);
-        let object_signer = storage::get_signer();
-        let asset_addr = object::object_address(&asset);
-
-        if (ordered_map::contains(&system_fee.pending_referral_fee, &asset_addr)) {
-            let current =
-                *ordered_map::borrow(&system_fee.pending_referral_fee, &asset_addr);
-            assert!(current >= amount, error::invalid_argument(E_INVALID_ARGUMENT));
-            ordered_map::upsert(
-                &mut system_fee.pending_referral_fee, asset_addr, current - amount
-            );
-        } else {
-            assert!(true, error::invalid_argument(E_ASSET_NOT_SUPPORTED))
-        };
-
-        primary_fungible_store::transfer(
-            &object_signer,
-            asset,
-            signer::address_of(referral),
-            amount
-        );
-
-        event::emit(
-            ClaimReferralFeeEvent {
-                referral: signer::address_of(referral),
-                asset: asset_addr,
-                amount,
-                timestamp: now_seconds()
-            }
-        );
     }
 
     public entry fun set_fee_to(sender: &signer, addr: address) acquires SystemFee {
@@ -211,15 +155,14 @@ module moneyfi::fee_manager {
     //-- Views
 
     #[view]
-    public fun get_pending_referral_fee(): (vector<address>, vector<u64>) acquires SystemFee {
+    public fun get_pending_fee(): (vector<address>, vector<u64>) acquires SystemFee {
         let system_fee = borrow_global<SystemFee>(@moneyfi);
-        ordered_map::to_vec_pair(system_fee.pending_referral_fee)
-    }
-
-    #[view]
-    public fun get_pending_protocol_fee(): (vector<address>, vector<u64>) acquires SystemFee {
-        let system_fee = borrow_global<SystemFee>(@moneyfi);
-        ordered_map::to_vec_pair(system_fee.pending_protocol_fee)
+        let fee_store = storage::get_address();
+        let assets = ordered_map::keys(&system_fee.protocol_fee);
+        let amounts = vector::map<address, u64>(assets, |asset| {
+            primary_fungible_store::balance<Metadata>(fee_store, object::address_to_object<Metadata>(asset))
+        });
+        (assets, amounts)
     }
 
     #[view]
@@ -227,6 +170,7 @@ module moneyfi::fee_manager {
         let system_fee = borrow_global<SystemFee>(@moneyfi);
         system_fee.fee_to
     }
+    
 
     //-- Public
     public fun calculate_protocol_fee(amount: u64): u64 acquires Fee {
@@ -292,17 +236,6 @@ module moneyfi::fee_manager {
                 &mut system_fee.referral_fee, asset, current_amount + amount
             );
         };
-
-        // Add to pending_referral_fee
-        if (!ordered_map::contains(&system_fee.pending_referral_fee, &asset)) {
-            ordered_map::add(&mut system_fee.pending_referral_fee, asset, amount);
-        } else {
-            let current_pending =
-                *ordered_map::borrow(&system_fee.pending_referral_fee, &asset);
-            ordered_map::upsert(
-                &mut system_fee.pending_referral_fee, asset, current_pending + amount
-            );
-        };
     }
 
     public(friend) fun add_protocol_fee(
@@ -317,17 +250,6 @@ module moneyfi::fee_manager {
             let current_amount = *ordered_map::borrow(&system_fee.protocol_fee, &asset);
             ordered_map::upsert(
                 &mut system_fee.protocol_fee, asset, current_amount + amount
-            );
-        };
-
-        // Add to pending_protocol_fee
-        if (!ordered_map::contains(&system_fee.pending_protocol_fee, &asset)) {
-            ordered_map::add(&mut system_fee.pending_protocol_fee, asset, amount);
-        } else {
-            let current_pending =
-                *ordered_map::borrow(&system_fee.pending_protocol_fee, &asset);
-            ordered_map::upsert(
-                &mut system_fee.pending_protocol_fee, asset, current_pending + amount
             );
         };
     }

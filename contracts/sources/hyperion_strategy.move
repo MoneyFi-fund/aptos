@@ -1,4 +1,4 @@
-module moneyfi::hyperion {
+module moneyfi::hyperion_strategy {
     use std::signer;
     use std::vector;
     use aptos_framework::object::{Self, Object};
@@ -8,7 +8,7 @@ module moneyfi::hyperion {
     use aptos_framework::fungible_asset::Metadata;
     use dex_contract::i32::{Self, I32};
     use dex_contract::router_v3;
-    use dex_contract::pool_v3;
+    use dex_contract::pool_v3{Self, LiquidityPoolV3};
     use dex_contract::rewarder;
     use dex_contract::position_v3::{Self, Info};
 
@@ -19,8 +19,43 @@ module moneyfi::hyperion {
 
     const STRATEGY_ID: u8 = 1; // Hyperion strategy id
 
-    //--Error
-    const E_INVALID_TICK: u64 = 1;
+    struct HyperionData has key{
+        postion_opened: OrderedMap<Object<Info>, PositionOpened>
+    }
+
+    struct PositionOpened has drop, store {
+        pool: Object<LiquidityPoolV3>,
+        token_a: Object<Metadata>,
+        token_b: Object<Metadata>,
+        amonut_a_added: u64,
+        amount_b_added: u64
+    }
+
+    fun add_position_opened(
+        wallet_signer: &signer, 
+        position: Object<Info>, 
+        pool: Object<LiquidityPoolV3>,
+        token_a: Object<Metadata>,
+        token_b: Object<Metadata>,
+        amonut_a_added: u64,
+        amount_b_added: u64
+    ) acquires HyperionData {
+        let wallet_addr = signer::address_of(wallet_signer);
+        if(!exist<HyperionData>(wallet_addr)) {
+            move_to(wallet_signer, HyperionData {
+                postion_opened: OrderedMap::new<Object<Info>, PositionOpened>();
+            });
+        }
+        let data = borrow_global_mut<HyperionData>(wallet1_addr);
+        let position_data = PositionOpened {
+            pool: pool,
+            token_a: token_a,
+            token_b: token_b,
+            amonut_a_added: amonut_a_added,
+            amount_b_added: amount_b_added
+        };
+        ordered_map::add(&mut data.postion_opened, position, position_data);
+    }
 
     //const FEE_RATE_VEC: vector<u64> = vector[100, 500, 3000, 10000]; fee_tier is [0, 1, 2, 3] for [0.01%, 0.05%, 0.3%, 1%] ??
     //-- Entries

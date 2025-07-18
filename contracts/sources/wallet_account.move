@@ -18,6 +18,7 @@ module moneyfi::wallet_account {
     use moneyfi::fee_manager;
 
     friend moneyfi::hyperion;
+    friend moneyfi::vault;
 
     // -- Constants
     const WALLET_ACCOUNT_SEED: vector<u8> = b"WALLET_ACCOUNT";
@@ -31,8 +32,6 @@ module moneyfi::wallet_account {
     const E_WALLET_ACCOUNT_NOT_CONNECTED: u64 = 5;
     const E_WALLET_ACCOUNT_ALREADY_CONNECTED: u64 = 6;
     const E_INVALID_ARGUMENT: u64 = 7;
-    const E_POSITION_NOT_EXISTS: u64 = 8;
-    const E_POSITION_ALREADY_EXISTS: u64 = 9;
 
     // -- Structs
     #[resource_group_member(group = aptos_framework::object::ObjectGroup)]
@@ -45,27 +44,24 @@ module moneyfi::wallet_account {
         source_domain: u32,
         // referral is the address of the referrer, if any
         // This can be used for referral programs or rewards
-        referral: bool,
-        // assets user deposited to the wallet account
-        assets: OrderedMap<address, u64>,
-        // assets distributed pool
-        distributed_assets: OrderedMap<address, u64>,
-        // position opened by wallet account
-        position_opened: OrderedMap<address, PositionOpened>,
-        // total profit claimed by user
-        total_profit_claimed: OrderedMap<address, u64>,
-        //profit pending on wallet account
-        profit_unclaimed: OrderedMap<address, u64>,
+        referral_wallet_id: Option<vector<u8>>,
+        // assets 
+        assets: OrderedMap<address, AccountAsset>,
         extend_ref: ExtendRef
+    }
+
+    struct AccountAsset has drop, store {
+        remaining_amount: u64,
+        deposited_amonut: u64,
+        lp_amount: u64,
+        distributed_amount: u64,
+        withdrawn_amount: u64,
+        referral_amount; u64,
+        rewards: OrderedMap<address, u64>
     }
 
     struct WalletAccountObject has key {
         wallet_account: Object<WalletAccount>
-    }
-
-    struct PositionOpened has copy, drop, store {
-        assets: OrderedMap<address, u64>,
-        strategy_id: u8
     }
 
     // -- Events
@@ -231,7 +227,7 @@ module moneyfi::wallet_account {
 
     // Connect Aptos wallet to a WalletAccount
     // This function has to be called before claim assets
-    public entry fun connect_aptos_wallet(
+    fun connect_aptos_wallet(
         sender: &signer, wallet_id: vector<u8>
     ) acquires WalletAccount {
         let wallet_account_addr = get_wallet_account_object_address(wallet_id);
@@ -251,7 +247,7 @@ module moneyfi::wallet_account {
         connect_wallet_internal(sender, wallet_account);
     }
 
-    public fun deposit_to_wallet_account(
+    public(friend) fun deposit_to_wallet_account(
         sender: &signer,
         wallet_id: vector<u8>,
         assets: vector<Object<Metadata>>,
@@ -346,7 +342,7 @@ module moneyfi::wallet_account {
         );
     }
 
-    public fun withdraw_from_wallet_account_by_user(
+    public(friend) fun withdraw_from_wallet_account_by_user(
         sender: &signer,
         wallet_id: vector<u8>,
         assets: vector<Object<Metadata>>,
@@ -408,7 +404,7 @@ module moneyfi::wallet_account {
         );
     }
 
-    public fun claim_rewards(
+    public(friend) fun claim_rewards(
         sender: &signer, wallet_id: vector<u8>
     ) acquires WalletAccount, WalletAccountObject {
         if (!is_connected(signer::address_of(sender), wallet_id)) {
