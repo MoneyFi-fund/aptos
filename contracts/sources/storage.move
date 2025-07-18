@@ -1,0 +1,96 @@
+module moneyfi::storage {
+    use std::vector;
+    use std::error;
+    use std::signer;
+    use aptos_framework::event;
+    use aptos_framework::timestamp::now_seconds;
+    use aptos_framework::account;
+    use aptos_framework::resource_account;
+    use aptos_framework::object::{
+        Self,
+        Object,
+        ObjectCore,
+        TransferRef,
+        ExtendRef
+    };
+
+    use moneyfi::access_control;
+
+    friend moneyfi::wallet_account;
+    friend moneyfi::fee_manager;
+
+    struct Storage has key {
+        object: Object<ObjectCore>,
+        extend_ref: ExtendRef,
+        transfer_ref: TransferRef,
+        child_object_storage: address,
+    }
+
+    fun init_module(sender: &signer) {
+        let constructor_ref = &object::create_sticky_object(@moneyfi);
+        let (resource_account, _) = account::create_resource_account(
+            sender,
+            b"child_object_storage"
+        );
+        
+        let transfer_ref = object::generate_transfer_ref(constructor_ref);
+        object::disable_ungated_transfer(&transfer_ref);
+        move_to(
+            sender,
+            Storage {
+                object: object::object_from_constructor_ref(constructor_ref),
+                extend_ref: object::generate_extend_ref(constructor_ref),
+                transfer_ref,
+                child_object_storage: signer::address_of(&resource_account)
+            }
+        );
+    }
+
+    // -- Entries
+
+    public entry fun transfer(sender: &signer, new_owner: address) acquires Storage {
+        access_control::must_be_admin(sender);
+
+        let storage = borrow_global<Storage>(@moneyfi);
+        let linear_transfer_ref =
+            object::generate_linear_transfer_ref(&storage.transfer_ref);
+        object::transfer_with_ref(linear_transfer_ref, new_owner);
+
+        // TODO: distpatch event?
+    }
+
+    public fun get_address(): address acquires Storage {
+        let storage = borrow_global<Storage>(@moneyfi);
+
+        object::object_address(&storage.object)
+    }
+
+    // -- Private
+
+    public(friend) fun get_signer(): signer acquires Storage {
+        let storage = borrow_global<Storage>(@moneyfi);
+
+        object::generate_signer_for_extending(&storage.extend_ref)
+    }
+
+    public(friend) fun create_child_object(seed: vector<u8>): ExtendRef acquires Storage {
+        let signer = get_signer();
+
+        let constructor_ref = &object::create_named_object(&signer, seed);
+        let transfer_ref = object::generate_transfer_ref(constructor_ref);
+        let child_object_storage = borrow_global<Storage>(@moneyfi).child_object_storage;
+        object::transfer_with_ref(
+            object::generate_linear_transfer_ref(&transfer_ref),
+            child_object_storage
+        );
+        object::disable_ungated_transfer(&transfer_ref);
+
+        object::generate_extend_ref(constructor_ref)
+    }
+
+    // -- Test only
+    #[test_only]
+    public fun init_module_for_testing(sender: &signer) {
+        init_module(sender)
+    }
+}

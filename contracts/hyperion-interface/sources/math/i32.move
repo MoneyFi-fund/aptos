@@ -32,4 +32,12 @@ module dex_contract::i32 {
             bits: v
         }
     }
+
+    public fun eq(_v: I32, _u: I32): bool {
+        false
+    }
+
+    public fun abs_u32(arg0: I32) : u32 {
+        0
+    }
 }
