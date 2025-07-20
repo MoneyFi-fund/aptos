@@ -690,12 +690,6 @@ module moneyfi::wallet_account {
         let pos = PositionOpened { assets: assets_map, strategy_id };
 
         ordered_map::add(&mut wallet.position_opened, position, pos);
-        let fee_asset = *vector::borrow(&assets, 0);
-        let current_asset_deposited = ordered_map::borrow(&wallet.assets, &fee_asset);
-        ordered_map::upsert(
-            &mut wallet.assets, fee_asset, *current_asset_deposited - fee_amount
-        );
-
         // Update distributed_assets when opening position
         let i = 0;
         while (i < vector::length(&assets)) {
@@ -714,14 +708,20 @@ module moneyfi::wallet_account {
                 ordered_map::upsert(&mut wallet.distributed_assets, asset, amount);
             };
             if (ordered_map::contains(&wallet.assets, &asset)) {
-                let current_wallet_asset = ordered_map::borrow(&wallet.assets, &asset);
+                let current_wallet_asset = primary_fungible_store::balance(
+                    addr, object::address_to_object<Metadata>(asset)
+                );
                 ordered_map::upsert(
-                    &mut wallet.assets, asset, *current_wallet_asset - amount
+                    &mut wallet.assets, asset, current_wallet_asset
                 );
             };
             i = i + 1;
         };
-
+        let fee_asset = *vector::borrow(&assets, 0);
+        let current_asset_deposited = ordered_map::borrow(&wallet.assets, &fee_asset);
+        ordered_map::upsert(
+            &mut wallet.assets, fee_asset, *current_asset_deposited - fee_amount
+        );
         // Transfer fee asset to the data object
         primary_fungible_store::transfer(
             &get_wallet_account_signer_internal(wallet),
