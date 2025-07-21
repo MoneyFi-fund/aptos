@@ -117,7 +117,7 @@ module moneyfi::wallet_account {
         );
 
         let extend_ref =
-            storage::create_child_object(get_wallet_account_object_seed(wallet_id));
+            storage::create_child_object_with_phantom_owner(get_wallet_account_object_seed(wallet_id));
         let account_signer = &object::generate_signer_for_extending(&extend_ref);
 
         move_to(
@@ -256,10 +256,7 @@ module moneyfi::wallet_account {
     // Get the WalletAccount object address for a given wallet_id
     // #[view]
     public fun get_wallet_account_object_address(wallet_id: vector<u8>): address {
-        let data_object_addr = storage::get_address();
-        object::create_object_address(
-            &data_object_addr, get_wallet_account_object_seed(wallet_id)
-        )
+        storage::get_child_object_address(get_wallet_account_object_seed(wallet_id))
     }
 
     // Get the WalletAccount object address for a given wallet_id
