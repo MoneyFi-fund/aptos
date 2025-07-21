@@ -8,8 +8,11 @@ module moneyfi::access_control {
     use aptos_framework::timestamp::now_seconds;
 
     // -- Roles
+    // ADMIN can change system configurations
     const ROLE_ADMIN: u8 = 1;
+    // ROLE_MANAGER can add/remove account (registry must be unlocked by ADMIN first)
     const ROLE_ROLE_MANAGER: u8 = 2;
+    // SERVICE_ACCOUNT is backend service
     const ROLE_SERVICE_ACCOUNT: u8 = 3;
 
     // IMPORTANT: increse this value when add/remove role
@@ -36,16 +39,15 @@ module moneyfi::access_control {
 
     //-- Event
     #[event]
-    struct SetAccountEvent has drop, store {
+    struct UpdateAccountEvent has drop, store {
         account: address,
         roles: vector<u8>,
         timestamp: u64
     }
 
     #[event]
-    struct RevokeRoleEvent has drop, store {
+    struct RemoveAccountEvent has drop, store {
         account: address,
-        roles: vector<u8>,
         timestamp: u64
     }
 
@@ -109,8 +111,7 @@ module moneyfi::access_control {
 
         ordered_map::upsert(&mut registry.accounts, account, valid_roles);
 
-        // Emit event
-        event::emit(SetAccountEvent { account, roles, timestamp: now_seconds() });
+        event::emit(UpdateAccountEvent { account, roles, timestamp: now_seconds() });
     }
 
     public entry fun remove_account(sender: &signer, account: address) acquires Registry {
@@ -120,17 +121,20 @@ module moneyfi::access_control {
         ensure_registry_is_unlocked(registry);
         ensure_account_is_safe_to_remove(registry, account);
 
-        let roles = if (ordered_map::contains(&registry.accounts, &account)) {
-            let roles = *ordered_map::borrow(&registry.accounts, &account);
-            ordered_map::remove(&mut registry.accounts, &account);
-            roles
-        }else {
-            vector::empty<u8>()
-        };
-        event::emit(RevokeRoleEvent { account, roles: roles, timestamp: now_seconds() });
+        let roles =
+            if (ordered_map::contains(&registry.accounts, &account)) {
+                let roles = *ordered_map::borrow(&registry.accounts, &account);
+                ordered_map::remove(&mut registry.accounts, &account);
+                roles
+            } else {
+                vector::empty<u8>()
+            };
+
+        event::emit(RemoveAccountEvent { account, timestamp: now_seconds() });
     }
 
     // -- Views
+
     #[view]
     public fun get_accounts(): vector<AccountItem> acquires Registry {
         let registry = borrow_global<Registry>(@moneyfi);

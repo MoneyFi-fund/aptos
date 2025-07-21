@@ -234,14 +234,7 @@ module moneyfi::vault {
         let lp_amount = asset_config.calc_lp_amount(amount);
         let account_addr = object::object_address(&account);
 
-        wallet_account::deposit_to_wallet_account(
-            sender,
-            wallet_id,
-            vector::singleton<Object<Metadata>>(asset),
-            vector::singleton<u64>(amount),
-            0
-        );
-
+        wallet_account::deposit(account, asset, amount, lp_amount);
         mint_lp(wallet_addr, lp_amount);
 
         let stats = borrow_global_mut<Stats>(@moneyfi);
@@ -278,12 +271,7 @@ module moneyfi::vault {
         let lp_amount = asset_config.calc_lp_amount(amount);
         let account_addr = object::object_address(&account);
 
-        wallet_account::withdraw_from_wallet_account_by_user(
-            sender,
-            wallet_id,
-            vector::singleton<Object<Metadata>>(asset),
-            vector::singleton<u64>(amount)
-        );
+        wallet_account::withdraw(account, asset, amount, lp_amount);
 
         burn_lp(wallet_addr, lp_amount);
 
@@ -302,12 +290,6 @@ module moneyfi::vault {
                 timestamp: now_seconds()
             }
         );
-    }
-
-    public entry fun claim_rewards(sender: &signer) {
-        let wallet_addr = signer::address_of(sender);
-        let wallet_id = wallet_account::get_wallet_id_by_address(wallet_addr);
-        wallet_account::claim_rewards(sender, wallet_id);
     }
 
     // -- Views
