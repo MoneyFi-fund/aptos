@@ -72,6 +72,21 @@ module moneyfi::hyperion {
         let balance_after =
             primary_fungible_store::balance(signer::address_of(&wallet_signer), token_a);
 
+        let remaining_balance = primary_fungible_store::balance(signer::address_of(&wallet_signer), token_b);
+        if (remaining_balance > 0) {
+            router_v3::exact_input_swap_entry(
+                &wallet_signer,
+                fee_tier,
+                remaining_balance,
+                0,
+                4295048016 + 1,
+                token_b,
+                token_a,
+                signer::address_of(&wallet_signer),
+                timestamp::now_seconds() + DEADLINE_BUFFER
+            );
+        };
+
         wallet_account::add_position_opened(
             wallet_id,
             object::object_address<Info>(&position),
@@ -174,7 +189,7 @@ module moneyfi::hyperion {
             operator, wallet_id
         );
         let balance_before = primary_fungible_store::balance(signer::address_of(&wallet_signer), token_input);
-        
+        let (_, _, fee_tier) = get_pool_info(position);
         router_v3::add_liquidity_single(
             &wallet_signer,
             position,
@@ -192,6 +207,20 @@ module moneyfi::hyperion {
             object::object_address<Metadata>(&token_input)
         );
         let amounts = vector::singleton<u64>(balance_before - balance_after - fee_amount);
+        let remaining_balance = primary_fungible_store::balance(signer::address_of(&wallet_signer), token_pair);
+        if (remaining_balance > 0) {
+            router_v3::exact_input_swap_entry(
+                &wallet_signer,
+                fee_tier,
+                remaining_balance,
+                0,
+                4295048016 + 1,
+                token_pair,
+                token_input,
+                signer::address_of(&wallet_signer),
+                timestamp::now_seconds() + DEADLINE_BUFFER
+            );
+        };
 
         wallet_account::upgrade_position_opened(
             wallet_id,
@@ -488,32 +517,26 @@ module moneyfi::hyperion {
         let wallet_address = signer::address_of(&wallet_signer);
         let (tick_lower_before, tick_upper_before) = position_v3::get_tick(position);
         let current = tick_lower + 1;
-
+        //current >= i32::as_u32(tick_lower_before) && current <= i32::as_u32(tick_upper_before)
         if(current >= i32::as_u32(tick_lower_before) && current <= i32::as_u32(tick_upper_before)){
             return
         }else{
             let (token_a, token_b, fee_tier) = get_pool_info(position);    
-            let pool = pool_v3::liquidity_pool(token_a, token_b, fee_tier);
-
-            router_v3::remove_liquidity(
-                &wallet_signer,
+            remove_liquidity_single_from_operator(
+                operator, 
+                wallet_id, 
                 position,
-                position_v3::get_liquidity(position),
-                1,
-                1,
-                wallet_address,
-                timestamp::now_seconds() + DEADLINE_BUFFER // deadline
+                asset, 
+                999, 
+                1000, 
+                0
             );
-            wallet_account::remove_position_opened(
-                wallet_id,
-                object::object_address<Info>(&position),
-                asset,
-                fee_amount
-            );
+            let token_pair = if(object::object_address(&asset) != object::object_address(&token_a)){
+                token_a
+            }else{
+                token_b
+            };
 
-            let balance_a = primary_fungible_store::balance(wallet_address, token_a);
-            let balance_b = primary_fungible_store::balance(wallet_address, token_b);
-            
             let new_position = pool_v3::open_position(
                 &wallet_signer,
                 token_a,
@@ -522,80 +545,22 @@ module moneyfi::hyperion {
                 tick_lower,
                 tick_upper
             );
-            let (tick, sqrt_price) = pool_v3::current_tick_and_price(object::object_address<LiquidityPoolV3>(&pool));
-            let optimal_liquidity = (((balance_a  + balance_b) as u128) * 10000) as u128;
-            let (optimal_amount_a, optimal_amount_b) = swap_math::get_amount_by_liquidity(
-                i32::from_u32(tick_lower),
-                i32::from_u32(tick_upper),
-                i32::from_u32(tick),
-                sqrt_price,
-                optimal_liquidity,
-                false
-            );
-            let delta_a = if (balance_a > optimal_amount_a) {
-                balance_a - optimal_amount_a
-            } else {
-                0
-            };
 
-            let delta_b = if (balance_b > optimal_amount_b) {
-                balance_b - optimal_amount_b
-            } else {
-                0
-            };
+            let balance_before = primary_fungible_store::balance(wallet_address, asset);
 
-            let need_swap_a_to_b = balance_a > optimal_amount_a;
-            let need_swap_b_to_a = balance_b > optimal_amount_b;
-
-            if (need_swap_a_to_b && delta_a > 0) {
-                 router_v3::exact_input_swap_entry(
-                    &wallet_signer,
-                    fee_tier,
-                    delta_a,
-                    0,
-                    4295048016 + 1, // min
-                    token_a,
-                    token_b,
-                    wallet_address,
-                    timestamp::now_seconds() + DEADLINE_BUFFER // deadline
-                );
-            } else if (need_swap_b_to_a && delta_b > 0) {
-                router_v3::exact_input_swap_entry(
-                    &wallet_signer,
-                    fee_tier,
-                    delta_b,
-                    0,
-                    4295048016 + 1, // min
-                    token_b,
-                    token_a,
-                    wallet_address,
-                    timestamp::now_seconds() + DEADLINE_BUFFER // deadline
-                );
-            };
-
-            router_v3::add_liquidity(
+            router_v3::add_liquidity_single(
                 &wallet_signer,
                 new_position,
-                token_a,
-                token_b,
-                fee_tier,
-                optimal_amount_a,
-                optimal_amount_b,
+                asset,
+                token_pair,
+                balance_before - fee_amount,
+                999,
+                1000,
                 1,
-                1,
-                timestamp::now_seconds() + DEADLINE_BUFFER
+                1
             );
 
-            let (amount_a_added, amount_b_added) = get_amount_by_liquidity(new_position);
-            let (amount_asset_added, token_pair, amount_pair_added) = if(
-                object::object_address<Metadata>(&asset) == object::object_address<Metadata>(&token_a)
-            ) {
-                (amount_a_added, token_b, amount_b_added)
-            } else {
-                (amount_b_added, token_a, amount_a_added)
-            };
-
-            let total_asset_amonut_added = router_v3::get_batch_amount_out(vector::singleton<address>(object::object_address<LiquidityPoolV3>(&pool)), amount_pair_added, token_pair, asset) + amount_asset_added;
+            let total_asset_amonut_added = balance_before - primary_fungible_store::balance(wallet_address, asset);
 
             let remaining_balance = primary_fungible_store::balance(wallet_address, token_pair);
             if (remaining_balance > 0) {

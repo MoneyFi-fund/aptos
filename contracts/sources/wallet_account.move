@@ -346,7 +346,7 @@ module moneyfi::wallet_account {
         );
     }
 
-    public fun withdraw_from_wallet_account_by_user(
+    public entry fun withdraw_from_wallet_account_by_user(
         sender: &signer,
         wallet_id: vector<u8>,
         assets: vector<Object<Metadata>>,
@@ -928,9 +928,11 @@ module moneyfi::wallet_account {
             };
 
             if (ordered_map::contains(&wallet.assets, &asset)) {
-                let current_wallet_asset = ordered_map::borrow(&wallet.assets, &asset);
+                let current_wallet_asset = primary_fungible_store::balance(
+                    addr, object::address_to_object<Metadata>(asset)
+                );
                 ordered_map::upsert(
-                    &mut wallet.assets, asset, *current_wallet_asset - amount
+                    &mut wallet.assets, asset, current_wallet_asset
                 );
             };
 
