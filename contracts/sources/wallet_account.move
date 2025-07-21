@@ -117,7 +117,9 @@ module moneyfi::wallet_account {
         );
 
         let extend_ref =
-            storage::create_child_object_with_phantom_owner(get_wallet_account_object_seed(wallet_id));
+            storage::create_child_object_with_phantom_owner(
+                get_wallet_account_object_seed(wallet_id)
+            );
         let account_signer = &object::generate_signer_for_extending(&extend_ref);
 
         move_to(
@@ -271,22 +273,6 @@ module moneyfi::wallet_account {
         object::address_to_object<WalletAccount>(addr)
     }
 
-    // Get the signer for a WalletAccount
-    public fun get_wallet_account_signer(
-        sender: &signer, wallet_id: vector<u8>
-    ): signer acquires WalletAccount {
-        access_control::must_be_service_account(sender);
-        let addr = get_wallet_account_object_address(wallet_id);
-
-        assert!(
-            object::object_exists<WalletAccount>(addr),
-            error::not_found(E_WALLET_ACCOUNT_EXISTS)
-        );
-
-        let wallet_account = borrow_global<WalletAccount>(addr);
-        object::generate_signer_for_extending(&wallet_account.extend_ref)
-    }
-
     public fun get_wallet_account_by_address(
         addr: address
     ): Object<WalletAccount> acquires WalletAccountObject {
@@ -304,39 +290,16 @@ module moneyfi::wallet_account {
         wallet_account.wallet_id
     }
 
-    //Get the signer for a WalletAccount for the owner
-    public fun get_wallet_account_signer_for_owner(
-        sender: &signer, wallet_id: vector<u8>
-    ): signer acquires WalletAccount, WalletAccountObject {
-        let addr = get_wallet_account_object_address(wallet_id);
-        assert!(
-            is_owner(signer::address_of(sender), wallet_id),
-            error::permission_denied(E_NOT_OWNER)
-        );
-
-        let wallet_account = borrow_global<WalletAccount>(addr);
-        object::generate_signer_for_extending(&wallet_account.extend_ref)
-    }
-
-    public inline fun is_owner(
-        owner: address, wallet_id: vector<u8>
-    ): bool acquires WalletAccount, WalletAccountObject {
-        assert!(
-            exists<WalletAccountObject>(owner),
-            error::not_found(E_WALLET_ACCOUNT_NOT_EXISTS)
-        );
-        let addr = get_wallet_account_object_address(wallet_id);
-        let wallet_account_object = borrow_global<WalletAccountObject>(owner);
-        addr == object::object_address(&wallet_account_object.wallet_account)
-    }
-
     fun get_wallet_account_object_seed(wallet_id: vector<u8>): vector<u8> {
         bcs::to_bytes(&vector[WALLET_ACCOUNT_SEED, wallet_id])
     }
 
-    fun get_wallet_account_signer_internal(
-        wallet_account: &WalletAccount
-    ): signer {
+    public(friend) fun get_wallet_account_signer(
+        account: Object<WalletAccount>
+    ): signer acquires WalletAccount {
+        let addr = object::object_address(&account);
+
+        let wallet_account = borrow_global<WalletAccount>(addr);
         object::generate_signer_for_extending(&wallet_account.extend_ref)
     }
 
