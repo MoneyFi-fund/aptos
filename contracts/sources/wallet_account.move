@@ -12,8 +12,6 @@ module moneyfi::wallet_account {
     use aptos_framework::primary_fungible_store;
     use aptos_framework::timestamp;
 
-    use hyperion::position_v3::Info as HyperionPositionInfo;
-
     use moneyfi::access_control;
     use moneyfi::storage;
     use moneyfi::fee_manager;
@@ -61,15 +59,8 @@ module moneyfi::wallet_account {
         wallet_account: Object<WalletAccount>
     }
 
-    struct Position has store {
-        asset_0_amount: u64,
-        asset_1_amount: u64,
-        lower_tick: u64,
-        upper_tick: u64
-    }
-
-    struct HyperionStrategyData has key {
-        positions: OrderedMap<address, Position>
+    struct LiquidityStrategyData has key {
+        positions: OrderedMap<address, u8> // address of Position object, u8 is the strategy id
     }
 
     // -- Events
@@ -174,12 +165,14 @@ module moneyfi::wallet_account {
         wallet_account.set_asset(asset, asset_data);
     }
 
-    public(friend) fun distribute_fund_with_hyperion_strategy(
+    public(friend) fun distribute_fund_to_strategy(
         account: Object<WalletAccount>,
         asset: Object<Metadata>,
         amount: u64,
-        position: Object<HyperionPositionInfo>
-    ) acquires WalletAccount, HyperionStrategyData {
+        position: address,
+        strategy_id: u8,
+        fee_amount: u64
+    ) acquires WalletAccount, LiquidityStrategyData {
         let account_addr = object::object_address(&account);
         let wallet_account = borrow_global_mut<WalletAccount>(account_addr);
 
@@ -190,38 +183,28 @@ module moneyfi::wallet_account {
         asset_data.remaining_amount -= amount;
         wallet_account.set_asset(asset, asset_data);
 
-        let pos_addr = object::object_address(&position);
-        let pos = Position {
-            asset_0_amount: amount,
-            asset_1_amount: 0,
-            lower_tick: 0, // TODO
-            upper_tick: 0 // TODO
-        };
-        if (!exists<HyperionStrategyData>(account_addr)) {
+        if (!exists<LiquidityStrategyData>(account_addr)) {
             let account_signer =
                 &object::generate_signer_for_extending(&wallet_account.extend_ref);
             move_to(
                 account_signer,
-                HyperionStrategyData {
-                    positions: ordered_map::new_from(vector[pos_addr], vector[pos])
+                LiquidityStrategyData {
+                    positions: ordered_map::new_from(vector::singleton<address>(position), vector::singleton<u8>(strategy_id))
                 }
             );
         } else {
             let data = borrow_global_mut<HyperionStrategyData>(account_addr);
-            assert!(!ordered_map::contains(&data.positions, &pos_addr));
-
-            ordered_map::add(&mut data.positions, pos_addr, pos);
+            ordered_map::upsert(&mut data.positions, position, strategy_id);
         };
     }
 
     public(friend) fun collect_fund_from_hyperion_strategy(
         account: Object<WalletAccount>,
         asset: Object<Metadata>,
-        position: Object<HyperionPositionInfo>,
+        position: address,
         amount: u64,
         interest_amount: u64,
         interest_share_amount: u64
-
     ) acquires WalletAccount, HyperionStrategyData {
 
         let account_addr = object::object_address(&account);
@@ -273,6 +256,22 @@ module moneyfi::wallet_account {
         object::address_to_object<WalletAccount>(addr)
     }
 
+    // Get the signer for a WalletAccount
+    public fun get_wallet_account_signer(
+        sender: &signer, wallet_id: vector<u8>
+    ): signer acquires WalletAccount {
+        access_control::must_be_service_account(sender);
+        let addr = get_wallet_account_object_address(wallet_id);
+
+        assert!(
+            object::object_exists<WalletAccount>(addr),
+            error::not_found(E_WALLET_ACCOUNT_EXISTS)
+        );
+
+        let wallet_account = borrow_global<WalletAccount>(addr);
+        object::generate_signer_for_extending(&wallet_account.extend_ref)
+    }
+
     public fun get_wallet_account_by_address(
         addr: address
     ): Object<WalletAccount> acquires WalletAccountObject {
@@ -290,17 +289,34 @@ module moneyfi::wallet_account {
         wallet_account.wallet_id
     }
 
-    fun get_wallet_account_object_seed(wallet_id: vector<u8>): vector<u8> {
-        bcs::to_bytes(&vector[WALLET_ACCOUNT_SEED, wallet_id])
-    }
-
-    public(friend) fun get_wallet_account_signer(
-        account: Object<WalletAccount>
-    ): signer acquires WalletAccount {
-        let addr = object::object_address(&account);
+    //Get the signer for a WalletAccount for the owner
+    public fun get_wallet_account_signer_for_owner(
+        sender: &signer, wallet_id: vector<u8>
+    ): signer acquires WalletAccount, WalletAccountObject {
+        let addr = get_wallet_account_object_address(wallet_id);
+        assert!(
+            is_owner(signer::address_of(sender), wallet_id),
+            error::permission_denied(E_NOT_OWNER)
+        );
 
         let wallet_account = borrow_global<WalletAccount>(addr);
         object::generate_signer_for_extending(&wallet_account.extend_ref)
+    }
+
+    public inline fun is_owner(
+        owner: address, wallet_id: vector<u8>
+    ): bool acquires WalletAccount, WalletAccountObject {
+        assert!(
+            exists<WalletAccountObject>(owner),
+            error::not_found(E_WALLET_ACCOUNT_NOT_EXISTS)
+        );
+        let addr = get_wallet_account_object_address(wallet_id);
+        let wallet_account_object = borrow_global<WalletAccountObject>(owner);
+        addr == object::object_address(&wallet_account_object.wallet_account)
+    }
+
+    fun get_wallet_account_object_seed(wallet_id: vector<u8>): vector<u8> {
+        bcs::to_bytes(&vector[WALLET_ACCOUNT_SEED, wallet_id])
     }
 
     fun get_asset(self: &WalletAccount, asset: Object<Metadata>): AccountAsset {

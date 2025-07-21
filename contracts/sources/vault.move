@@ -251,6 +251,7 @@ module moneyfi::vault {
         };
 
         let config = borrow_global<Config>(@moneyfi);
+        let lp_token = borrow_global<LPToken>(@moneyfi);
         assert!(
             config.can_withdraw(asset, amount),
             error::permission_denied(E_DEPOSIT_NOT_ALLOWED)
@@ -259,7 +260,11 @@ module moneyfi::vault {
         let wallet_id = wallet_account::get_wallet_id_by_address(wallet_addr);
 
         let asset_config = config.get_asset_config(asset);
-        let lp_amount = asset_config.calc_lp_amount(amount);
+        let lp_amount = if(asset_config.calc_lp_amount(amount) < primary_fungible_store::balance(account_addr, lp_token.token)) {
+            asset_config.calc_lp_amount(amount)
+        } else {
+            primary_fungible_store::balance(account_addr, lp_token.token)
+        };
         let account_signer = wallet_account::get_wallet_account_signer(account);
 
         primary_fungible_store::transfer(&account_signer, asset, wallet_addr, amount);
