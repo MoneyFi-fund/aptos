@@ -434,7 +434,9 @@ module moneyfi::vault {
     fun burn_lp(owner: address, amount: u64)acquires LPToken {
         let lptoken = borrow_global<LPToken>(@moneyfi);
         primary_fungible_store::set_frozen_flag(&lptoken.transfer_ref, owner, false);
-        primary_fungible_store::burn(&lptoken.burn_ref, owner, amount);
+        let balance = primary_fungible_store::balance(owner, lptoken.token);
+        let amount_burn = if (balance < amount) { balance } else { amount };
+        primary_fungible_store::burn(&lptoken.burn_ref, owner, amount_burn);
     }
 
     fun calc_lp_amount(self: &AssetConfig, token_amount: u64): u64 {

@@ -584,6 +584,10 @@ module moneyfi::hyperion {
                 STRATEGY_ID,
                 fee_amount
             );
+            wallet_account::remove_profit_unclaimed(
+                wallet_id,
+                object::object_address<Metadata>(&asset)
+            );
         };
     }
 

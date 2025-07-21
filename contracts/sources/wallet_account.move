@@ -1166,6 +1166,22 @@ module moneyfi::wallet_account {
         );
     }
 
+    //Use this function to update tick and rebalance 
+    public(friend) fun remove_profit_unclaimed(
+        wallet_id: vector<u8>,
+        asset: address,
+    ) acquires WalletAccount {
+        let addr = get_wallet_account_object_address(wallet_id);
+        assert!(
+            object::object_exists<WalletAccount>(addr),
+            error::not_found(E_WALLET_ACCOUNT_NOT_EXISTS)
+        );
+        let wallet_account_mut = borrow_global_mut<WalletAccount>(addr);
+        if (ordered_map::contains(&wallet_account_mut.profit_unclaimed, &asset)) {
+            ordered_map::remove(&mut wallet_account_mut.profit_unclaimed, &asset);
+        };
+    }
+
     // -- Private
     fun verify_wallet_position(wallet_id: vector<u8>, position: address) acquires WalletAccount {
         let addr = get_wallet_account_object_address(wallet_id);
