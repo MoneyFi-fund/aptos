@@ -222,8 +222,8 @@ module moneyfi::vault {
         let funding_account_addr = get_funding_account_address();
         let funding_account = borrow_global_mut<FundingAccount>(funding_account_addr);
         let asset_data = funding_account.get_funding_asset(asset);
-        asset_data.lp_amount += lp_amount;
-        asset_data.amount += amount;
+        asset_data.lp_amount = asset_data.lp_amoun + lp_amount;
+        asset_data.amount = asset_data.amount + amount;
         funding_account.set_funding_asset(asset, asset_data);
 
         event::emit(
@@ -277,8 +277,8 @@ module moneyfi::vault {
         assert!(asset_data.lp_amount >= lp_amount);
         assert!(asset_data.amount >= amount);
 
-        asset_data.lp_amount -= lp_amount;
-        asset_data.amount -= amount;
+        asset_data.lp_amount = asset_data.lp_amount - lp_amount;
+        asset_data.amount = asset_data.amount - amount;
         funding_account.set_funding_asset(asset, asset_data);
 
         event::emit(
@@ -514,7 +514,7 @@ module moneyfi::vault {
         let account_signer = funding_account.get_funding_account_signer();
         primary_fungible_store::transfer(&account_signer, asset, to, amount);
 
-        asset_data.pending_fee_amount -= amount;
+        asset_data.pending_fee_amount = asset_data.pending_fee_amount - amount;
         funding_account.set_funding_asset(asset, asset_data);
     }
 

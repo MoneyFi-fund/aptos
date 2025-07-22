@@ -40,6 +40,7 @@ module moneyfi::wallet_account {
         // internal chain ID
         chain_id: u8,
         wallet_address: Option<address>,
+        referral: bool,
         assets: OrderedMap<address, AccountAsset>,
         extend_ref: ExtendRef
     }
@@ -52,6 +53,8 @@ module moneyfi::wallet_account {
         withdrawn_amount: u64,
         interest_amount: u64,
         interest_share_amount: u64,
+        claimed_interest_amount: u64,
+        claimed_interest_share_amount: u64,
         rewards: OrderedMap<address, u64>
     }
 
@@ -59,7 +62,7 @@ module moneyfi::wallet_account {
         wallet_account: Object<WalletAccount>
     }
 
-    struct LiquidityStrategyData has key {
+    struct PoolV3StrategyData has key {
         positions: OrderedMap<address, u8> // address of Position object, u8 is the strategy id
     }
 
@@ -72,8 +75,26 @@ module moneyfi::wallet_account {
         timestamp: u64
     }
 
+    #[event]
+    struct DistributeFundToStrategyEvent has drop, store {
+        wallet_id: vector<u8>,
+        asset: Object<Metadata>,
+        amount: u64,
+        strategy_id: u8,
+        timestamp: u64
+    }
+
+    #[event]
+    struct UnDistributeFundFromStrategyEvent has drop, store {
+        wallet_id: vector<u8>,
+        asset: Object<Metadata>,
+        remaining_amount: u64,
+        strategy_id: u8,
+        timestamp: u64
+    }
+
     public entry fun register(
-        sender: &signer, verifier: &signer, wallet_id: vector<u8>
+        sender: &signer, verifier: &signer, wallet_id: vector<u8>, referral: bool
     ) acquires WalletAccount {
         access_control::must_be_service_account(verifier);
         let wallet_address = signer::address_of(sender);
@@ -99,7 +120,7 @@ module moneyfi::wallet_account {
     }
 
     fun create_wallet_account(
-        wallet_id: vector<u8>, chain_id: u8, wallet_address: Option<address>
+        wallet_id: vector<u8>, chain_id: u8, wallet_address: Option<address>, referral: bool
     ): Object<WalletAccount> {
         let account_addr = get_wallet_account_object_address(wallet_id);
         assert!(
@@ -119,6 +140,7 @@ module moneyfi::wallet_account {
                 wallet_id: wallet_id,
                 chain_id,
                 wallet_address,
+                referral,
                 assets: ordered_map::new(),
                 extend_ref: extend_ref
             }
@@ -139,8 +161,8 @@ module moneyfi::wallet_account {
         let wallet_account = borrow_global_mut<WalletAccount>(account_addr);
 
         let asset_data = wallet_account.get_asset(asset);
-        asset_data.deposited_amount += amount;
-        asset_data.lp_amount += lp_amount;
+        asset_data.deposited_amount = asset_data.deposited_amount + amount;
+        asset_data.lp_amount = asset_data.lp_amount + lp_amount;
 
         wallet_account.set_asset(asset, asset_data);
     }
@@ -158,9 +180,29 @@ module moneyfi::wallet_account {
         assert!(asset_data.lp_amount >= lp_amount);
         assert!(asset_data.remaining_amount >= amount);
 
-        asset_data.withdrawn_amount += amount;
-        asset_data.lp_amount -= lp_amount;
-        asset_data.remaining_amount -= amount;
+        asset_data.withdrawn_amount = asset_data.withdrawn_amount + amount;
+        asset_data.lp_amount = asset_data.lp_amount - lp_amount;
+        asset_data.remaining_amount = asset_data.remaining_amount - amount;
+
+        wallet_account.set_asset(asset, asset_data);
+    }
+
+    public(friend) fun claim_interest(
+        account: Object<WalletAccount>,
+        asset: Object<Metadata>,
+        interest_amount: u64,
+        interest_share_amount: u64
+    ) acquires WalletAccount {
+        let account_addr = object::object_address(&account);
+        let wallet_account = borrow_global_mut<WalletAccount>(account_addr);
+
+        let asset_data = wallet_account.get_asset(asset);
+        assert!(asset_data.interest_share_amount >= interest_share_amount);
+        assert!(asset_data.interest_amount >= amount);
+
+        asset_data.claimed_interest_amount = asset_data.claimed_interest_amount + interest_amount;
+        asset_data.claimed_interest_share_amount =
+            asset_data.claimed_interest_share_amount + interest_share_amount;
 
         wallet_account.set_asset(asset, asset_data);
     }
@@ -171,24 +213,23 @@ module moneyfi::wallet_account {
         amount: u64,
         position: address,
         strategy_id: u8,
-        fee_amount: u64
-    ) acquires WalletAccount, LiquidityStrategyData {
+    ) acquires WalletAccount, PoolV3StrategyData {
         let account_addr = object::object_address(&account);
         let wallet_account = borrow_global_mut<WalletAccount>(account_addr);
 
         let asset_data = wallet_account.get_asset(asset);
         assert!(asset_data.remaining_amount >= amount);
 
-        asset_data.distributed_amount += amount;
-        asset_data.remaining_amount -= amount;
+        asset_data.distributed_amount = asset_data.distributed_amount + amount;
+        asset_data.remaining_amount = asset_data.remaining_amount - amount;
         wallet_account.set_asset(asset, asset_data);
 
-        if (!exists<LiquidityStrategyData>(account_addr)) {
+        if (!exists<PoolV3StrategyData>(account_addr)) {
             let account_signer =
                 &object::generate_signer_for_extending(&wallet_account.extend_ref);
             move_to(
                 account_signer,
-                LiquidityStrategyData {
+                PoolV3StrategyData {
                     positions: ordered_map::new_from(vector::singleton<address>(position), vector::singleton<u8>(strategy_id))
                 }
             );
@@ -198,37 +239,63 @@ module moneyfi::wallet_account {
         };
     }
 
-    public(friend) fun collect_fund_from_hyperion_strategy(
+    public(friend) fun collect_fund_from_strategy(
         account: Object<WalletAccount>,
         asset: Object<Metadata>,
         position: address,
         amount: u64,
         interest_amount: u64,
-        interest_share_amount: u64
-    ) acquires WalletAccount, HyperionStrategyData {
+        interest_share_amount: u64,
+    ) acquires WalletAccount, PoolV3StrategyData {
 
         let account_addr = object::object_address(&account);
-        assert!(exists<HyperionStrategyData>(account_addr));
+        assert!(exists<PoolV3StrategyData>(account_addr));
 
-        let data = borrow_global_mut<HyperionStrategyData>(account_addr);
+        let data = borrow_global_mut<PoolV3StrategyData>(account_addr);
         let pos_addr = object::object_address(&position);
         assert!(ordered_map::contains(&data.positions, &pos_addr));
 
         let wallet_account = borrow_global_mut<WalletAccount>(account_addr);
         let asset_data = wallet_account.get_asset(asset);
-        assert!(asset_data.remaining_amount >= amount);
+        assert!(asset_data.distributed_amount >= amount);
 
-        asset_data.remaining_amount += amount;
-        asset_data.interest_amount += interest_amount;
-        asset_data.interest_share_amount += interest_share_amount;
+        asset_data.remaining_amount = asset_data.remaining_amount + amount;
+        asset_data.interest_amount = asset_data.interest_amount + interest_amount;
+        asset_data.interest_share_amount = asset_data.interest_share_amount + interest_share_amount;
+
         if (asset_data.distributed_amount > amount) {
-            asset_data.distributed_amount -= amount;
+            asset_data.distributed_amount = asset_data.distributed_amoun - amount;
         } else {
             asset_data.distributed_amount = 0;
         };
         wallet_account.set_asset(asset, asset_data);
 
         ordered_map::remove(&mut data.positions, &pos_addr);
+    }
+
+    public(friend) fun remove_fund_from_strategy(
+        account: Object<WalletAccount>,
+        asset: Object<Metadata>,
+        amount: u64,
+        interest_amount: u64,
+        interest_share_amount: u64
+    ) acquires WalletAccount {
+        let account_addr = object::object_address(&account);
+        let wallet_account = borrow_global_mut<WalletAccount>(account_addr);
+
+        let asset_data = wallet_account.get_asset(asset);
+        assert!(asset_data.distributed_amount >= amount);
+
+        asset_data.remaining_amount = asset_data.remaining_amount + amount;
+        asset_data.interest_amount = asset_data.interest_amount + interest_amount;
+        asset_data.interest_share_amount = asset_data.interest_share_amount + interest_share_amount;
+
+        if (asset_data.distributed_amount > amount) {
+            asset_data.distributed_amount = asset_data.distributed_amount - amount;
+        } else {
+            asset_data.distributed_amount = 0;
+        };
+        wallet_account.set_asset(asset, asset_data);
     }
 
     // Check wallet_id is a valid wallet account
@@ -254,6 +321,18 @@ module moneyfi::wallet_account {
         );
 
         object::address_to_object<WalletAccount>(addr)
+    }
+
+    #[view]
+    public fun get_wallet_account_asset(wallet_id: vector<u8>): (vector<address>, vector<AccountAsset>) {
+        let addr = get_wallet_account_object_address(wallet_id);
+        assert!(
+            object::object_exists<WalletAccount>(addr),
+            error::not_found(E_WALLET_ACCOUNT_EXISTS)
+        );
+
+        let wallet_account = borrow_global<WalletAccount>(addr);
+        ordered_map::to_vec_pairs(&wallet_account.assets)
     }
 
     // Get the signer for a WalletAccount
@@ -333,6 +412,8 @@ module moneyfi::wallet_account {
             withdrawn_amount: 0,
             interest_amount: 0,
             interest_share_amount: 0,
+            claimed_interest_amount: 0,
+            claimed_interest_share_amount: 0,
             rewards: ordered_map::new()
         }
     }
