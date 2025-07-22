@@ -68,7 +68,8 @@ module moneyfi::storage {
 
         object::generate_signer_for_extending(&storage.extend_ref)
     }
-    /// Creates a child object using the provided seed. 
+
+    /// Creates a child object using the provided seed.
     /// Note: If the child object is intended to hold a fungible asset, use `create_child_object_with_phantom_owner` instead.
     public(friend) fun create_child_object(seed: vector<u8>): ExtendRef acquires Storage {
         let (extend_ref, _) = create_child_object_impl(seed);

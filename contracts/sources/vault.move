@@ -19,8 +19,9 @@ module moneyfi::vault {
     use aptos_framework::timestamp::now_seconds;
 
     use moneyfi::access_control;
-    use moneyfi::wallet_account;
+    use moneyfi::wallet_account::{Self, WalletAccount};
     use moneyfi::storage;
+    use moneyfi::strategy;
 
     // -- Constants
     const LP_TOKEN_NAME: vector<u8> = b"MoneyFi LP";
@@ -75,7 +76,7 @@ module moneyfi::vault {
     #[event]
     struct DepositedEvent has drop, store {
         sender: address,
-        wallet_account: Object<wallet_account::WalletAccount>,
+        wallet_account: Object<WalletAccount>,
         asset: Object<Metadata>,
         amount: u64,
         lp_amount: u64,
@@ -85,7 +86,7 @@ module moneyfi::vault {
     #[event]
     struct WithdrawnEvent has drop, store {
         sender: address,
-        wallet_account: Object<wallet_account::WalletAccount>,
+        wallet_account: Object<WalletAccount>,
         asset: Object<Metadata>,
         amount: u64,
         lp_amount: u64,
@@ -120,7 +121,7 @@ module moneyfi::vault {
             error::already_exists(E_ALREADY_INITIALIZED)
         );
 
-        let funding_account = init_funding_account();
+        init_funding_account();
 
         move_to(
             sender,
@@ -328,6 +329,69 @@ module moneyfi::vault {
         // TODO: emit event
     }
 
+    public entry fun deposit_to_strategy(
+        sender: &signer,
+        strategy: u8,
+        account: Object<WalletAccount>,
+        asset: Object<Metadata>,
+        amount: u64
+    ) {
+        access_control::must_be_service_account(sender);
+        let (amount, _) = strategy::deposit(strategy, account, asset, amount);
+        wallet_account::distributed_fund(account, asset, amount);
+
+        // TODO: emit event
+    }
+
+    public entry fun withdraw_from_strategy(
+        sender: &signer,
+        strategy: u8,
+        account: Object<WalletAccount>,
+        asset: Object<Metadata>,
+        amount: u64,
+        referral_data: vector<u8>
+    ) acquires Config, FundingAccount {
+        access_control::must_be_service_account(sender);
+
+        let config = borrow_global<Config>(@moneyfi);
+
+        let (amount, lp_amount, interest_amount, rewards) =
+            strategy::withdraw(strategy, account, asset, amount);
+
+        let system_fee = config.calc_system_fee(interest_amount);
+        if (system_fee > 0) {
+            let account_signer = wallet_account::get_wallet_account_signer(account);
+
+            let funding_account_addr = get_funding_account_address();
+            let funding_account = borrow_global_mut<FundingAccount>(funding_account_addr);
+            let asset_data = funding_account.get_funding_asset(asset);
+
+            primary_fungible_store::transfer(
+                &account_signer,
+                asset,
+                funding_account_addr,
+                system_fee
+            );
+
+            asset_data.total_fee_amount += system_fee;
+            asset_data.pending_fee_amount += system_fee;
+            funding_account.set_funding_asset(asset, asset_data);
+        };
+
+        wallet_account::collected_fund(
+            account,
+            asset,
+            amount,
+            interest_amount,
+            system_fee
+        );
+
+        // TODO: handle rewards
+        // TODO: handle referral_data
+
+        // TODO: emit event
+    }
+
     // -- Views
     #[view]
     public fun get_total_assets(): (vector<address>, vector<u64>) acquires FundingAccount {
@@ -477,6 +541,10 @@ module moneyfi::vault {
 
     fun calc_lp_amount(self: &AssetConfig, token_amount: u64): u64 {
         self.lp_exchange_rate * token_amount
+    }
+
+    fun calc_system_fee(self: &Config, interest_amount: u64): u64 {
+        interest_amount * self.system_fee_percent / 10_000
     }
 
     fun get_funding_asset(
