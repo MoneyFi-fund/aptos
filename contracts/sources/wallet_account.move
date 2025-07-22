@@ -39,7 +39,6 @@ module moneyfi::wallet_account {
         // internal chain ID
         chain_id: u8,
         wallet_address: Option<address>,
-        referral: bool,
         assets: OrderedMap<address, AccountAsset>,
         extend_ref: ExtendRef
     }
@@ -52,8 +51,6 @@ module moneyfi::wallet_account {
         withdrawn_amount: u64,
         interest_amount: u64,
         interest_share_amount: u64,
-        claimed_interest_amount: u64,
-        claimed_interest_share_amount: u64,
         rewards: OrderedMap<address, u64>
     }
 
@@ -74,26 +71,8 @@ module moneyfi::wallet_account {
         timestamp: u64
     }
 
-    #[event]
-    struct DistributeFundToStrategyEvent has drop, store {
-        wallet_id: vector<u8>,
-        asset: Object<Metadata>,
-        amount: u64,
-        strategy_id: u8,
-        timestamp: u64
-    }
-
-    #[event]
-    struct UnDistributeFundFromStrategyEvent has drop, store {
-        wallet_id: vector<u8>,
-        asset: Object<Metadata>,
-        remaining_amount: u64,
-        strategy_id: u8,
-        timestamp: u64
-    }
-
     public entry fun register(
-        sender: &signer, verifier: &signer, wallet_id: vector<u8>, referral: bool
+        sender: &signer, verifier: &signer, wallet_id: vector<u8>
     ) acquires WalletAccount {
         access_control::must_be_service_account(verifier);
         let wallet_address = signer::address_of(sender);
@@ -119,7 +98,7 @@ module moneyfi::wallet_account {
     }
 
     fun create_wallet_account(
-        wallet_id: vector<u8>, chain_id: u8, wallet_address: Option<address>, referral: bool
+        wallet_id: vector<u8>, chain_id: u8, wallet_address: Option<address>
     ): Object<WalletAccount> {
         let account_addr = get_wallet_account_object_address(wallet_id);
         assert!(
@@ -139,7 +118,6 @@ module moneyfi::wallet_account {
                 wallet_id: wallet_id,
                 chain_id,
                 wallet_address,
-                referral,
                 assets: ordered_map::new(),
                 extend_ref: extend_ref
             }
@@ -160,8 +138,8 @@ module moneyfi::wallet_account {
         let wallet_account = borrow_global_mut<WalletAccount>(account_addr);
 
         let asset_data = wallet_account.get_asset(asset);
-        asset_data.deposited_amount = asset_data.deposited_amount + amount;
-        asset_data.lp_amount = asset_data.lp_amount + lp_amount;
+        asset_data.deposited_amount += amount;
+        asset_data.lp_amount += lp_amount;
 
         wallet_account.set_asset(asset, asset_data);
     }
@@ -179,9 +157,9 @@ module moneyfi::wallet_account {
         assert!(asset_data.lp_amount >= lp_amount);
         assert!(asset_data.remaining_amount >= amount);
 
-        asset_data.withdrawn_amount = asset_data.withdrawn_amount + amount;
-        asset_data.lp_amount = asset_data.lp_amount - lp_amount;
-        asset_data.remaining_amount = asset_data.remaining_amount - amount;
+        asset_data.withdrawn_amount += amount;
+        asset_data.lp_amount -= lp_amount;
+        asset_data.remaining_amount -= amount;
 
         wallet_account.set_asset(asset, asset_data);
     }
@@ -216,10 +194,11 @@ module moneyfi::wallet_account {
 
         asset_data.remaining_amount = asset_data.remaining_amount + amount;
         asset_data.interest_amount = asset_data.interest_amount + interest_amount;
-        asset_data.interest_share_amount = asset_data.interest_share_amount + interest_share_amount;
+        asset_data.interest_share_amount =
+            asset_data.interest_share_amount + interest_share_amount;
 
         if (asset_data.distributed_amount > amount) {
-            asset_data.distributed_amount = asset_data.distributed_amoun - amount;
+            asset_data.distributed_amount = asset_data.distributed_amount - amount;
         } else {
             asset_data.distributed_amount = 0;
         };
@@ -250,10 +229,17 @@ module moneyfi::wallet_account {
         strategy_data.data
     }
 
+    // Check wallet_id is a valid wallet account
     #[view]
     public fun has_wallet_account(wallet_id: vector<u8>): bool {
         let addr = get_wallet_account_object_address(wallet_id);
         object::object_exists<WalletAccount>(addr)
+    }
+
+    // Get the WalletAccount object address for a given wallet_id
+    // #[view]
+    public fun get_wallet_account_object_address(wallet_id: vector<u8>): address {
+        storage::get_child_object_address(get_wallet_account_object_seed(wallet_id))
     }
 
     // Get the WalletAccount object address for a given wallet_id
@@ -268,45 +254,12 @@ module moneyfi::wallet_account {
         object::address_to_object<WalletAccount>(addr)
     }
 
-    #[view]
-    public fun get_wallet_account_asset(wallet_id: vector<u8>): (vector<address>, vector<AccountAsset>) {
-        let addr = get_wallet_account_object_address(wallet_id);
-        assert!(
-            object::object_exists<WalletAccount>(addr),
-            error::not_found(E_WALLET_ACCOUNT_EXISTS)
-        );
-
-        let wallet_account = borrow_global<WalletAccount>(addr);
-        ordered_map::to_vec_pairs(&wallet_account.assets)
-    }
-
-    // Get the signer for a WalletAccount
-    public fun get_wallet_account_signer(
-        sender: &signer, wallet_id: vector<u8>
-    ): signer acquires WalletAccount {
-        access_control::must_be_service_account(sender);
-        let addr = get_wallet_account_object_address(wallet_id);
-
-        assert!(
-            object::object_exists<WalletAccount>(addr),
-            error::not_found(E_WALLET_ACCOUNT_EXISTS)
-        );
-
-        let wallet_account = borrow_global<WalletAccount>(addr);
-        object::generate_signer_for_extending(&wallet_account.extend_ref)
-    }
-
     public fun get_wallet_account_by_address(
         addr: address
     ): Object<WalletAccount> acquires WalletAccountObject {
         let obj = borrow_global<WalletAccountObject>(addr);
 
         obj.wallet_account
-    }
-
-    // Get the WalletAccount object address for a given wallet_id
-    public fun get_wallet_account_object_address(wallet_id: vector<u8>): address {
-        storage::get_child_object_address(get_wallet_account_object_seed(wallet_id))
     }
 
     public fun get_wallet_id_by_address(
@@ -318,34 +271,17 @@ module moneyfi::wallet_account {
         wallet_account.wallet_id
     }
 
-    //Get the signer for a WalletAccount for the owner
-    public fun get_wallet_account_signer_for_owner(
-        sender: &signer, wallet_id: vector<u8>
-    ): signer acquires WalletAccount, WalletAccountObject {
-        let addr = get_wallet_account_object_address(wallet_id);
-        assert!(
-            is_owner(signer::address_of(sender), wallet_id),
-            error::permission_denied(E_NOT_OWNER)
-        );
+    fun get_wallet_account_object_seed(wallet_id: vector<u8>): vector<u8> {
+        bcs::to_bytes(&vector[WALLET_ACCOUNT_SEED, wallet_id])
+    }
+
+    public(friend) fun get_wallet_account_signer(
+        account: Object<WalletAccount>
+    ): signer acquires WalletAccount {
+        let addr = object::object_address(&account);
 
         let wallet_account = borrow_global<WalletAccount>(addr);
         object::generate_signer_for_extending(&wallet_account.extend_ref)
-    }
-
-    public inline fun is_owner(
-        owner: address, wallet_id: vector<u8>
-    ): bool acquires WalletAccount, WalletAccountObject {
-        assert!(
-            exists<WalletAccountObject>(owner),
-            error::not_found(E_WALLET_ACCOUNT_NOT_EXISTS)
-        );
-        let addr = get_wallet_account_object_address(wallet_id);
-        let wallet_account_object = borrow_global<WalletAccountObject>(owner);
-        addr == object::object_address(&wallet_account_object.wallet_account)
-    }
-
-    fun get_wallet_account_object_seed(wallet_id: vector<u8>): vector<u8> {
-        bcs::to_bytes(&vector[WALLET_ACCOUNT_SEED, wallet_id])
     }
 
     fun get_asset(self: &WalletAccount, asset: Object<Metadata>): AccountAsset {
@@ -362,8 +298,6 @@ module moneyfi::wallet_account {
             withdrawn_amount: 0,
             interest_amount: 0,
             interest_share_amount: 0,
-            claimed_interest_amount: 0,
-            claimed_interest_share_amount: 0,
             rewards: ordered_map::new()
         }
     }

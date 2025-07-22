@@ -223,7 +223,7 @@ module moneyfi::vault {
         let funding_account_addr = get_funding_account_address();
         let funding_account = borrow_global_mut<FundingAccount>(funding_account_addr);
         let asset_data = funding_account.get_funding_asset(asset);
-        asset_data.lp_amount = asset_data.lp_amoun + lp_amount;
+        asset_data.lp_amount = asset_data.lp_amount + lp_amount;
         asset_data.amount = asset_data.amount + amount;
         funding_account.set_funding_asset(asset, asset_data);
 
@@ -261,11 +261,13 @@ module moneyfi::vault {
         let wallet_id = wallet_account::get_wallet_id_by_address(wallet_addr);
 
         let asset_config = config.get_asset_config(asset);
-        let lp_amount = if(asset_config.calc_lp_amount(amount) < primary_fungible_store::balance(account_addr, lp_token.token)) {
-            asset_config.calc_lp_amount(amount)
-        } else {
-            primary_fungible_store::balance(account_addr, lp_token.token)
-        };
+        let lp_amount =
+            if (asset_config.calc_lp_amount(amount)
+                < primary_fungible_store::balance(account_addr, lp_token.token)) {
+                asset_config.calc_lp_amount(amount)
+            } else {
+                primary_fungible_store::balance(account_addr, lp_token.token)
+            };
         let account_signer = wallet_account::get_wallet_account_signer(account);
 
         primary_fungible_store::transfer(&account_signer, asset, wallet_addr, amount);
