@@ -337,29 +337,33 @@ module moneyfi::vault {
 
     public entry fun deposit_to_strategy(
         sender: &signer,
-        strategy: u8,
-        account: Object<WalletAccount>,
+        wallet_id: vector<u8>,
+        strategy_id: u8,
+        pool: address,
         asset: Object<Metadata>,
-        amount: u64
-    ) {
+        amount: u64,
+        gas_fee: u64
+    ) acquires FundingAccount{
         access_control::must_be_service_account(sender);
+        let account = wallet_account::get_wallet_account(wallet_id);
         let (amount, _) = strategy::deposit(strategy, account, asset, amount);
         wallet_account::distributed_fund(account, asset, amount);
-
+        // TODO: handle gas fee
         // TODO: emit event
     }
 
     public entry fun withdraw_from_strategy(
         sender: &signer,
-        strategy: u8,
-        account: Object<WalletAccount>,
+        wallet_id: vector<u8>,
+        strategy_id: u8,
+        pool: address,
         asset: Object<Metadata>,
         amount: u64,
         // amount of gas fee exchanged to asset token
         gas_fee: u64
     ) acquires Config, FundingAccount {
         access_control::must_be_service_account(sender);
-
+        let account = wallet_account::get_wallet_account(wallet_id);
         let config = borrow_global<Config>(@moneyfi);
 
         let funding_account_addr = get_funding_account_address();

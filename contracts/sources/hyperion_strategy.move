@@ -1,10 +1,10 @@
 module moneyfi::hyperion_strategy {
     use std::signer;
     use std::vector;
+    use aptos_std::ordered_map::{Self, OrderedMap};
     use aptos_framework::object::{Self, Object};
     use aptos_framework::primary_fungible_store;
     use aptos_framework::timestamp;
-    use aptos_framework::error;
     use aptos_framework::fungible_asset::Metadata;
     use dex_contract::i32::{Self, I32};
     use dex_contract::router_v3;
@@ -13,15 +13,30 @@ module moneyfi::hyperion_strategy {
     use dex_contract::position_v3::{Self, Info};
 
     use moneyfi::wallet_account;
+    friend moneyfi::strategy;
 
     const DEADLINE_BUFFER: u64 = 31556926; // 1 years
     const USDC_ADDRESS: address = @stablecoin;
 
     const STRATEGY_ID: u8 = 1; // Hyperion strategy id
-
     //const FEE_RATE_VEC: vector<u64> = vector[100, 500, 3000, 10000]; fee_tier is [0, 1, 2, 3] for [0.01%, 0.05%, 0.3%, 1%] ??
+
+    struct HyperionStrategyData has store {
+        strategy_id: u8,
+        positions: OrderedMap<Object<Info>, PositionData>,
+    }
+
+    struct PositionData has drop, store {
+        token_a: Object<Metadata>,
+        token_b: Object<Metadata>,
+        amount_a: u64,
+        amount_b: u64,
+        fee_tier: u8,
+        tick_lower: u32,
+        tick_upper: u32,
+    }
     //-- Entries
-    public entry fun deposit_fund_to_hyperion_from_operator_single(
+    public(friend) fun deposit_fund_to_hyperion_from_operator_single(
         operator: &signer,
         wallet_id: vector<u8>,
         token_a: Object<Metadata>,
