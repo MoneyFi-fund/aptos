@@ -26,7 +26,7 @@ module moneyfi::vault {
     // -- Constants
     const LP_TOKEN_NAME: vector<u8> = b"MoneyFi LP";
     const LP_TOKEN_SYMBOL: vector<u8> = b"MoneyFiLP";
-    const LP_TOKEN_DECIMALS: u8 = 9;
+    const LP_TOKEN_DECIMALS: u8 = 18;
     const FUNDING_ACCOUNT_SEED: vector<u8> = b"FUNDING_ACCOUNT";
 
     // -- Errors
@@ -39,6 +39,7 @@ module moneyfi::vault {
         enable_deposit: bool,
         enable_withdraw: bool,
         system_fee_percent: u64, // 100 => 1%
+        referral_percents: vector<u64>, // 100 => 1%
         supported_assets: OrderedMap<address, AssetConfig>
     }
 
@@ -48,7 +49,7 @@ module moneyfi::vault {
         max_deposit: u64,
         min_withdraw: u64,
         max_withdraw: u64,
-        lp_exchange_rate: u64
+        lp_init_rate: u64
     }
 
     struct LPToken has key {
@@ -101,7 +102,7 @@ module moneyfi::vault {
         max_deposit: u64,
         min_withdraw: u64,
         max_withdraw: u64,
-        lp_exchange_rate: u64,
+        lp_init_rate: u64,
         timestamp: u64
     }
 
@@ -110,6 +111,7 @@ module moneyfi::vault {
         enable_deposit: bool,
         enable_withdraw: bool,
         system_fee_percent: u64,
+        referral_percents: vector<u64>,
         timestamp: u64
     }
 
@@ -129,6 +131,7 @@ module moneyfi::vault {
                 enable_deposit: true,
                 enable_withdraw: true,
                 system_fee_percent: 2500, // 25%
+                referral_percents: vector[100],
                 supported_assets: ordered_map::new()
             }
         );
@@ -141,9 +144,11 @@ module moneyfi::vault {
         sender: &signer,
         enable_deposit: bool,
         enable_withdraw: bool,
-        system_fee_percent: u64
+        system_fee_percent: u64,
+        referral_percents: vector<u64>
     ) acquires Config {
         assert!(system_fee_percent <= 10000);
+        // TODO: validate referrals_percents
 
         access_control::must_be_admin(sender);
         let config = borrow_global_mut<Config>(@moneyfi);
@@ -151,12 +156,14 @@ module moneyfi::vault {
         config.enable_deposit = enable_deposit;
         config.enable_withdraw = enable_withdraw;
         config.system_fee_percent = system_fee_percent;
+        config.referral_percents = referral_percents;
 
         event::emit(
             ConfigureEvent {
                 enable_deposit,
                 enable_withdraw,
                 system_fee_percent,
+                referral_percents,
                 timestamp: now_seconds()
             }
         );
@@ -170,7 +177,7 @@ module moneyfi::vault {
         max_deposit: u64,
         min_withdraw: u64,
         max_withdraw: u64,
-        lp_exchange_rate: u64
+        lp_init_rate: u64
     ) acquires Config {
         access_control::must_be_service_account(sender);
         let config = borrow_global_mut<Config>(@moneyfi);
@@ -183,7 +190,7 @@ module moneyfi::vault {
                 max_deposit,
                 min_withdraw,
                 max_withdraw,
-                lp_exchange_rate
+                lp_init_rate
             }
         );
         event::emit(
@@ -193,7 +200,7 @@ module moneyfi::vault {
                 max_deposit,
                 min_withdraw,
                 max_withdraw,
-                lp_exchange_rate,
+                lp_init_rate,
                 timestamp: now_seconds()
             }
         );
@@ -212,17 +219,18 @@ module moneyfi::vault {
         let account = wallet_account::get_wallet_account_by_address(wallet_addr);
         let wallet_id = wallet_account::get_wallet_id_by_address(wallet_addr);
 
+        let funding_account_addr = get_funding_account_address();
+        let funding_account = borrow_global_mut<FundingAccount>(funding_account_addr);
+        let asset_data = funding_account.get_funding_asset(asset);
+
         let asset_config = config.get_asset_config(asset);
-        let lp_amount = asset_config.calc_lp_amount(amount);
+        let lp_amount = asset_data.calc_lp_amount(&asset_config, amount);
         let account_addr = object::object_address(&account);
 
         primary_fungible_store::transfer(sender, asset, account_addr, amount);
         wallet_account::deposit(account, asset, amount, lp_amount);
         mint_lp(wallet_addr, lp_amount);
 
-        let funding_account_addr = get_funding_account_address();
-        let funding_account = borrow_global_mut<FundingAccount>(funding_account_addr);
-        let asset_data = funding_account.get_funding_asset(asset);
         asset_data.lp_amount = asset_data.lp_amount + lp_amount;
         asset_data.amount = asset_data.amount + amount;
         funding_account.set_funding_asset(asset, asset_data);
@@ -258,16 +266,13 @@ module moneyfi::vault {
             error::permission_denied(E_DEPOSIT_NOT_ALLOWED)
         );
 
-        let wallet_id = wallet_account::get_wallet_id_by_address(wallet_addr);
-
         let asset_config = config.get_asset_config(asset);
-        let lp_amount =
-            if (asset_config.calc_lp_amount(amount)
-                < primary_fungible_store::balance(account_addr, lp_token.token)) {
-                asset_config.calc_lp_amount(amount)
-            } else {
-                primary_fungible_store::balance(account_addr, lp_token.token)
-            };
+
+        let funding_account_addr = get_funding_account_address();
+        let funding_account = borrow_global_mut<FundingAccount>(funding_account_addr);
+        let asset_data = funding_account.get_funding_asset(asset);
+
+        let lp_amount = asset_data.calc_lp_amount(&asset_config, amount);
         let account_signer = wallet_account::get_wallet_account_signer(account);
 
         primary_fungible_store::transfer(&account_signer, asset, wallet_addr, amount);
@@ -276,7 +281,6 @@ module moneyfi::vault {
 
         let funding_account_addr = get_funding_account_address();
         let funding_account = borrow_global_mut<FundingAccount>(funding_account_addr);
-        let asset_data = funding_account.get_funding_asset(asset);
         assert!(asset_data.lp_amount >= lp_amount);
         assert!(asset_data.amount >= amount);
 
@@ -351,22 +355,26 @@ module moneyfi::vault {
         account: Object<WalletAccount>,
         asset: Object<Metadata>,
         amount: u64,
-        referral_data: vector<u8>
+        // amount of gas fee exchanged to asset token
+        gas_fee: u64
     ) acquires Config, FundingAccount {
         access_control::must_be_service_account(sender);
 
         let config = borrow_global<Config>(@moneyfi);
 
+        let funding_account_addr = get_funding_account_address();
+        let funding_account = borrow_global_mut<FundingAccount>(funding_account_addr);
+        let asset_data = funding_account.get_funding_asset(asset);
+
         let (amount, lp_amount, interest_amount, rewards) =
             strategy::withdraw(strategy, account, asset, amount);
+
+        interest_amount -= gas_fee;
+        asset_data.amount += interest_amount;
 
         let system_fee = config.calc_system_fee(interest_amount);
         if (system_fee > 0) {
             let account_signer = wallet_account::get_wallet_account_signer(account);
-
-            let funding_account_addr = get_funding_account_address();
-            let funding_account = borrow_global_mut<FundingAccount>(funding_account_addr);
-            let asset_data = funding_account.get_funding_asset(asset);
 
             primary_fungible_store::transfer(
                 &account_signer,
@@ -377,8 +385,9 @@ module moneyfi::vault {
 
             asset_data.total_fee_amount += system_fee;
             asset_data.pending_fee_amount += system_fee;
-            funding_account.set_funding_asset(asset, asset_data);
         };
+
+        funding_account.set_funding_asset(asset, asset_data);
 
         wallet_account::collected_fund(
             account,
@@ -389,7 +398,7 @@ module moneyfi::vault {
         );
 
         // TODO: handle rewards
-        // TODO: handle referral_data
+        // TODO: handle referral
 
         // TODO: emit event
     }
@@ -541,8 +550,16 @@ module moneyfi::vault {
         primary_fungible_store::burn(&lptoken.burn_ref, owner, amount);
     }
 
-    fun calc_lp_amount(self: &AssetConfig, token_amount: u64): u64 {
-        self.lp_exchange_rate * token_amount
+    fun calc_lp_amount(
+        self: &FundingAsset, config: &AssetConfig, token_amount: u64
+    ): u64 {
+        let rate = config.lp_init_rate;
+
+        if (self.amount > 0) {
+            rate = self.lp_amount / self.amount;
+        };
+
+        rate * token_amount
     }
 
     fun calc_system_fee(self: &Config, interest_amount: u64): u64 {

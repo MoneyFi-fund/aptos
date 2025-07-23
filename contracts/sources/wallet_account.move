@@ -39,6 +39,7 @@ module moneyfi::wallet_account {
         // internal chain ID
         chain_id: u8,
         wallet_address: Option<address>,
+        referrer_wallet_id: vector<u8>,
         assets: OrderedMap<address, AccountAsset>,
         extend_ref: ExtendRef
     }
@@ -72,7 +73,10 @@ module moneyfi::wallet_account {
     }
 
     public entry fun register(
-        sender: &signer, verifier: &signer, wallet_id: vector<u8>
+        sender: &signer,
+        verifier: &signer,
+        wallet_id: vector<u8>,
+        referrer_wallet_id: vector<u8>
     ) acquires WalletAccount {
         access_control::must_be_service_account(verifier);
         let wallet_address = signer::address_of(sender);
@@ -83,7 +87,10 @@ module moneyfi::wallet_account {
 
         let wallet_account =
             create_wallet_account(
-                wallet_id, CHAIN_ID_APTOS, option::some(wallet_address)
+                wallet_id,
+                CHAIN_ID_APTOS,
+                option::some(wallet_address),
+                referrer_wallet_id
             );
         move_to(sender, WalletAccountObject { wallet_account });
 
@@ -98,7 +105,10 @@ module moneyfi::wallet_account {
     }
 
     fun create_wallet_account(
-        wallet_id: vector<u8>, chain_id: u8, wallet_address: Option<address>
+        wallet_id: vector<u8>,
+        chain_id: u8,
+        wallet_address: Option<address>,
+        referrer_wallet_id: vector<u8>
     ): Object<WalletAccount> {
         let account_addr = get_wallet_account_object_address(wallet_id);
         assert!(
@@ -118,6 +128,7 @@ module moneyfi::wallet_account {
                 wallet_id: wallet_id,
                 chain_id,
                 wallet_address,
+                referrer_wallet_id,
                 assets: ordered_map::new(),
                 extend_ref: extend_ref
             }
@@ -313,9 +324,17 @@ module moneyfi::wallet_account {
     friend moneyfi::wallet_account_test;
 
     #[test_only]
-    public(friend) fun create_wallet_account_for_test(
-        wallet_id: vector<u8>, chain_id: u8, wallet_address: Option<address>
+    public fun create_wallet_account_for_test(
+        wallet_id: vector<u8>,
+        chain_id: u8,
+        wallet_address: Option<address>,
+        referrer_wallet_id: vector<u8>
     ): Object<WalletAccount> {
-        create_wallet_account(wallet_id, chain_id, wallet_address)
+        create_wallet_account(
+            wallet_id,
+            chain_id,
+            wallet_address,
+            referrer_wallet_id
+        )
     }
 }

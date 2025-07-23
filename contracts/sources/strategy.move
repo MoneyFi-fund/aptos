@@ -26,7 +26,7 @@ module moneyfi::strategy {
         strategy: u8,
         account: Object<WalletAccount>,
         asset: Object<Metadata>,
-        lp_amount: u64
+        amount: u64
     ): (u64, u64, u64, OrderedMap<address, u64>) {
         let rewards = ordered_map::new();
 
