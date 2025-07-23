@@ -37,19 +37,10 @@ module moneyfi::hyperion_strategy {
     }
     //-- Entries
     public(friend) fun deposit_fund_to_hyperion_from_operator_single(
-        operator: &signer,
-        wallet_id: vector<u8>,
-        token_a: Object<Metadata>,
-        token_b: Object<Metadata>,
-        fee_tier: u8,
-        tick_lower: u32,
-        tick_upper: u32,
+        account_signer: &signer,
+        pool: address,
+        asset: Object<Metadata>,
         amount_in: u64,
-        slippage_numerator: u256,
-        slippage_denominator: u256,
-        threshold_numerator: u256,
-        threshold_denominator: u256,
-        fee_amount: u64
     ) {
         let wallet_signer = wallet_account::get_wallet_account_signer(
             operator, wallet_id

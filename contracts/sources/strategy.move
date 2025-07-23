@@ -4,6 +4,7 @@ module moneyfi::strategy {
     use aptos_framework::fungible_asset::{Self, Metadata};
 
     use moneyfi::wallet_account::{Self, WalletAccount};
+    use moneyfi::hyperion_strategy;
 
     friend moneyfi::vault;
 
@@ -12,12 +13,24 @@ module moneyfi::strategy {
     /// return (actual_amount, lp_amount)
     public(friend) fun deposit(
         strategy: u8,
+        pool: address,
         account: Object<WalletAccount>,
         asset: Object<Metadata>,
         amount: u64
     ): (u64, u64) {
         // TODO
-
+        let account_signer = wallet_account::get_wallet_account_signer(account);
+        let (actual_amount, lp_amount) = if (strategy == STRATEGY_HYPERION) {
+            hyperion_strategy::deposit_fund_to_hyperion_from_operator_single(
+                account_signer,
+                pool,
+                asset,
+                amount
+            )
+        } else {
+            // Handle other strategies
+            (0, 0)
+        };
         (0, 0)
     }
 
