@@ -295,6 +295,32 @@ module moneyfi::wallet_account {
         object::generate_signer_for_extending(&wallet_account.extend_ref)
     }
 
+    public(friend) fun get_referrer_addresses(
+        account: Object<WalletAccount>, max: u8
+    ): vector<address> acquires WalletAccount {
+        let referrers = vector[];
+
+        let i = 0;
+        let addr = object::object_address(&account);
+        while (i < max) {
+            if (!exists<WalletAccount>(addr)) {
+                break;
+            };
+            let account = borrow_global<WalletAccount>(addr);
+            if (vector::is_empty(&account.referrer_wallet_id)) {
+                break;
+            };
+            vector::push_back(
+                &mut referrers,
+                get_wallet_account_object_address(account.referrer_wallet_id)
+            );
+
+            i += 1;
+        };
+
+        referrers
+    }
+
     fun get_asset(self: &WalletAccount, asset: Object<Metadata>): AccountAsset {
         let addr = object::object_address(&asset);
         if (ordered_map::contains(&self.assets, &addr)) {

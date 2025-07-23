@@ -13,38 +13,36 @@ module moneyfi::strategy {
     /// return (actual_amount, lp_amount)
     public(friend) fun deposit(
         strategy: u8,
-        pool: address,
         account: Object<WalletAccount>,
         asset: Object<Metadata>,
-        amount: u64
+        amount: u64,
+        extra_data: vector<u8>
     ): (u64, u64) {
         // TODO
         let account_signer = wallet_account::get_wallet_account_signer(account);
-        let (actual_amount, lp_amount) = if (strategy == STRATEGY_HYPERION) {
-            hyperion_strategy::deposit_fund_to_hyperion_from_operator_single(
-                account_signer,
-                pool,
-                asset,
-                amount
-            )
-        } else {
-            // Handle other strategies
-            (0, 0)
-        };
+        // let (actual_amount, lp_amount) =
+        //     if (strategy == STRATEGY_HYPERION) {
+        //         hyperion_strategy::deposit_fund_to_hyperion_from_operator_single(
+        //             &account_signer, pool, asset, amount
+        //         )
+        //     } else {
+        //         // Handle other strategies
+        //         (0, 0)
+        //     };
+
         (0, 0)
     }
 
-    /// return (actual_amount, lp_amount, interest_amount, rewards)
+    /// return (actual_amount, lp_amount, interest_amount, loss_amount)
     public(friend) fun withdraw(
         strategy: u8,
         account: Object<WalletAccount>,
         asset: Object<Metadata>,
-        amount: u64
-    ): (u64, u64, u64, OrderedMap<address, u64>) {
-        let rewards = ordered_map::new();
-
+        amount: u64,
+        extra_data: vector<u8>
+    ): (u64, u64, u64, u64) {
         // TODO
 
-        (0, 0, 0, rewards)
+        (0, 0, 0, 0)
     }
 }
