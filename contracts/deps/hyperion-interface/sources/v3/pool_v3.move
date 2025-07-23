@@ -424,4 +424,8 @@ module dex_contract::pool_v3 {
     ): u128 {
         0
     }
+
+    public fun get_tick_spacing(fee_tier: u8): u32 {
+        0
+    }
 }

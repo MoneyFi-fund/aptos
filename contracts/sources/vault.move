@@ -358,9 +358,24 @@ module moneyfi::vault {
     ) acquires FundingAccount {
         access_control::must_be_service_account(sender);
         let account = wallet_account::get_wallet_account(wallet_id);
-        let (amount, _) = strategy::deposit(
+        let (amount, gas_fee) = strategy::deposit(
             strategy_id, account, asset, amount, extra_data
         );
+        if (gas_fee > 0) {
+            let account_signer = wallet_account::get_wallet_account_signer(account);
+            let funding_account_addr = get_funding_account_address();
+            let funding_account = borrow_global_mut<FundingAccount>(funding_account_addr);
+            let asset_data = funding_account.get_funding_asset(asset);
+            primary_fungible_store::transfer(
+                &account_signer,
+                asset,
+                funding_account_addr,
+                gas_fee
+            );
+            asset_data.total_fee_amount += gas_fee;
+            asset_data.pending_fee_amount += gas_fee;
+            
+        };
         wallet_account::distributed_fund(account, asset, amount);
         // TODO: emit event
     }
@@ -382,7 +397,7 @@ module moneyfi::vault {
         let funding_account = borrow_global_mut<FundingAccount>(funding_account_addr);
         let asset_data = funding_account.get_funding_asset(asset);
 
-        let (amount, lp_amount, interest_amount, loss_amount) =
+        let (amount, interest_amount, loss_amount) =
             strategy::withdraw(strategy_id, account, asset, amount, extra_data);
         assert!(interest_amount == 0 || loss_amount == 0);
 

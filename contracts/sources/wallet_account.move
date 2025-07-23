@@ -240,6 +240,13 @@ module moneyfi::wallet_account {
         strategy_data.data
     }
 
+    public fun exists_strategy_data<T: store>(
+        account: Object<WalletAccount>
+    ): bool acquires StrategyData {
+        let addr = object::object_address(&account);
+        exists<StrategyData<T>>(addr)
+    }
+
     // Check wallet_id is a valid wallet account
     #[view]
     public fun has_wallet_account(wallet_id: vector<u8>): bool {
