@@ -2,7 +2,7 @@ module moneyfi::hyperion_strategy {
     use std::signer;
     use std::vector;
     use std::bcs::to_bytes;
-    use aptos_std::from_bcs;
+    use aptos_std::from_bcs::from_bytes;
     use aptos_std::ordered_map::{Self, OrderedMap};
     use aptos_framework::object::{Self, Object};
     use aptos_framework::primary_fungible_store;
@@ -88,7 +88,7 @@ module moneyfi::hyperion_strategy {
      if (exists_hyperion_strategy_data(account)) {
             let strategy_data = HyperionStrategyData {
                 strategy_id: STRATEGY_ID,
-                pools: OrderedMap::new()
+                pools: ordered_map::new<address, Position>()
             };
             wallet_account::set_strategy_data<HyperionStrategyData>(
                 account,
@@ -111,7 +111,7 @@ module moneyfi::hyperion_strategy {
     ): bool acquires HyperionStrategyData {
         assert!(exists_hyperion_strategy_data(account), E_HYPERION_STRATEGY_DATA_NOT_EXISTS);
         let strategy_data = ensure_hyperion_strategy_data(account);
-        ordered_map::contains(&strategy_data.pools, pool)
+        ordered_map::contains(&strategy_data.pools, &pool)
     }
 
     fun set_position_data(
@@ -120,8 +120,18 @@ module moneyfi::hyperion_strategy {
         position: Position
     ): HyperionStrategyData acquires HyperionStrategyData {
         let strategy_data = ensure_hyperion_strategy_data(account);
-        ordered_map::upsert(strategy_data.pools, pool, position);
+        ordered_map::upsert(&mut strategy_data.pools, pool, position);
         *strategy_data
+    }
+
+    fun get_position_data(
+        account: Object<WalletAccount>,
+        pool: address
+    ): Position acquires HyperionStrategyData {
+        assert!(exists_hyperion_postion(account, pool), E_HYPERION_POSITION_NOT_EXISTS);
+        let strategy_data = ensure_hyperion_strategy_data(account);
+        let position = ordered_map::borrow(&strategy_data.pools, &pool);
+        *position
     }
 
     fun create_or_get_exist_position(
@@ -131,7 +141,7 @@ module moneyfi::hyperion_strategy {
     ): Position acquires HyperionStrategyData {
         let strategy_data = ensure_hyperion_strategy_data(account);
         let position = if (exists_hyperion_postion(account, pool)) {
-            let position = ordered_map::borrow(&strategy_data.pools, pool);
+            let position = ordered_map::borrow(&strategy_data.pools, &pool);
             *position
         } else {
             let pool_obj = object::address_to_object<LiquidityPoolV3>(pool);
@@ -139,9 +149,9 @@ module moneyfi::hyperion_strategy {
             let token_a = *vector::borrow(&assets, 0);
             let token_b = *vector::borrow(&assets, 1);
             let (current_tick,_) = pool_v3::current_tick_and_price(pool);
-            let tick_spacing = pool_v3::tick_spacing(extra_data.fee_tier);
+            let tick_spacing = pool_v3::get_tick_spacing(fee_tier);
             let position = pool_v3::open_position(
-                wallet_account::get_wallet_account_signer(account),
+                &wallet_account::get_wallet_account_signer(account),
                 token_a,
                 token_b,
                 fee_tier,
@@ -193,17 +203,17 @@ module moneyfi::hyperion_strategy {
         } else {
             position.token_b
         };
-            
+
+        let wallet_signer = wallet_account::get_wallet_account_signer(account);  
         let balance_a_before =
             primary_fungible_store::balance(signer::address_of(&wallet_signer), position.token_a);
         let balance_b_before =
             primary_fungible_store::balance(signer::address_of(&wallet_signer), position.token_b);
-        let wallet_signer = wallet_account::get_wallet_account_signer(account);
         router_v3::add_liquidity_single(
             &wallet_signer,
             position.position,
-            token_a,
-            token_b,
+            asset,
+            token_pair,
             amount_in - extra_data.gas_fee,
             extra_data.slippage_numerator,
             extra_data.slippage_denominator,

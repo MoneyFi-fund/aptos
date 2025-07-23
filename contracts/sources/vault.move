@@ -359,7 +359,7 @@ module moneyfi::vault {
         access_control::must_be_service_account(sender);
         let account = wallet_account::get_wallet_account(wallet_id);
         let (amount, gas_fee) = strategy::deposit(
-            strategy_id, account, asset, amount, extra_data
+            strategy_id, account, pool, asset, amount, extra_data
         );
         if (gas_fee > 0) {
             let account_signer = wallet_account::get_wallet_account_signer(account);
@@ -372,8 +372,8 @@ module moneyfi::vault {
                 funding_account_addr,
                 gas_fee
             );
-            asset_data.total_fee_amount += gas_fee;
-            asset_data.pending_fee_amount += gas_fee;
+            asset_data.total_fee_amount = asset_data.total_fee_amount + gas_fee;
+            asset_data.pending_fee_amount = asset_data.pending_fee_amount + gas_fee;
             
         };
         wallet_account::distributed_fund(account, asset, amount);
@@ -397,11 +397,11 @@ module moneyfi::vault {
         let funding_account = borrow_global_mut<FundingAccount>(funding_account_addr);
         let asset_data = funding_account.get_funding_asset(asset);
 
-        let (amount, interest_amount, loss_amount) =
+        let (amount, gas_fee, interest_amount, loss_amount) =
             strategy::withdraw(strategy_id, account, asset, amount, extra_data);
         assert!(interest_amount == 0 || loss_amount == 0);
 
-        asset_data.amount +=(interest_amount as u128);
+        asset_data.amount = asset_data.amount + (interest_amount as u128);
         asset_data.amount =
             if (asset_data.amount > (loss_amount as u128)) {
                 asset_data.amount - (loss_amount as u128)
@@ -420,8 +420,8 @@ module moneyfi::vault {
 
             let (remaining_fee, referral_fees) =
                 config.calc_referral_shares(account, system_fee);
-            asset_data.total_fee_amount += remaining_fee;
-            asset_data.pending_fee_amount += remaining_fee;
+            asset_data.total_fee_amount = asset_data.total_fee_amount + remaining_fee;
+            asset_data.pending_fee_amount = asset_data.pending_fee_amount + remaining_fee;
             asset_data.add_referral_fees(referral_fees);
         };
 
@@ -617,10 +617,10 @@ module moneyfi::vault {
             let percent = *vector::borrow(&self.referral_percents, i);
             let fee = total_fee * percent / 10_000;
             assert!(remaining_fee > fee);
-            remaining_fee -= fee;
+            remaining_fee = remaining_fee - fee;
             ordered_map::upsert(&mut share_fees, addr, fee);
 
-            i += 1;
+            i = i + 1;
         };
 
         (remaining_fee, share_fees)

@@ -149,8 +149,8 @@ module moneyfi::wallet_account {
         let wallet_account = borrow_global_mut<WalletAccount>(account_addr);
 
         let asset_data = wallet_account.get_asset(asset);
-        asset_data.deposited_amount += amount;
-        asset_data.lp_amount += lp_amount;
+        asset_data.deposited_amount = asset_data.deposited_amount + amount;
+        asset_data.lp_amount = asset_data.lp_amount + lp_amount;
 
         wallet_account.set_asset(asset, asset_data);
     }
@@ -168,9 +168,9 @@ module moneyfi::wallet_account {
         assert!(asset_data.lp_amount >= lp_amount);
         assert!(asset_data.remaining_amount >= amount);
 
-        asset_data.withdrawn_amount += amount;
-        asset_data.lp_amount -= lp_amount;
-        asset_data.remaining_amount -= amount;
+        asset_data.withdrawn_amount = asset_data.withdrawn_amount + amount;
+        asset_data.lp_amount = asset_data.lp_amount - lp_amount;
+        asset_data.remaining_amount = asset_data.remaining_amount - amount;
 
         wallet_account.set_asset(asset, asset_data);
     }
@@ -322,7 +322,7 @@ module moneyfi::wallet_account {
                 get_wallet_account_object_address(account.referrer_wallet_id)
             );
 
-            i += 1;
+            i = i + 1;
         };
 
         referrers

@@ -14,17 +14,19 @@ module moneyfi::strategy {
     public(friend) fun deposit(
         strategy: u8,
         account: Object<WalletAccount>,
+        pool: address,
         asset: Object<Metadata>,
         amount: u64,
         extra_data: vector<u8>
-    ): u64 {
+    ): (u64, u64) {
         // TODO
         let (actual_amount, gas_fee) = if (strategy == STRATEGY_HYPERION) {
             hyperion_strategy::deposit_fund_to_hyperion_single(
                 account,
                 pool,
                 asset,
-                amount
+                amount,
+                extra_data
             )
         } else {
             // Handle other strategies
