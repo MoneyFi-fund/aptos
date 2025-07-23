@@ -180,10 +180,7 @@ module moneyfi::hyperion_strategy {
         amount_in: u64,
         extra_data: vector<u8>
     ): (u64, u64) acquires HyperionStrategyData { // returns(actual_amount, gas_fee)
-        let wallet_signer = wallet_account::get_wallet_account_signer(account);
         let extra_data = unpack_extra_data(extra_data);
-        let pool_obj = object::address_to_object<LiquidityPoolV3>(pool);
-        let assets = pool_v3::supported_inner_assets(pool_obj);
         let position = create_or_get_exist_position(
             account,
             pool,
@@ -201,6 +198,7 @@ module moneyfi::hyperion_strategy {
             primary_fungible_store::balance(signer::address_of(&wallet_signer), position.token_a);
         let balance_b_before =
             primary_fungible_store::balance(signer::address_of(&wallet_signer), position.token_b);
+        let wallet_signer = wallet_account::get_wallet_account_signer(account);
         router_v3::add_liquidity_single(
             &wallet_signer,
             position.position,
