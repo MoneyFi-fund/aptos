@@ -72,7 +72,8 @@ module moneyfi::hyperion {
         let balance_after =
             primary_fungible_store::balance(signer::address_of(&wallet_signer), token_a);
 
-        let remaining_balance = primary_fungible_store::balance(signer::address_of(&wallet_signer), token_b);
+        let remaining_balance =
+            primary_fungible_store::balance(signer::address_of(&wallet_signer), token_b);
         if (remaining_balance > 0) {
             router_v3::exact_input_swap_entry(
                 &wallet_signer,
@@ -115,8 +116,10 @@ module moneyfi::hyperion {
         let wallet_signer = wallet_account::get_wallet_account_signer(
             operator, wallet_id
         );
-        let balance_a_before = primary_fungible_store::balance(signer::address_of(&wallet_signer), token_a);
-        let balance_b_before = primary_fungible_store::balance(signer::address_of(&wallet_signer), token_b);
+        let balance_a_before =
+            primary_fungible_store::balance(signer::address_of(&wallet_signer), token_a);
+        let balance_b_before =
+            primary_fungible_store::balance(signer::address_of(&wallet_signer), token_b);
         let position =
             pool_v3::open_position(
                 &wallet_signer,
@@ -152,15 +155,22 @@ module moneyfi::hyperion {
                 _amount_b_min
             );
 
-        let balance_a_after = primary_fungible_store::balance(signer::address_of(&wallet_signer), token_a);
-        let balance_b_after = primary_fungible_store::balance(signer::address_of(&wallet_signer), token_b);
+        let balance_a_after =
+            primary_fungible_store::balance(signer::address_of(&wallet_signer), token_a);
+        let balance_b_after =
+            primary_fungible_store::balance(signer::address_of(&wallet_signer), token_b);
         let assets = vector::singleton<address>(
             object::object_address<Metadata>(&token_a)
         );
         vector::push_back(&mut assets, object::object_address<Metadata>(&token_b));
 
-        let amounts = vector::singleton<u64>(balance_a_before - balance_a_after - fee_amount);
-        vector::push_back(&mut amounts, balance_b_before - balance_b_after - fee_amount);
+        let amounts = vector::singleton<u64>(
+            balance_a_before - balance_a_after - fee_amount
+        );
+        vector::push_back(
+            &mut amounts,
+            balance_b_before - balance_b_after - fee_amount
+        );
 
         wallet_account::add_position_opened(
             wallet_id,
@@ -188,7 +198,10 @@ module moneyfi::hyperion {
         let wallet_signer = wallet_account::get_wallet_account_signer(
             operator, wallet_id
         );
-        let balance_before = primary_fungible_store::balance(signer::address_of(&wallet_signer), token_input);
+        let balance_before =
+            primary_fungible_store::balance(
+                signer::address_of(&wallet_signer), token_input
+            );
         let (_, _, fee_tier) = get_pool_info(position);
         router_v3::add_liquidity_single(
             &wallet_signer,
@@ -201,13 +214,20 @@ module moneyfi::hyperion {
             threshold_numerator,
             threshold_denominator
         );
-        let balance_after = primary_fungible_store::balance(signer::address_of(&wallet_signer), token_input);
-        
+        let balance_after =
+            primary_fungible_store::balance(
+                signer::address_of(&wallet_signer), token_input
+            );
+
         let assets = vector::singleton<address>(
             object::object_address<Metadata>(&token_input)
         );
-        let amounts = vector::singleton<u64>(balance_before - balance_after - fee_amount);
-        let remaining_balance = primary_fungible_store::balance(signer::address_of(&wallet_signer), token_pair);
+        let amounts = vector::singleton<u64>(balance_before - balance_after
+            - fee_amount);
+        let remaining_balance =
+            primary_fungible_store::balance(
+                signer::address_of(&wallet_signer), token_pair
+            );
         if (remaining_balance > 0) {
             router_v3::exact_input_swap_entry(
                 &wallet_signer,
@@ -248,8 +268,10 @@ module moneyfi::hyperion {
         let wallet_signer = wallet_account::get_wallet_account_signer(
             operator, wallet_id
         );
-        let balance_a_before = primary_fungible_store::balance(signer::address_of(&wallet_signer), token_a);
-        let balance_b_before = primary_fungible_store::balance(signer::address_of(&wallet_signer), token_b);
+        let balance_a_before =
+            primary_fungible_store::balance(signer::address_of(&wallet_signer), token_a);
+        let balance_b_before =
+            primary_fungible_store::balance(signer::address_of(&wallet_signer), token_b);
 
         router_v3::add_liquidity(
             &wallet_signer,
@@ -263,7 +285,7 @@ module moneyfi::hyperion {
             amount_b_min,
             deadline
         );
-    
+
         let (tick_lower, tick_upper) = position_v3::get_tick(position);
         let (_, amount_a, amount_b) =
             optimal_liquidity_amounts(
@@ -277,14 +299,18 @@ module moneyfi::hyperion {
                 amount_a_min - fee_amount,
                 amount_b_min
             );
-        let balance_a_after = primary_fungible_store::balance(signer::address_of(&wallet_signer), token_a);
-        let balance_b_after = primary_fungible_store::balance(signer::address_of(&wallet_signer), token_b);
+        let balance_a_after =
+            primary_fungible_store::balance(signer::address_of(&wallet_signer), token_a);
+        let balance_b_after =
+            primary_fungible_store::balance(signer::address_of(&wallet_signer), token_b);
         let assets = vector::singleton<address>(
             object::object_address<Metadata>(&token_a)
         );
         vector::push_back(&mut assets, object::object_address<Metadata>(&token_b));
 
-        let amounts = vector::singleton<u64>(balance_a_before - balance_a_after - fee_amount);
+        let amounts = vector::singleton<u64>(
+            balance_a_before - balance_a_after - fee_amount
+        );
         vector::push_back(&mut amounts, balance_b_before - balance_a_after);
 
         wallet_account::upgrade_position_opened(
@@ -318,7 +344,7 @@ module moneyfi::hyperion {
             slippage_numerator,
             slippage_denominator
         );
-        
+
         wallet_account::remove_position_opened(
             wallet_id,
             object::object_address<Info>(&position),
@@ -340,14 +366,22 @@ module moneyfi::hyperion {
         let wallet_signer = wallet_account::get_wallet_account_signer(
             operator, wallet_id
         );
-        if(_lp_amount >= get_liquidity(position)) {
+        if (_lp_amount >= get_liquidity(position)) {
             remove_liquidity_single_from_operator(
-                operator, wallet_id, position, asset, slippage_numerator, slippage_denominator, fee_amount
+                operator,
+                wallet_id,
+                position,
+                asset,
+                slippage_numerator,
+                slippage_denominator,
+                fee_amount
             );
-        }else {
+        } else {
             // Get amount before removal
             let balance_before =
-                primary_fungible_store::balance(signer::address_of(&wallet_signer), asset);
+                primary_fungible_store::balance(
+                    signer::address_of(&wallet_signer), asset
+                );
 
             let (assets, amounts) =
                 wallet_account::get_amount_by_position(
@@ -370,15 +404,18 @@ module moneyfi::hyperion {
             );
 
             let balance_after =
-                primary_fungible_store::balance(signer::address_of(&wallet_signer), asset);
+                primary_fungible_store::balance(
+                    signer::address_of(&wallet_signer), asset
+                );
 
             let withdrawn_amount = balance_after - balance_before;
             let withdrawn_assets = vector::singleton<address>(
                 object::object_address<Metadata>(&asset)
             );
             let withdrawn_amounts = vector::singleton<u64>(withdrawn_amount);
-            let amounts_after = vector::singleton<u64>(amounts_before - withdrawn_amount);
-            
+            let amounts_after = vector::singleton<u64>(amounts_before
+                - withdrawn_amount);
+
             wallet_account::update_position_after_partial_removal(
                 wallet_id,
                 object::object_address<Info>(&position),
@@ -503,11 +540,11 @@ module moneyfi::hyperion {
     }
 
     public entry fun update_tick(
-        operator: &signer, 
-        wallet_id: vector<u8>, 
+        operator: &signer,
+        wallet_id: vector<u8>,
         position: Object<Info>,
-        asset: Object<Metadata>, 
-        tick_lower: u32, 
+        asset: Object<Metadata>,
+        tick_lower: u32,
         tick_upper: u32,
         fee_amount: u64
     ) {
@@ -516,35 +553,36 @@ module moneyfi::hyperion {
         );
         let wallet_address = signer::address_of(&wallet_signer);
         let (tick_lower_before, tick_upper_before) = position_v3::get_tick(position);
-        let current = tick_lower + 1;
         //current >= i32::as_u32(tick_lower_before) && current <= i32::as_u32(tick_upper_before)
-        if(current >= i32::as_u32(tick_lower_before) && current <= i32::as_u32(tick_upper_before)){
-            return
-        }else{
-            let (token_a, token_b, fee_tier) = get_pool_info(position);    
+        if (tick_lower == i32::as_u32(tick_lower_before)
+            && tick_upper == i32::as_u32(tick_upper_before)) { return }
+        else {
+            let (token_a, token_b, fee_tier) = get_pool_info(position);
             remove_liquidity_single_from_operator(
-                operator, 
-                wallet_id, 
+                operator,
+                wallet_id,
                 position,
-                asset, 
-                999, 
-                1000, 
+                asset,
+                999,
+                1000,
                 0
             );
-            let token_pair = if(object::object_address(&asset) != object::object_address(&token_a)){
-                token_a
-            }else{
-                token_b
-            };
+            let token_pair =
+                if (object::object_address(&asset) != object::object_address(&token_a)) {
+                    token_a
+                } else {
+                    token_b
+                };
 
-            let new_position = pool_v3::open_position(
-                &wallet_signer,
-                token_a,
-                token_b,
-                fee_tier,
-                tick_lower,
-                tick_upper
-            );
+            let new_position =
+                pool_v3::open_position(
+                    &wallet_signer,
+                    token_a,
+                    token_b,
+                    fee_tier,
+                    tick_lower,
+                    tick_upper
+                );
 
             let balance_before = primary_fungible_store::balance(wallet_address, asset);
 
@@ -560,9 +598,11 @@ module moneyfi::hyperion {
                 1
             );
 
-            let total_asset_amonut_added = balance_before - primary_fungible_store::balance(wallet_address, asset);
+            let total_asset_amonut_added =
+                balance_before - primary_fungible_store::balance(wallet_address, asset);
 
-            let remaining_balance = primary_fungible_store::balance(wallet_address, token_pair);
+            let remaining_balance =
+                primary_fungible_store::balance(wallet_address, token_pair);
             if (remaining_balance > 0) {
                 router_v3::exact_input_swap_entry(
                     &wallet_signer,
@@ -594,12 +634,13 @@ module moneyfi::hyperion {
     //-- Views
     #[view]
     public fun get_profit(wallet_id: vector<u8>): u64 {
-        let (position_addrs, strategy_ids) = wallet_account::get_position_opened(wallet_id);
+        let (position_addrs, strategy_ids) =
+            wallet_account::get_position_opened(wallet_id);
         let total_profit: u64 = 0;
-        
+
         let i = 0;
         let len = vector::length(&position_addrs);
-        
+
         while (i < len) {
             let strategy_id = *vector::borrow(&strategy_ids, i);
 
@@ -610,10 +651,10 @@ module moneyfi::hyperion {
                 let position_profit = get_pending_rewards_and_fees_usdc(position);
                 total_profit = total_profit + position_profit;
             };
-            
+
             i = i + 1;
         };
-        
+
         total_profit
     }
 
