@@ -428,7 +428,7 @@ module moneyfi::vault {
                 &account_signer,
                 asset,
                 funding_account_addr,
-                system_fee
+                system_fee + gas_fee
             );
 
             let (remaining_fee, referral_fees) =
@@ -444,9 +444,9 @@ module moneyfi::vault {
         wallet_account::collected_fund(
             account,
             asset,
-            amount,
+            deposited_amount,
             interest_amount,
-            system_fee
+            system_fee + gas_fee
         );
 
         // TODO: emit event

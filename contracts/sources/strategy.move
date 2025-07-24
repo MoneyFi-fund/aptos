@@ -32,17 +32,24 @@ module moneyfi::strategy {
         (actual_amount, gas_fee)
     }
 
-    /// return (total_deposited_amount, total_withdrawn_amount)
+    /// return (total_deposited_amount, total_withdrawn_amount, gas_fee)
     public(friend) fun withdraw(
         strategy: u8,
         account: Object<WalletAccount>,
+        pool: address,
         asset: Object<Metadata>,
         min_amount: u64,
         extra_data: vector<u8>
-    ): (u64, u64) {
-        // TODO
-
-        (0, 0)
+    ): (u64, u64, u64) {
+        let (total_deposited_amount, total_withdrawn_amount, gas_fee) =
+            if (strategy == STRATEGY_HYPERION) {
+                hyperion_strategy::withdraw_fund_from_hyperion_single(
+                    account, pool, asset, amount, extra_data
+                )
+            } else {
+                (0, 0, 0)
+            };
+        (total_deposited_amount, total_withdrawn_amount, gas_fee)
     }
 
     /// 1. Swap asset_0 to asset_1: amount_0_in => amount_1_out

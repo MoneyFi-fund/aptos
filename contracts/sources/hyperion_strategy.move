@@ -3,6 +3,7 @@ module moneyfi::hyperion_strategy {
     use std::vector;
     use std::bcs::to_bytes;
     use aptos_std::from_bcs::from_bytes;
+    use aptos_std::math128;
     use aptos_std::ordered_map::{Self, OrderedMap};
     use aptos_framework::object::{Self, Object};
     use aptos_framework::primary_fungible_store;
@@ -34,7 +35,7 @@ module moneyfi::hyperion_strategy {
     // -- Structs
     struct HyperionStrategyData has store {
         strategy_id: u8,
-        pools: OrderedMap<address, Position>, // pool address -> Position
+        pools: OrderedMap<address, Position> // pool address -> Position
     }
 
     struct Position has drop, store {
@@ -46,7 +47,7 @@ module moneyfi::hyperion_strategy {
         amount_b: u64,
         fee_tier: u8,
         tick_lower: u32,
-        tick_upper: u32,
+        tick_upper: u32
     }
 
     struct ExtraData has drop, store {
@@ -55,7 +56,7 @@ module moneyfi::hyperion_strategy {
         slippage_numerator: u256,
         slippage_denominator: u256,
         threshold_numerator: u256,
-        threshold_denominator: u256,
+        threshold_denominator: u256
     }
 
     #[view]
@@ -78,110 +79,6 @@ module moneyfi::hyperion_strategy {
         to_bytes<ExtraData>(&extra_data)
     }
 
-    fun unpack_extra_data(extra_data: vector<u8>): ExtraData {
-        from_bytes<ExtraData>(extra_data)
-    }
-
-    fun ensure_hyperion_strategy_data(
-        account: Object<WalletAccount>
-    ): &mut HyperionStrategyData acquires HyperionStrategyData {
-     if (exists_hyperion_strategy_data(account)) {
-            let strategy_data = HyperionStrategyData {
-                strategy_id: STRATEGY_ID,
-                pools: ordered_map::new<address, Position>()
-            };
-            wallet_account::set_strategy_data<HyperionStrategyData>(
-                account,
-                strategy_data
-            );
-        };
-        let strategy_data = wallet_account::get_strategy_data<HyperionStrategyData>(account);
-        &mut strategy_data
-    }
-
-    fun exists_hyperion_strategy_data(
-        account: Object<WalletAccount>
-    ): bool acquires HyperionStrategyData {
-        wallet_account::exists_strategy_data<HyperionStrategyData>(account)
-    }
-
-    fun exists_hyperion_postion(
-        account: Object<WalletAccount>,
-        pool: address
-    ): bool acquires HyperionStrategyData {
-        assert!(exists_hyperion_strategy_data(account), E_HYPERION_STRATEGY_DATA_NOT_EXISTS);
-        let strategy_data = ensure_hyperion_strategy_data(account);
-        ordered_map::contains(&strategy_data.pools, &pool)
-    }
-
-    fun set_position_data(
-        account: Object<WalletAccount>,
-        pool: address,
-        position: Position
-    ): HyperionStrategyData acquires HyperionStrategyData {
-        let strategy_data = ensure_hyperion_strategy_data(account);
-        ordered_map::upsert(&mut strategy_data.pools, pool, position);
-        *strategy_data
-    }
-
-    fun get_position_data(
-        account: Object<WalletAccount>,
-        pool: address
-    ): Position acquires HyperionStrategyData {
-        assert!(exists_hyperion_postion(account, pool), E_HYPERION_POSITION_NOT_EXISTS);
-        let strategy_data = ensure_hyperion_strategy_data(account);
-        let position = ordered_map::borrow(&strategy_data.pools, &pool);
-        *position
-    }
-
-    fun create_or_get_exist_position(
-        account: Object<WalletAccount>,
-        pool: address,
-        fee_tier: u8,
-    ): Position acquires HyperionStrategyData {
-        let strategy_data = ensure_hyperion_strategy_data(account);
-        let position = if (exists_hyperion_postion(account, pool)) {
-            let position = ordered_map::borrow(&strategy_data.pools, &pool);
-            *position
-        } else {
-            let pool_obj = object::address_to_object<LiquidityPoolV3>(pool);
-            let assets = pool_v3::supported_inner_assets(pool_obj);
-            let token_a = *vector::borrow(&assets, 0);
-            let token_b = *vector::borrow(&assets, 1);
-            let (current_tick,_) = pool_v3::current_tick_and_price(pool);
-            let tick_spacing = pool_v3::get_tick_spacing(fee_tier);
-            let position = pool_v3::open_position(
-                &wallet_account::get_wallet_account_signer(account),
-                token_a,
-                token_b,
-                fee_tier,
-                current_tick - tick_spacing,
-                current_tick + tick_spacing
-            );
-            let new_position = Position {
-                position,
-                lp_amount: 0,
-                token_a,
-                token_b,
-                amount_a: 0,
-                amount_b: 0,
-                fee_tier,
-                tick_lower: current_tick - tick_spacing,
-                tick_upper: current_tick + tick_spacing
-            };
-            new_position
-        };
-        position
-    }
-
-    fun get_position(
-        account: Object<WalletAccount>,
-        pool: address
-    ): Object<Info> acquires HyperionStrategyData {
-        let position = get_position_data(account, pool);
-        position.position
-    }
-
     //-- Entries
     public(friend) fun deposit_fund_to_hyperion_single(
         account: Object<WalletAccount>,
@@ -191,24 +88,29 @@ module moneyfi::hyperion_strategy {
         extra_data: vector<u8>
     ): (u64, u64) acquires HyperionStrategyData { // returns(actual_amount, gas_fee)
         let extra_data = unpack_extra_data(extra_data);
-        let position = create_or_get_exist_position(
-            account,
-            pool,
-            extra_data.fee_tier,
-        );
+        let position = create_or_get_exist_position(account, pool, extra_data.fee_tier);
 
-        let token_pair = if (object::object_address<Metadata>(&asset)
-            != object::object_address<Metadata>(&position.token_a)) {
-            position.token_a
-        } else {
-            position.token_b
-        };
+        let token_pair =
+            if (object::object_address<Metadata>(&asset)
+                != object::object_address<Metadata>(&position.token_a)) {
+                position.token_a
+            } else {
+                position.token_b
+            };
 
-        let wallet_signer = wallet_account::get_wallet_account_signer(account);  
+        let wallet_signer = wallet_account::get_wallet_account_signer(account);
+        let balance_pair_before =
+            primary_fungible_store::balance(
+                signer::address_of(&wallet_signer), token_pair
+            );
         let balance_a_before =
-            primary_fungible_store::balance(signer::address_of(&wallet_signer), position.token_a);
+            primary_fungible_store::balance(
+                signer::address_of(&wallet_signer), position.token_a
+            );
         let balance_b_before =
-            primary_fungible_store::balance(signer::address_of(&wallet_signer), position.token_b);
+            primary_fungible_store::balance(
+                signer::address_of(&wallet_signer), position.token_b
+            );
         router_v3::add_liquidity_single(
             &wallet_signer,
             position.position,
@@ -221,120 +123,120 @@ module moneyfi::hyperion_strategy {
             extra_data.threshold_denominator
         );
 
-        let balance_a_after =
-            primary_fungible_store::balance(signer::address_of(&wallet_signer), position.token_a);
-        let balance_b_after =
-            primary_fungible_store::balance(signer::address_of(&wallet_signer), position.token_b);
-
-        let actual_amount = if (object::object_address<Metadata>(&asset)
-            == object::object_address<Metadata>(&position.token_a)) {
-            balance_a_before - balance_a_after - extra_data.gas_fee
-        } else {
-            balance_b_before - balance_b_after - extra_data.gas_fee
+        let remaining_balance =
+            primary_fungible_store::balance(
+                signer::address_of(&wallet_signer), token_pair
+            ) - balance_pair_before;
+        if (remaining_balance > 0) {
+            router_v3::exact_input_swap_entry(
+                &wallet_signer,
+                extra_data.fee_tier,
+                remaining_balance,
+                0,
+                4295048016 + 1,
+                token_pair,
+                asset,
+                signer::address_of(&wallet_signer),
+                timestamp::now_seconds() + DEADLINE_BUFFER
+            );
         };
+
+        let balance_a_after =
+            primary_fungible_store::balance(
+                signer::address_of(&wallet_signer), position.token_a
+            );
+        let balance_b_after =
+            primary_fungible_store::balance(
+                signer::address_of(&wallet_signer), position.token_b
+            );
+
+        let actual_amount =
+            if (object::object_address<Metadata>(&asset)
+                == object::object_address<Metadata>(&position.token_a)) {
+                balance_a_before - balance_a_after - extra_data.gas_fee
+            } else {
+                balance_b_before - balance_b_after - extra_data.gas_fee
+            };
         position.lp_amount = position_v3::get_liquidity(position.position);
         position.amount_a = position.amount_a + (balance_a_after - balance_a_before);
         position.amount_b = position.amount_b + (balance_b_after - balance_b_before);
-        let strategy_data =  set_position_data(account, pool, position);
+        let strategy_data = set_position_data(account, pool, position);
 
-        wallet_account::set_strategy_data(
-            account,
-            strategy_data
-        );
+        wallet_account::set_strategy_data(account, strategy_data);
         (actual_amount, extra_data.gas_fee) // returns (actual_amount, gas_fee)
     }
 
-    public entry fun remove_amount_liquidity_single_from_operator(
-        operator: &signer,
-        wallet_id: vector<u8>,
-        position: Object<Info>,
+    public entry fun withdraw_fund_from_hyperion_single(
+        account: Object<WalletAccount>,
+        pool: address,
         asset: Object<Metadata>,
-        _lp_amount: u128,
-        slippage_numerator: u256,
-        slippage_denominator: u256,
-        gas_fee: u64
-    ) {
-        let wallet_signer = wallet_account::get_wallet_account_signer(
-            operator, wallet_id
+        amount_min: u64,
+        extra_data: vector<u8>
+    ): (u64, u64, u64) acquires HyperionStrategyData { //// return (total_deposited_amount, total_withdrawn_amount, gas_fee)
+        let extra_data = unpack_extra_data(extra_data);
+        let position = get_position_data(account, pool);
+        let total_deposited_amount = 0;
+        let liquidity_remove =
+            if (amount_min < (postion.amonut_a + position.amount_b)) {
+                math128::mul_div(
+                    position.lp_amount,
+                    (amount_min as u128),
+                    ((postion.amonut_a + position.amount_b) as u128)
+                )
+            } else {
+                position.lp_amount
+            };
+        let interest = claim_fees_and_rewards_single(account, position, asset);
+        let wallet_signer = wallet_account::get_wallet_account_signer(account);
+        let wallet_address = signer::address_of(&wallet_signer);
+        let balance_before = primary_fungible_store::balance(wallet_address, asset);
+        router_v3::remove_liquidity_single(
+            &wallet_signer,
+            position.position,
+            liquidity_remove,
+            asset,
+            extra_data.slippage_numerator,
+            extra_data.slippage_denominator
         );
-        if(_lp_amount >= get_liquidity(position)) {
-            remove_liquidity_single_from_operator(
-                operator, wallet_id, position, asset, slippage_numerator, slippage_denominator, gas_fee
-            );
-        }else {
-            // Get amount before removal
-            let balance_before =
-                primary_fungible_store::balance(signer::address_of(&wallet_signer), asset);
-
-            let (assets, amounts) =
-                wallet_account::get_amount_by_position(
-                    wallet_id, object::object_address<Info>(&position)
-                );
-            let (_, index) = vector::index_of(
-                &assets, &object::object_address<Metadata>(&asset)
-            );
-            let amounts_before = *vector::borrow(&amounts, index);
-
-            claim_fees_and_rewards_from_operator(operator, wallet_id, position, asset, 0);
-
-            router_v3::remove_liquidity_single(
-                &wallet_signer,
-                position,
-                _lp_amount,
-                asset,
-                slippage_numerator,
-                slippage_denominator
-            );
-
-            let balance_after =
-                primary_fungible_store::balance(signer::address_of(&wallet_signer), asset);
-
-            let withdrawn_amount = balance_after - balance_before;
-            let withdrawn_assets = vector::singleton<address>(
-                object::object_address<Metadata>(&asset)
-            );
-            let withdrawn_amounts = vector::singleton<u64>(withdrawn_amount);
-            let amounts_after = vector::singleton<u64>(amounts_before - withdrawn_amount);
-            
-            wallet_account::update_position_after_partial_removal(
-                wallet_id,
-                object::object_address<Info>(&position),
-                withdrawn_assets,
-                withdrawn_amounts,
-                amounts_after,
-                gas_fee
-            );
-        };
+        let balance_after = primary_fungible_store::balance(wallet_address, asset);
+        let (strategy_data, total_deposited_amount) =
+            if (amount_min < (postion.amonut_a + position.amount_b)) {
+                let total = balance_after - balance_before;
+                if (object::object_address<Metadata>(&position.token_a)
+                    == object::object_address<Metadata>(&asset)) {
+                    position.amount_a = position.amount_a - total;
+                } else {
+                    position.amount_b = position.amount_b - total;
+                };
+                (set_position_data(account, pool, position), total)
+            } else {
+                let total = postion.amonut_a + position.amount_b;
+                (remove_position(account, pool), total)
+            };
+        wallet_account::set_strategy_data(account, strategy_data);
+        let total_withdrawn_amount = total_deposited_amount + interest;
+        (total_deposited_amount, total_withdrawn_amount, gas_fee)
     }
 
-    public entry fun claim_fees_and_rewards_from_operator(
-        operator: &signer,
-        wallet_id: vector<u8>,
-        position: Object<Info>,
-        asset: Object<Metadata>,
-        gas_fee: u64
-    ) {
-        let wallet_signer = wallet_account::get_wallet_account_signer(
-            operator, wallet_id
-        );
-        let wallet_address = signer::address_of(&wallet_signer);
-
-        // Get balance before claiming
-        let balance_before = primary_fungible_store::balance(wallet_address, asset);
-
+    fun claim_fees_and_rewards_single(
+        account: Object<WalletAccount>, position: Position, asset: Object<Metadata>
+    ): u64 acquires HyperionStrategyData {
         // Get pool and fee information (still needed for swapping)
-        let (token_a, token_b, fee_tier) = get_pool_info(position);
-        let pending_fees = get_pending_fees(position);
+        let pending_fees = get_pending_fees(position.position);
         let gas_fee_a = *vector::borrow(&pending_fees, 0);
         let gas_fee_b = *vector::borrow(&pending_fees, 1);
 
         // Get reward information
-        let pending_rewards = get_pending_rewards(position);
+        let pending_rewards = get_pending_rewards(position.position);
 
         // Claim fees and rewards for single position
+        let wallet_signer = wallet_account::get_wallet_account_signer(account);
+        let wallet_address = signer::address_of(&wallet_signer);
+        // Get balance before claiming
+        let balance_before = primary_fungible_store::balance(wallet_address, asset);
         let position_addresses = vector::empty<address>();
         vector::push_back(
-            &mut position_addresses, object::object_address<Info>(&position)
+            &mut position_addresses, object::object_address<Info>(&position.position)
         );
 
         router_v3::claim_fees_and_rewards_directly_deposit(
@@ -342,16 +244,16 @@ module moneyfi::hyperion_strategy {
         );
 
         // Swap token_a to stablecoin if not already stablecoin
-        if (object::object_address<Metadata>(&token_a)
+        if (object::object_address<Metadata>(&position.token_a)
             != object::object_address<Metadata>(&asset)) {
             if (gas_fee_a > 0) {
                 router_v3::exact_input_swap_entry(
                     &wallet_signer,
-                    fee_tier,
+                    position.fee_tier,
                     gas_fee_a,
                     0,
                     4295048016 + 1, // min
-                    token_a,
+                    position.token_a,
                     asset,
                     wallet_address,
                     timestamp::now_seconds() + DEADLINE_BUFFER // deadline
@@ -360,16 +262,16 @@ module moneyfi::hyperion_strategy {
         };
 
         // Swap token_b to stablecoin if not already stablecoin
-        if (object::object_address<Metadata>(&token_b)
+        if (object::object_address<Metadata>(&position.token_b)
             != object::object_address<Metadata>(&asset)) {
             if (gas_fee_b > 0) {
                 router_v3::exact_input_swap_entry(
                     &wallet_signer,
-                    fee_tier,
+                    position.fee_tier,
                     gas_fee_b,
                     0,
                     4295048016 + 1, // min
-                    token_b,
+                    position.token_b,
                     asset,
                     wallet_address,
                     timestamp::now_seconds() + DEADLINE_BUFFER // deadline
@@ -408,23 +310,183 @@ module moneyfi::hyperion_strategy {
         let balance_after = primary_fungible_store::balance(wallet_address, asset);
 
         // Calculate total stablecoin amount gained
-        let total_stablecoin_amount = balance_after - balance_before;
+        (balance_after - balance_before)
+    }
 
-        wallet_account::add_profit_unclaimed(
-            wallet_id,
-            object::object_address<Info>(&position),
-            object::object_address<Metadata>(&asset),
-            total_stablecoin_amount,
-            gas_fee
+    fun claim_fees_and_rewards(
+        account: Object<WalletAccount>, position: Position
+    ): (u64, u64) acquires HyperionStrategyData { //return profit token_a, token_b
+        // Get reward information
+        let pending_rewards = get_pending_rewards(position.position);
+
+        // Claim fees and rewards for single position
+        let wallet_signer = wallet_account::get_wallet_account_signer(account);
+        let wallet_address = signer::address_of(&wallet_signer);
+        // Get balance before claiming
+        let balance_a_before =
+            primary_fungible_store::balance(wallet_address, position.token_a);
+        let balance_b_before =
+            primary_fungible_store::balance(wallet_address, position.token_b);
+        let position_addresses = vector::empty<address>();
+        vector::push_back(
+            &mut position_addresses, object::object_address<Info>(&position.position)
         );
+
+        router_v3::claim_fees_and_rewards_directly_deposit(
+            &wallet_signer, position_addresses
+        );
+        // Swap reward tokens to token_a or token_b
+        let p = 0;
+        let rewards_len = vector::length(&pending_rewards);
+        while (p < rewards_len) {
+            let reward = vector::borrow(&pending_rewards, p);
+            let (reward_token, reward_amount) = rewarder::pending_rewards_unpack(reward);
+
+            if (object::object_address<Metadata>(&reward_token)
+                != object::object_address<Metadata>(&position.token_a)
+                && object::object_address<Metadata>(&reward_token)
+                    != object::object_address<Metadata>(&position.token_b)) {
+                if (reward_amount > 1000) {
+                    router_v3::exact_input_swap_entry(
+                        &wallet_signer,
+                        1, // fee_tier for reward swaps
+                        reward_amount,
+                        0,
+                        4295048016 + 1, // min
+                        reward_token,
+                        position.token_b,
+                        wallet_address,
+                        timestamp::now_seconds() + DEADLINE_BUFFER // deadline
+                    );
+                };
+            };
+
+            p = p + 1;
+        };
+
+        let balance_a_after =
+            primary_fungible_store::balance(wallet_address, position.token_a);
+        let balance_b_after =
+            primary_fungible_store::balance(wallet_address, position.token_b);
+        ((balance_a_after - balance_a_before), (balance_b_after - balance_b_before))
+    }
+
+    fun unpack_extra_data(extra_data: vector<u8>): ExtraData {
+        from_bytes<ExtraData>(extra_data)
+    }
+
+    fun ensure_hyperion_strategy_data(
+        account: Object<WalletAccount>
+    ): &mut HyperionStrategyData acquires HyperionStrategyData {
+        if (exists_hyperion_strategy_data(account)) {
+            let strategy_data = HyperionStrategyData {
+                strategy_id: STRATEGY_ID,
+                pools: ordered_map::new<address, Position>()
+            };
+            wallet_account::set_strategy_data<HyperionStrategyData>(
+                account, strategy_data
+            );
+        };
+        let strategy_data =
+            wallet_account::get_strategy_data<HyperionStrategyData>(account);
+        &mut strategy_data
+    }
+
+    fun exists_hyperion_strategy_data(
+        account: Object<WalletAccount>
+    ): bool acquires HyperionStrategyData {
+        wallet_account::exists_strategy_data<HyperionStrategyData>(account)
+    }
+
+    fun exists_hyperion_postion(
+        account: Object<WalletAccount>, pool: address
+    ): bool acquires HyperionStrategyData {
+        assert!(
+            exists_hyperion_strategy_data(account),
+            E_HYPERION_STRATEGY_DATA_NOT_EXISTS
+        );
+        let strategy_data = ensure_hyperion_strategy_data(account);
+        ordered_map::contains(&strategy_data.pools, &pool)
+    }
+
+    fun set_position_data(
+        account: Object<WalletAccount>, pool: address, position: Position
+    ): HyperionStrategyData acquires HyperionStrategyData {
+        let strategy_data = ensure_hyperion_strategy_data(account);
+        ordered_map::upsert(&mut strategy_data.pools, pool, position);
+        *strategy_data
+    }
+
+    fun remove_position(
+        account: Object<WalletAccount>, pool: address
+    ): HyperionStrategyData acquires HyperionStrategyData {
+        let strategy_data = ensure_hyperion_strategy_data(account);
+        ordered_map::remove(&mut strategy_data.pools, pool);
+        *strategy_data
+    }
+
+    fun get_position_data(
+        account: Object<WalletAccount>, pool: address
+    ): Position acquires HyperionStrategyData {
+        assert!(exists_hyperion_postion(account, pool), E_HYPERION_POSITION_NOT_EXISTS);
+        let strategy_data = ensure_hyperion_strategy_data(account);
+        let position = ordered_map::borrow(&strategy_data.pools, &pool);
+        *position
+    }
+
+    fun create_or_get_exist_position(
+        account: Object<WalletAccount>, pool: address, fee_tier: u8
+    ): Position acquires HyperionStrategyData {
+        let strategy_data = ensure_hyperion_strategy_data(account);
+        let position =
+            if (exists_hyperion_postion(account, pool)) {
+                let position = ordered_map::borrow(&strategy_data.pools, &pool);
+                *position
+            } else {
+                let pool_obj = object::address_to_object<LiquidityPoolV3>(pool);
+                let assets = pool_v3::supported_inner_assets(pool_obj);
+                let token_a = *vector::borrow(&assets, 0);
+                let token_b = *vector::borrow(&assets, 1);
+                let (current_tick, _) = pool_v3::current_tick_and_price(pool);
+                let tick_spacing = pool_v3::get_tick_spacing(fee_tier);
+                let position =
+                    pool_v3::open_position(
+                        &wallet_account::get_wallet_account_signer(account),
+                        token_a,
+                        token_b,
+                        fee_tier,
+                        current_tick - tick_spacing,
+                        current_tick + tick_spacing
+                    );
+                let new_position = Position {
+                    position,
+                    lp_amount: 0,
+                    token_a,
+                    token_b,
+                    amount_a: 0,
+                    amount_b: 0,
+                    fee_tier,
+                    tick_lower: current_tick - tick_spacing,
+                    tick_upper: current_tick + tick_spacing
+                };
+                new_position
+            };
+        position
+    }
+
+    fun get_position(
+        account: Object<WalletAccount>, pool: address
+    ): Object<Info> acquires HyperionStrategyData {
+        let position = get_position_data(account, pool);
+        position.position
     }
 
     public entry fun update_tick(
-        operator: &signer, 
-        wallet_id: vector<u8>, 
+        operator: &signer,
+        wallet_id: vector<u8>,
         position: Object<Info>,
-        asset: Object<Metadata>, 
-        tick_lower: u32, 
+        asset: Object<Metadata>,
+        tick_lower: u32,
         tick_upper: u32,
         gas_fee: u64
     ) {
@@ -435,33 +497,35 @@ module moneyfi::hyperion_strategy {
         let (tick_lower_before, tick_upper_before) = position_v3::get_tick(position);
         let current = tick_lower + 1;
         //current >= i32::as_u32(tick_lower_before) && current <= i32::as_u32(tick_upper_before)
-        if(current >= i32::as_u32(tick_lower_before) && current <= i32::as_u32(tick_upper_before)){
-            return
-        }else{
-            let (token_a, token_b, fee_tier) = get_pool_info(position);    
+        if (current >= i32::as_u32(tick_lower_before)
+            && current <= i32::as_u32(tick_upper_before)) { return }
+        else {
+            let (token_a, token_b, fee_tier) = get_pool_info(position);
             remove_liquidity_single_from_operator(
-                operator, 
-                wallet_id, 
+                operator,
+                wallet_id,
                 position,
-                asset, 
-                999, 
-                1000, 
+                asset,
+                999,
+                1000,
                 0
             );
-            let token_pair = if(object::object_address(&asset) != object::object_address(&token_a)){
-                token_a
-            }else{
-                token_b
-            };
+            let token_pair =
+                if (object::object_address(&asset) != object::object_address(&token_a)) {
+                    token_a
+                } else {
+                    token_b
+                };
 
-            let new_position = pool_v3::open_position(
-                &wallet_signer,
-                token_a,
-                token_b,
-                fee_tier,
-                tick_lower,
-                tick_upper
-            );
+            let new_position =
+                pool_v3::open_position(
+                    &wallet_signer,
+                    token_a,
+                    token_b,
+                    fee_tier,
+                    tick_lower,
+                    tick_upper
+                );
 
             let balance_before = primary_fungible_store::balance(wallet_address, asset);
 
@@ -477,9 +541,11 @@ module moneyfi::hyperion_strategy {
                 1
             );
 
-            let total_asset_amonut_added = balance_before - primary_fungible_store::balance(wallet_address, asset);
+            let total_asset_amonut_added =
+                balance_before - primary_fungible_store::balance(wallet_address, asset);
 
-            let remaining_balance = primary_fungible_store::balance(wallet_address, token_pair);
+            let remaining_balance =
+                primary_fungible_store::balance(wallet_address, token_pair);
             if (remaining_balance > 0) {
                 router_v3::exact_input_swap_entry(
                     &wallet_signer,
@@ -511,12 +577,13 @@ module moneyfi::hyperion_strategy {
     //-- Views
     #[view]
     public fun get_profit(wallet_id: vector<u8>): u64 {
-        let (position_addrs, strategy_ids) = wallet_account::get_position_opened(wallet_id);
+        let (position_addrs, strategy_ids) =
+            wallet_account::get_position_opened(wallet_id);
         let total_profit: u64 = 0;
-        
+
         let i = 0;
         let len = vector::length(&position_addrs);
-        
+
         while (i < len) {
             let strategy_id = *vector::borrow(&strategy_ids, i);
 
@@ -527,10 +594,10 @@ module moneyfi::hyperion_strategy {
                 let position_profit = get_pending_rewards_and_fees_usdc(position);
                 total_profit = total_profit + position_profit;
             };
-            
+
             i = i + 1;
         };
-        
+
         total_profit
     }
 
