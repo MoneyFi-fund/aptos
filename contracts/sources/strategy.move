@@ -58,6 +58,7 @@ module moneyfi::strategy {
     public(friend) fun swap_and_deposit(
         strategy: u8,
         account: Object<WalletAccount>,
+        pool: address,
         asset_0: Object<Metadata>,
         asset_1: Object<Metadata>,
         amount_0: u64,
@@ -81,6 +82,7 @@ module moneyfi::strategy {
     public(friend) fun swap_and_withdraw(
         strategy: u8,
         account: Object<WalletAccount>,
+        pool: address,
         asset_0: Object<Metadata>,
         asset_1: Object<Metadata>,
         amount_0: u64,

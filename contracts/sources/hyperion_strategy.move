@@ -175,7 +175,6 @@ module moneyfi::hyperion_strategy {
     ): (u64, u64, u64) acquires HyperionStrategyData { //// return (total_deposited_amount, total_withdrawn_amount, gas_fee)
         let extra_data = unpack_extra_data(extra_data);
         let position = get_position_data(account, pool);
-        let total_deposited_amount = 0;
         let liquidity_remove =
             if (amount_min < (postion.amonut_a + position.amount_b)) {
                 math128::mul_div(
@@ -186,7 +185,7 @@ module moneyfi::hyperion_strategy {
             } else {
                 position.lp_amount
             };
-        let interest = claim_fees_and_rewards_single(account, position, asset);
+        let (interest, _) = claim_fees_and_rewards_single(account, position, asset);
         let wallet_signer = wallet_account::get_wallet_account_signer(account);
         let wallet_address = signer::address_of(&wallet_signer);
         let balance_before = primary_fungible_store::balance(wallet_address, asset);
@@ -215,17 +214,60 @@ module moneyfi::hyperion_strategy {
             };
         wallet_account::set_strategy_data(account, strategy_data);
         let total_withdrawn_amount = total_deposited_amount + interest;
-        (total_deposited_amount, total_withdrawn_amount, gas_fee)
+        (total_deposited_amount, total_withdrawn_amount, extra_data.gas_fee)
+    }
+
+    //return (
+    //     total_deposited_amount_0,
+    //     total_deposited_amount_1,
+    //     total_withdrawn_amount_0,
+    //     total_withdrawn_amount_1,
+    //     amount_0_in,
+    //     amount_1_out,
+    // )
+    public(friend) fun withdraw_fun_from_hyperion(
+        account: Object<WalletAccount>,
+        pool: address,
+        asset_0: Object<Metadata>,
+        asset_1: Object<Metadata>,
+        amount_0: u64,
+        amount_1: u64,
+        extra_data: vector<u8>
+    ): (u64, u64, u64, u64, u64, u64) {
+        let extra_data = unpack_extra_data(extra_data);
+        let position = get_position_data(account, pool);
+        let is_asset_0_token_a =
+            object::object_address<Metadata>(&asset_0)
+                == object::object_address<Metadata>(&position.token_a);
+
+        let total_request = amount_0 + amount_1;
+        let total_position_amount = position.amount_a + position.amount_b;
+        let (liquidity_remove, is_full_withdraw) =
+            if (total_request < total_position_amount) {
+                let liquidity =
+                    math128::mul_div(
+                        position.lp_amount,
+                        (total_request as u128),
+                        (total_position_amount as u128)
+                    );
+                (liquidity, false)
+            } else {
+                (position.lp_amount, true)
+            };
+
+        let (reward_1, amount_0_reward_swap) =
+            claim_fees_and_rewards_single(account, position, asset);
+        let balance_before = primary_fungible_store::balance(wallet_address, asset_1);
     }
 
     fun claim_fees_and_rewards_single(
         account: Object<WalletAccount>, position: Position, asset: Object<Metadata>
-    ): u64 acquires HyperionStrategyData {
+    ): (u64, u64) acquires HyperionStrategyData { //return all_profit and amount_swap_token_pair
         // Get pool and fee information (still needed for swapping)
         let pending_fees = get_pending_fees(position.position);
         let gas_fee_a = *vector::borrow(&pending_fees, 0);
         let gas_fee_b = *vector::borrow(&pending_fees, 1);
-
+        let amount_swap_token_pair = 0;
         // Get reward information
         let pending_rewards = get_pending_rewards(position.position);
 
@@ -258,6 +300,7 @@ module moneyfi::hyperion_strategy {
                     wallet_address,
                     timestamp::now_seconds() + DEADLINE_BUFFER // deadline
                 );
+                amount_swap_token_pair = gas_fee_a;
             };
         };
 
@@ -276,6 +319,7 @@ module moneyfi::hyperion_strategy {
                     wallet_address,
                     timestamp::now_seconds() + DEADLINE_BUFFER // deadline
                 );
+                amount_swap_token_pair = gas_fee_b
             };
         };
 
@@ -310,65 +354,7 @@ module moneyfi::hyperion_strategy {
         let balance_after = primary_fungible_store::balance(wallet_address, asset);
 
         // Calculate total stablecoin amount gained
-        (balance_after - balance_before)
-    }
-
-    fun claim_fees_and_rewards(
-        account: Object<WalletAccount>, position: Position
-    ): (u64, u64) acquires HyperionStrategyData { //return profit token_a, token_b
-        // Get reward information
-        let pending_rewards = get_pending_rewards(position.position);
-
-        // Claim fees and rewards for single position
-        let wallet_signer = wallet_account::get_wallet_account_signer(account);
-        let wallet_address = signer::address_of(&wallet_signer);
-        // Get balance before claiming
-        let balance_a_before =
-            primary_fungible_store::balance(wallet_address, position.token_a);
-        let balance_b_before =
-            primary_fungible_store::balance(wallet_address, position.token_b);
-        let position_addresses = vector::empty<address>();
-        vector::push_back(
-            &mut position_addresses, object::object_address<Info>(&position.position)
-        );
-
-        router_v3::claim_fees_and_rewards_directly_deposit(
-            &wallet_signer, position_addresses
-        );
-        // Swap reward tokens to token_a or token_b
-        let p = 0;
-        let rewards_len = vector::length(&pending_rewards);
-        while (p < rewards_len) {
-            let reward = vector::borrow(&pending_rewards, p);
-            let (reward_token, reward_amount) = rewarder::pending_rewards_unpack(reward);
-
-            if (object::object_address<Metadata>(&reward_token)
-                != object::object_address<Metadata>(&position.token_a)
-                && object::object_address<Metadata>(&reward_token)
-                    != object::object_address<Metadata>(&position.token_b)) {
-                if (reward_amount > 1000) {
-                    router_v3::exact_input_swap_entry(
-                        &wallet_signer,
-                        1, // fee_tier for reward swaps
-                        reward_amount,
-                        0,
-                        4295048016 + 1, // min
-                        reward_token,
-                        position.token_b,
-                        wallet_address,
-                        timestamp::now_seconds() + DEADLINE_BUFFER // deadline
-                    );
-                };
-            };
-
-            p = p + 1;
-        };
-
-        let balance_a_after =
-            primary_fungible_store::balance(wallet_address, position.token_a);
-        let balance_b_after =
-            primary_fungible_store::balance(wallet_address, position.token_b);
-        ((balance_a_after - balance_a_before), (balance_b_after - balance_b_before))
+        ((balance_after - balance_before), amount_swap_token_pair)
     }
 
     fun unpack_extra_data(extra_data: vector<u8>): ExtraData {
