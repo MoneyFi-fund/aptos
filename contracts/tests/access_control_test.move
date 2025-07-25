@@ -247,7 +247,7 @@ module moneyfi::access_control_test {
     #[test(deployer = @moneyfi)]
     fun test_get_accounts_view_function(deployer: &signer) {
         setup_test_environment(deployer);
-        let deployer_addr = signer::address_of(deployer);
+        // let deployer_addr = signer::address_of(deployer);
 
         // Initially should have one account (admin)
         let accounts = access_control::get_accounts();

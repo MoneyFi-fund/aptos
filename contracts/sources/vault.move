@@ -251,7 +251,6 @@ module moneyfi::vault {
 
         let wallet_addr = signer::address_of(sender);
         let account = wallet_account::get_wallet_account_by_address(wallet_addr);
-        let wallet_id = wallet_account::get_wallet_id_by_address(wallet_addr);
 
         let funding_account_addr = get_funding_account_address();
         let funding_account = borrow_global_mut<FundingAccount>(funding_account_addr);
@@ -311,13 +310,11 @@ module moneyfi::vault {
         };
 
         let config = borrow_global<Config>(@moneyfi);
-        let lp_token = borrow_global<LPToken>(@moneyfi);
         assert!(
             config.can_withdraw(asset, amount),
             error::permission_denied(E_DEPOSIT_NOT_ALLOWED)
         );
 
-        let asset_config = config.get_asset_config(asset);
         let account_signer = wallet_account::get_wallet_account_signer(account);
 
         primary_fungible_store::transfer(&account_signer, asset, wallet_addr, amount);
