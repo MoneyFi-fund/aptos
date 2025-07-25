@@ -17,9 +17,9 @@ module moneyfi::strategy {
     ///     total_withdrawn,
     /// )
     #[view]
-    public fun get_strategy_stats(strategy: u8): (u128, u128, u128) {
+    public fun get_strategy_stats(strategy: u8, asset: Object<Metadata>): (u128, u128, u128) {
         if (strategy == STRATEGY_HYPERION) {
-            // return hyperion_strategy::get_stats();
+            // return hyperion_strategy::get_stats(asset);
         };
 
         (0, 0, 0)
