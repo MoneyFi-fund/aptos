@@ -45,9 +45,11 @@ module moneyfi::wallet_account {
     }
 
     struct AccountAsset has drop, store {
-        remaining_amount: u64,
+        current_amount: u64,
         deposited_amount: u64,
         lp_amount: u64,
+        swap_out_amount: u64,
+        swap_in_amount: u64,
         distributed_amount: u64,
         withdrawn_amount: u64,
         interest_amount: u64,
@@ -163,21 +165,55 @@ module moneyfi::wallet_account {
         let wallet_account = borrow_global_mut<WalletAccount>(account_addr);
 
         let asset_data = wallet_account.get_asset(asset);
-        assert!(
-            amount > 0 && asset_data.remaining_amount >= amount
-        );
+        assert!(amount > 0 && asset_data.current_amount >= amount);
 
         let lp_amount =
             ((amount as u128) * (asset_data.lp_amount as u128)
-                / (asset_data.remaining_amount as u128)) as u64;
+                / (asset_data.current_amount as u128)) as u64;
 
         asset_data.withdrawn_amount = asset_data.withdrawn_amount + amount;
-        asset_data.remaining_amount = asset_data.remaining_amount - amount;
+        asset_data.current_amount = asset_data.current_amount - amount;
         asset_data.lp_amount = asset_data.lp_amount - lp_amount;
 
         wallet_account.set_asset(asset, asset_data);
 
         lp_amount
+    }
+
+    // return lp amount for src asset
+    public(friend) fun swap(
+        account: Object<WalletAccount>,
+        from_asset: Object<Metadata>,
+        to_asset: Object<Metadata>,
+        from_amount: u64,
+        to_amount: u64,
+        to_lp_amount: u64
+    ): u64 acquires WalletAccount {
+        let account_addr = object::object_address(&account);
+        let wallet_account = borrow_global_mut<WalletAccount>(account_addr);
+
+        let asset_data_0 = wallet_account.get_asset(from_asset);
+        let asset_data_1 = wallet_account.get_asset(to_asset);
+        assert!(
+            from_amount > 0 && asset_data_0.current_amount >= from_amount
+        );
+
+        let lp_amount_0 =
+            ((from_amount as u128) * (asset_data_0.lp_amount as u128)
+                / (asset_data_0.current_amount as u128)) as u64;
+
+        asset_data_0.swap_out_amount = asset_data_0.swap_out_amount + from_amount;
+        asset_data_0.current_amount = asset_data_0.current_amount - from_amount;
+        asset_data_0.lp_amount = asset_data_0.lp_amount - lp_amount_0;
+
+        asset_data_1.lp_amount = asset_data_1.lp_amount + to_lp_amount;
+        asset_data_1.current_amount = asset_data_1.current_amount + to_amount;
+        asset_data_1.swap_in_amount = asset_data_1.swap_in_amount + to_amount;
+
+        wallet_account.set_asset(from_asset, asset_data_0);
+        wallet_account.set_asset(to_asset, asset_data_1);
+
+        lp_amount_0
     }
 
     public(friend) fun distributed_fund(
@@ -187,10 +223,10 @@ module moneyfi::wallet_account {
         let wallet_account = borrow_global_mut<WalletAccount>(account_addr);
 
         let asset_data = wallet_account.get_asset(asset);
-        assert!(asset_data.remaining_amount >= amount);
+        assert!(asset_data.current_amount >= amount);
 
         asset_data.distributed_amount = asset_data.distributed_amount + amount;
-        asset_data.remaining_amount = asset_data.remaining_amount - amount;
+        asset_data.current_amount = asset_data.current_amount - amount;
         wallet_account.set_asset(asset, asset_data);
     }
 
@@ -211,7 +247,7 @@ module moneyfi::wallet_account {
 
         asset_data.distributed_amount = asset_data.distributed_amount
             - distributed_amount;
-        asset_data.remaining_amount = asset_data.remaining_amount + collected_amount;
+        asset_data.current_amount = asset_data.current_amount + collected_amount;
         asset_data.interest_amount = asset_data.interest_amount + interest_amount;
         asset_data.interest_share_amount =
             asset_data.interest_share_amount + interest_share_amount;
@@ -338,9 +374,11 @@ module moneyfi::wallet_account {
         };
 
         AccountAsset {
-            remaining_amount: 0,
+            current_amount: 0,
             deposited_amount: 0,
             lp_amount: 0,
+            swap_out_amount: 0,
+            swap_in_amount: 0,
             distributed_amount: 0,
             withdrawn_amount: 0,
             interest_amount: 0,

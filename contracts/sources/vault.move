@@ -136,6 +136,19 @@ module moneyfi::vault {
         timestamp: u64
     }
 
+    #[event]
+    struct SwapAssetsEvent has drop, store {
+        account: Object<WalletAccount>,
+        strategy: u8,
+        from_asset: Object<Metadata>,
+        to_asset: Object<Metadata>,
+        amount_in: u64,
+        amount_out: u64,
+        lp_amount_in: u64,
+        lp_amount_out: u64,
+        timestamp: u64
+    }
+
     // -- init
     fun init_module(sender: &signer) {
         let addr = signer::address_of(sender);
@@ -395,7 +408,6 @@ module moneyfi::vault {
         sender: &signer,
         wallet_id: vector<u8>,
         strategy_id: u8,
-        pool: address,
         asset: Object<Metadata>,
         amount: u64,
         gas_fee: u64,
@@ -470,6 +482,79 @@ module moneyfi::vault {
                 amount: collected_amount,
                 interest_amount,
                 system_fee,
+                timestamp: now_seconds()
+            }
+        );
+    }
+
+    public entry fun swap_assets(
+        sender: &signer,
+        wallet_id: vector<u8>,
+        strategy_id: u8,
+        from_asset: Object<Metadata>,
+        to_asset: Object<Metadata>,
+        from_amount: u64,
+        to_amount: u64,
+        extra_data: vector<u8>
+    ) {
+        access_control::must_be_service_account(sender);
+        let account = wallet_account::get_wallet_account(wallet_id);
+        let account_addr = object::object_address(&account);
+        let config = borrow_global<Config>(@moneyfi);
+
+        let funding_account_addr = get_funding_account_address();
+        let funding_account = borrow_global_mut<FundingAccount>(funding_account_addr);
+
+        let (amount_in, amount_out) =
+            strategy::swap(
+                strategy_id,
+                account,
+                from_asset,
+                to_asset,
+                from_amount,
+                to_amount,
+                extra_data
+            );
+
+        let asset_data_0 = funding_account.get_funding_asset(from_asset);
+        let asset_data_1 = funding_account.get_funding_asset(to_asset);
+        // let asset_config_0 = config.get_asset_config(from_asset);
+        let asset_config_1 = config.get_asset_config(to_asset);
+
+        let lp_amount_1 = asset_config_1.calc_mint_lp_amount(amount_out);
+        let lp_amount_0 =
+            wallet_account::swap(
+                account,
+                from_asset,
+                to_asset,
+                amount_in,
+                amount_out,
+                lp_amount_1
+            );
+
+        if (lp_amount_0 > lp_amount_1) {
+            let burn_amount = lp_amount_0 - lp_amount_1;
+            burn_lp(account_addr, burn_amount);
+            asset_data_0.lp_amount = asset_data_0.lp_amount - (burn_amount as u128);
+        } else if (lp_amount_0 < lp_amount_1) {
+            let mint_amount = lp_amount_1 - lp_amount_0;
+            mint_lp(account_addr, mint_amount);
+            asset_data_1.lp_amount = asset_data_1.lp_amount + (mint_amount as u128);
+        };
+
+        funding_account.set_funding_asset(from_asset, asset_data_0);
+        funding_account.set_funding_asset(to_asset, asset_data_1);
+
+        event::emit(
+            SwapAssetsEvent {
+                account,
+                strategy: strategy_id,
+                from_asset,
+                to_asset,
+                amount_in,
+                amount_out,
+                lp_amount_in: lp_amount_0,
+                lp_amount_out: lp_amount_1,
                 timestamp: now_seconds()
             }
         );
@@ -722,34 +807,6 @@ module moneyfi::vault {
 
     fun get_funding_account_signer(self: &FundingAccount): signer acquires FundingAccount {
         object::generate_signer_for_extending(&self.extend_ref)
-    }
-
-    fun swapped_asset(
-        self: &mut FundingAccount,
-        account: Object<WalletAccount>,
-        config: &AssetConfig,
-        asset_0: Object<Metadata>,
-        asset_1: Object<Metadata>,
-        amount_0: u64,
-        amount_1: u64
-    ) acquires LPToken {
-        // let account_addr = object::object_address(&account);
-
-        // let lp_amount =
-
-        // let asset_data_0 = self.get_funding_asset(asset_0);
-        // let asset_data_1 = self.get_funding_asset(asset_1);
-
-        // let lp_amount_0 = asset_data_0.calc_lp_amount(config, amount_0);
-        // let lp_amount_1 = asset_data_1.calc_lp_amount(config, amount_1);
-        // if (lp_amount_0 > lp_amount_1) {
-        //     let burn_amount = lp_amount_0 - lp_amount_1;
-        //     burn_lp(account_addr, burn_amount);
-        //     // asset_data_0.lp_amount = if (asset_data_0.lp_amount - (burn_amount as u128);
-        // } else if (lp_amount_0 < lp_amount_1) {
-        //     let mint_amount = lp_amount_1 - lp_amount_0;
-        //     mint_lp(account_addr, mint_amount);
-        // };
     }
 
     // -- test only
