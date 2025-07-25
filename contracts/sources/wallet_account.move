@@ -2,15 +2,12 @@ module moneyfi::wallet_account {
     use std::bcs;
     use std::signer;
     use std::vector;
-    use std::debug;
     use std::error;
     use std::option::{Self, Option};
     use aptos_std::ordered_map::{Self, OrderedMap};
     use aptos_framework::event;
-    use aptos_framework::util;
     use aptos_framework::object::{Self, Object, ExtendRef};
     use aptos_framework::fungible_asset::{Self, Metadata};
-    use aptos_framework::primary_fungible_store;
     use aptos_framework::timestamp;
 
     use moneyfi::access_control;
@@ -18,6 +15,7 @@ module moneyfi::wallet_account {
 
     friend moneyfi::vault;
     friend moneyfi::strategy;
+    friend moneyfi::hyperion_strategy;
 
     // -- Constants
     const WALLET_ACCOUNT_SEED: vector<u8> = b"WALLET_ACCOUNT";
