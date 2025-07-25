@@ -11,6 +11,11 @@ module moneyfi::strategy {
     const STRATEGY_HYPERION: u8 = 1;
     const STRATEGY_ARIES: u8 = 2;
 
+    /// return (
+    ///     current_tvl,
+    ///     total_deposited,
+    ///     total_withdrawn,
+    /// )
     #[view]
     public fun get_strategy_stats(strategy: u8): (u128, u128, u128) {
         if (strategy == STRATEGY_HYPERION) {
