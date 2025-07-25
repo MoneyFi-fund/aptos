@@ -155,24 +155,29 @@ module moneyfi::wallet_account {
         wallet_account.set_asset(asset, asset_data);
     }
 
+    /// return amount of lp token
     public(friend) fun withdraw(
-        account: Object<WalletAccount>,
-        asset: Object<Metadata>,
-        amount: u64,
-        lp_amount: u64
-    ) acquires WalletAccount {
+        account: Object<WalletAccount>, asset: Object<Metadata>, amount: u64
+    ): u64 acquires WalletAccount {
         let account_addr = object::object_address(&account);
         let wallet_account = borrow_global_mut<WalletAccount>(account_addr);
 
         let asset_data = wallet_account.get_asset(asset);
-        assert!(asset_data.lp_amount >= lp_amount);
-        assert!(asset_data.remaining_amount >= amount);
+        assert!(
+            amount > 0 && asset_data.remaining_amount >= amount
+        );
+
+        let lp_amount =
+            ((amount as u128) * (asset_data.lp_amount as u128)
+                / (asset_data.remaining_amount as u128)) as u64;
 
         asset_data.withdrawn_amount = asset_data.withdrawn_amount + amount;
-        asset_data.lp_amount = asset_data.lp_amount - lp_amount;
         asset_data.remaining_amount = asset_data.remaining_amount - amount;
+        asset_data.lp_amount = asset_data.lp_amount - lp_amount;
 
         wallet_account.set_asset(asset, asset_data);
+
+        lp_amount
     }
 
     public(friend) fun distributed_fund(
@@ -192,7 +197,8 @@ module moneyfi::wallet_account {
     public(friend) fun collected_fund(
         account: Object<WalletAccount>,
         asset: Object<Metadata>,
-        amount: u64,
+        distributed_amount: u64,
+        collected_amount: u64,
         interest_amount: u64,
         interest_share_amount: u64
 
@@ -201,18 +207,15 @@ module moneyfi::wallet_account {
 
         let wallet_account = borrow_global_mut<WalletAccount>(account_addr);
         let asset_data = wallet_account.get_asset(asset);
-        assert!(asset_data.distributed_amount >= amount);
+        assert!(asset_data.distributed_amount >= distributed_amount);
 
-        asset_data.remaining_amount = asset_data.remaining_amount + amount;
+        asset_data.distributed_amount = asset_data.distributed_amount
+            - distributed_amount;
+        asset_data.remaining_amount = asset_data.remaining_amount + collected_amount;
         asset_data.interest_amount = asset_data.interest_amount + interest_amount;
         asset_data.interest_share_amount =
             asset_data.interest_share_amount + interest_share_amount;
 
-        if (asset_data.distributed_amount > amount) {
-            asset_data.distributed_amount = asset_data.distributed_amount - amount;
-        } else {
-            asset_data.distributed_amount = 0;
-        };
         wallet_account.set_asset(asset, asset_data);
     }
 

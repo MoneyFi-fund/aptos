@@ -26,7 +26,7 @@ module moneyfi::vault {
     // -- Constants
     const LP_TOKEN_NAME: vector<u8> = b"MoneyFi LP";
     const LP_TOKEN_SYMBOL: vector<u8> = b"MoneyFiLP";
-    const LP_TOKEN_DECIMALS: u8 = 12;
+    const LP_TOKEN_DECIMALS: u8 = 9;
     const FUNDING_ACCOUNT_SEED: vector<u8> = b"FUNDING_ACCOUNT";
 
     // -- Errors
@@ -49,7 +49,7 @@ module moneyfi::vault {
         max_deposit: u64,
         min_withdraw: u64,
         max_withdraw: u64,
-        lp_init_rate: u64
+        lp_exchange_rate: u64
     }
 
     struct LPToken has key {
@@ -103,7 +103,7 @@ module moneyfi::vault {
         max_deposit: u64,
         min_withdraw: u64,
         max_withdraw: u64,
-        lp_init_rate: u64,
+        lp_exchange_rate: u64,
         timestamp: u64
     }
 
@@ -113,6 +113,26 @@ module moneyfi::vault {
         enable_withdraw: bool,
         system_fee_percent: u64,
         referral_percents: vector<u64>,
+        timestamp: u64
+    }
+
+    #[event]
+    struct DepositToStrategyEvent has drop, store {
+        account: Object<WalletAccount>,
+        asset: Object<Metadata>,
+        strategy: u8,
+        amount: u64,
+        timestamp: u64
+    }
+
+    #[event]
+    struct WithdrawFromStrategyEvent has drop, store {
+        account: Object<WalletAccount>,
+        asset: Object<Metadata>,
+        strategy: u8,
+        amount: u64,
+        interest_amount: u64,
+        system_fee: u64,
         timestamp: u64
     }
 
@@ -178,7 +198,7 @@ module moneyfi::vault {
         max_deposit: u64,
         min_withdraw: u64,
         max_withdraw: u64,
-        lp_init_rate: u64
+        lp_exchange_rate: u64
     ) acquires Config {
         access_control::must_be_service_account(sender);
         let config = borrow_global_mut<Config>(@moneyfi);
@@ -191,7 +211,7 @@ module moneyfi::vault {
                 max_deposit,
                 min_withdraw,
                 max_withdraw,
-                lp_init_rate
+                lp_exchange_rate
             }
         );
         event::emit(
@@ -201,7 +221,7 @@ module moneyfi::vault {
                 max_deposit,
                 min_withdraw,
                 max_withdraw,
-                lp_init_rate,
+                lp_exchange_rate,
                 timestamp: now_seconds()
             }
         );
@@ -225,7 +245,7 @@ module moneyfi::vault {
         let asset_data = funding_account.get_funding_asset(asset);
 
         let asset_config = config.get_asset_config(asset);
-        let lp_amount = asset_data.calc_lp_amount(&asset_config, amount);
+        let lp_amount = asset_config.calc_mint_lp_amount(amount);
         let account_addr = object::object_address(&account);
 
         primary_fungible_store::transfer(sender, asset, account_addr, amount);
@@ -285,12 +305,10 @@ module moneyfi::vault {
         );
 
         let asset_config = config.get_asset_config(asset);
-
-        let lp_amount = asset_data.calc_lp_amount(&asset_config, amount);
         let account_signer = wallet_account::get_wallet_account_signer(account);
 
         primary_fungible_store::transfer(&account_signer, asset, wallet_addr, amount);
-        wallet_account::withdraw(account, asset, amount, lp_amount);
+        let lp_amount = wallet_account::withdraw(account, asset, amount);
         burn_lp(wallet_addr, lp_amount);
 
         assert!(asset_data.lp_amount >= (lp_amount as u128));
@@ -351,39 +369,26 @@ module moneyfi::vault {
         sender: &signer,
         wallet_id: vector<u8>,
         strategy_id: u8,
-        pool: address,
         asset: Object<Metadata>,
         amount: u64,
         extra_data: vector<u8>
     ) acquires FundingAccount {
         access_control::must_be_service_account(sender);
         let account = wallet_account::get_wallet_account(wallet_id);
-        let (amount, gas_fee) =
-            strategy::deposit(
-                strategy_id,
-                account,
-                pool,
-                asset,
-                amount,
-                extra_data
-            );
-        if (gas_fee > 0) {
-            let account_signer = wallet_account::get_wallet_account_signer(account);
-            let funding_account_addr = get_funding_account_address();
-            let funding_account = borrow_global_mut<FundingAccount>(funding_account_addr);
-            let asset_data = funding_account.get_funding_asset(asset);
-            primary_fungible_store::transfer(
-                &account_signer,
-                asset,
-                funding_account_addr,
-                gas_fee
-            );
-            asset_data.total_fee_amount = asset_data.total_fee_amount + gas_fee;
-            asset_data.pending_fee_amount = asset_data.pending_fee_amount + gas_fee;
-
-        };
+        let (amount, _) = strategy::deposit(
+            strategy_id, account, asset, amount, extra_data
+        );
         wallet_account::distributed_fund(account, asset, amount);
-        // TODO: emit event
+
+        event::emit(
+            DepositToStrategyEvent {
+                account,
+                asset,
+                strategy: strategy_id,
+                amount,
+                timestamp: now_seconds()
+            }
+        );
     }
 
     public entry fun withdraw_from_strategy(
@@ -393,6 +398,7 @@ module moneyfi::vault {
         pool: address,
         asset: Object<Metadata>,
         amount: u64,
+        gas_fee: u64,
         extra_data: vector<u8>
     ) acquires Config, FundingAccount {
         access_control::must_be_service_account(sender);
@@ -413,6 +419,10 @@ module moneyfi::vault {
         } else {
             interest_amount = withdrawn_amount - deposited_amount;
         };
+        interest_amount =
+            if (interest_amount > gas_fee) {
+                interest_amount - gas_fee
+            } else { 0 };
 
         asset_data.amount = asset_data.amount + (interest_amount as u128);
         asset_data.amount =
@@ -421,9 +431,11 @@ module moneyfi::vault {
             } else { 0 };
 
         let system_fee = config.calc_system_fee(interest_amount);
+        let collected_amount = withdrawn_amount - system_fee;
         if (system_fee > 0) {
-            let account_signer = wallet_account::get_wallet_account_signer(account);
+            collected_amount = collected_amount - gas_fee;
 
+            let account_signer = wallet_account::get_wallet_account_signer(account);
             primary_fungible_store::transfer(
                 &account_signer,
                 asset,
@@ -445,11 +457,22 @@ module moneyfi::vault {
             account,
             asset,
             deposited_amount,
+            collected_amount,
             interest_amount,
-            system_fee + gas_fee
+            system_fee
         );
 
-        // TODO: emit event
+        event::emit(
+            WithdrawFromStrategyEvent {
+                account,
+                asset,
+                strategy: strategy_id,
+                amount: collected_amount,
+                interest_amount,
+                system_fee,
+                timestamp: now_seconds()
+            }
+        );
     }
 
     // -- Views
@@ -599,16 +622,8 @@ module moneyfi::vault {
         primary_fungible_store::burn(&lptoken.burn_ref, owner, amount);
     }
 
-    fun calc_lp_amount(
-        self: &FundingAsset, config: &AssetConfig, token_amount: u64
-    ): u64 {
-        let rate = config.lp_init_rate;
-
-        if (self.amount > 0) {
-            rate = (self.lp_amount / (self.amount as u128)) as u64;
-        };
-
-        rate * token_amount
+    fun calc_mint_lp_amount(self: &AssetConfig, token_amount: u64): u64 {
+        self.lp_exchange_rate * token_amount
     }
 
     fun calc_system_fee(self: &Config, interest_amount: u64): u64 {
@@ -707,6 +722,34 @@ module moneyfi::vault {
 
     fun get_funding_account_signer(self: &FundingAccount): signer acquires FundingAccount {
         object::generate_signer_for_extending(&self.extend_ref)
+    }
+
+    fun swapped_asset(
+        self: &mut FundingAccount,
+        account: Object<WalletAccount>,
+        config: &AssetConfig,
+        asset_0: Object<Metadata>,
+        asset_1: Object<Metadata>,
+        amount_0: u64,
+        amount_1: u64
+    ) acquires LPToken {
+        // let account_addr = object::object_address(&account);
+
+        // let lp_amount =
+
+        // let asset_data_0 = self.get_funding_asset(asset_0);
+        // let asset_data_1 = self.get_funding_asset(asset_1);
+
+        // let lp_amount_0 = asset_data_0.calc_lp_amount(config, amount_0);
+        // let lp_amount_1 = asset_data_1.calc_lp_amount(config, amount_1);
+        // if (lp_amount_0 > lp_amount_1) {
+        //     let burn_amount = lp_amount_0 - lp_amount_1;
+        //     burn_lp(account_addr, burn_amount);
+        //     // asset_data_0.lp_amount = if (asset_data_0.lp_amount - (burn_amount as u128);
+        // } else if (lp_amount_0 < lp_amount_1) {
+        //     let mint_amount = lp_amount_1 - lp_amount_0;
+        //     mint_lp(account_addr, mint_amount);
+        // };
     }
 
     // -- test only

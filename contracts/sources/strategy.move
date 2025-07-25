@@ -14,7 +14,6 @@ module moneyfi::strategy {
     public(friend) fun deposit(
         strategy: u8,
         account: Object<WalletAccount>,
-        pool: address,
         asset: Object<Metadata>,
         amount: u64,
         extra_data: vector<u8>
@@ -22,9 +21,10 @@ module moneyfi::strategy {
         // TODO
         let (actual_amount, gas_fee) =
             if (strategy == STRATEGY_HYPERION) {
-                hyperion_strategy::deposit_fund_to_hyperion_single(
-                    account, pool, asset, amount, extra_data
-                )
+                // hyperion_strategy::deposit_fund_to_hyperion_single(
+                //     account, pool, asset, amount, extra_data
+                // )
+                (0, 0)
             } else {
                 // Handle other strategies
                 (0, 0)
@@ -32,64 +32,64 @@ module moneyfi::strategy {
         (actual_amount, gas_fee)
     }
 
-    /// return (total_deposited_amount, total_withdrawn_amount, gas_fee)
+    /// return (
+    ///     total_deposited_amount,
+    ///     total_withdrawn_amount,
+    /// )
     public(friend) fun withdraw(
         strategy: u8,
         account: Object<WalletAccount>,
-        pool: address,
         asset: Object<Metadata>,
         min_amount: u64,
         extra_data: vector<u8>
-    ): (u64, u64, u64) {
+    ): (u64, u64) {
         let (total_deposited_amount, total_withdrawn_amount, gas_fee) =
             if (strategy == STRATEGY_HYPERION) {
-                hyperion_strategy::withdraw_fund_from_hyperion_single(
-                    account, pool, asset, amount, extra_data
-                )
+                // hyperion_strategy::withdraw_fund_from_hyperion_single(
+                //     account, asset, amount, extra_data
+                // )
+                (0, 0, 0)
             } else {
                 (0, 0, 0)
             };
-        (total_deposited_amount, total_withdrawn_amount, gas_fee)
+        (total_deposited_amount, total_withdrawn_amount)
     }
 
-    /// 1. Swap asset_0 to asset_1: amount_0_in => amount_1_out
-    /// 2. Depsoit (amount_1_out + amount_1) asset_1 to strategy
-    ///  return (amount_0_in, amount_1_out, deposited_amount_1)
-    public(friend) fun swap_and_deposit(
-        strategy: u8,
-        account: Object<WalletAccount>,
-        pool: address,
-        asset_0: Object<Metadata>,
-        asset_1: Object<Metadata>,
-        amount_0: u64,
-        amount_1: u64,
-        extra_data: vector<u8>
-    ): (u64, u64, u64) {
-        // TODO
-        (0, 0, 0)
-    }
-
-    /// 1. Withdraw => (total_withdrawn_amount_0, total_withdrawn_amount_1)
-    /// 2. Swap asset_0 to asset_1: amount_0_in => amount_1_out
     /// return (
     ///     total_deposited_amount_0,
     ///     total_deposited_amount_1,
     ///     total_withdrawn_amount_0,
     ///     total_withdrawn_amount_1,
-    ///     amount_0_in,
-    ///     amount_1_out,
     /// )
-    public(friend) fun swap_and_withdraw(
+    public(friend) fun withdraw_pair(
         strategy: u8,
         account: Object<WalletAccount>,
         pool: address,
         asset_0: Object<Metadata>,
         asset_1: Object<Metadata>,
-        amount_0: u64,
-        amount_1: u64,
+        min_amount_0: u64,
+        min_amount_1: u64,
         extra_data: vector<u8>
-    ): (u64, u64, u64, u64, u64, u64) {
+    ): (u64, u64, u64, u64) {
         // TODO
-        (0, 0, 0, 0, 0, 0)
+        (0, 0, 0, 0)
+    }
+
+    /// return (
+    ///     actual_amount_in,
+    ///     actual_amount_out
+    /// )
+    public(friend) fun swap(
+        strategy: u8,
+        account: Object<WalletAccount>,
+        from_asset: Object<Metadata>,
+        to_asset: Object<Metadata>,
+        amount_in: u64,
+        min_amount_out: u64,
+        extra_data: vector<u8>
+    ): (u64, u64) {
+        // TODO
+
+        (0, 0)
     }
 }
