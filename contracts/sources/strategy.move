@@ -9,6 +9,21 @@ module moneyfi::strategy {
     friend moneyfi::vault;
 
     const STRATEGY_HYPERION: u8 = 1;
+    const STRATEGY_ARIES: u8 = 2;
+
+    /// return (
+    ///     current_tvl,
+    ///     total_deposited,
+    ///     total_withdrawn,
+    /// )
+    #[view]
+    public fun get_strategy_stats(strategy: u8, asset: Object<Metadata>): (u128, u128, u128) {
+        if (strategy == STRATEGY_HYPERION) {
+            // return hyperion_strategy::get_stats(asset);
+        };
+
+        (0, 0, 0)
+    }
 
     /// return (deposited_amount)
     public(friend) fun deposit(

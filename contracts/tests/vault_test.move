@@ -21,12 +21,7 @@ module moneyfi::vault_test {
     use moneyfi::vault;
     use moneyfi::storage;
     use moneyfi::access_control;
-
-    struct TokenController has drop {
-        token: Object<Metadata>,
-        mint_ref: MintRef,
-        transfer_ref: TransferRef
-    }
+    use moneyfi::test_helpers;
 
     fun setup(deployer: &signer, wallet1: &signer, wallet2: &signer): (Object<Metadata>) {
         // setup clock
@@ -50,38 +45,14 @@ module moneyfi::vault_test {
         access_control::upsert_account(deployer, deployer_addr, vector[1, 3, 4]);
 
         // setup asset
-        let usdc = create_fake_USDC(deployer);
-        vault::upsert_supported_asset(deployer, usdc.token, true, 0, 0, 0, 0, 1000);
+        let (token, mint_ref, _) = test_helpers::create_fake_USDC(deployer);
+        vault::upsert_supported_asset(deployer, token, true, 0, 0, 0, 0, 1000);
 
         let init_amount = 1_000_000_000; // 1000 USDC
-        primary_fungible_store::mint(&usdc.mint_ref, wallet1_addr, init_amount);
-        primary_fungible_store::mint(&usdc.mint_ref, wallet2_addr, init_amount);
+        primary_fungible_store::mint(&mint_ref, wallet1_addr, init_amount);
+        primary_fungible_store::mint(&mint_ref, wallet2_addr, init_amount);
 
-        usdc.token
-    }
-
-    fun create_fake_USDC(sender: &signer): TokenController {
-        let constructor_ref = &object::create_named_object(sender, b"FAKE_USDC");
-        let usdc_addr = object::address_from_constructor_ref(constructor_ref);
-
-        primary_fungible_store::create_primary_store_enabled_fungible_asset(
-            constructor_ref,
-            option::none(),
-            string::utf8(b"USDC"),
-            string::utf8(b"USDC"),
-            6,
-            string::utf8(b""),
-            string::utf8(b"")
-        );
-
-        let mint_ref = fungible_asset::generate_mint_ref(constructor_ref);
-        let transfer_ref = fungible_asset::generate_transfer_ref(constructor_ref);
-
-        TokenController {
-            token: object::address_to_object(usdc_addr),
-            mint_ref,
-            transfer_ref
-        }
+        token
     }
 
     #[test(deployer = @moneyfi, wallet1 = @0x111, wallet2 = @0x222)]
@@ -146,7 +117,7 @@ module moneyfi::vault_test {
     }
 
     #[test(deployer = @moneyfi, wallet1 = @0x111, wallet2 = @0x222)]
-    #[expected_failure]
+    #[expected_failure(abort_code = 0x50003, location = aptos_framework::fungible_asset)]
     fun test_lp_should_not_transferable(
         deployer: &signer, wallet1: &signer, wallet2: &signer
     ) {
