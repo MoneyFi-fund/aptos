@@ -9,6 +9,16 @@ module moneyfi::strategy {
     friend moneyfi::vault;
 
     const STRATEGY_HYPERION: u8 = 1;
+    const STRATEGY_ARIES: u8 = 2;
+
+    #[view]
+    public fun get_strategy_stats(strategy: u8): (u128, u128, u128) {
+        if (strategy == STRATEGY_HYPERION) {
+            // return hyperion_strategy::get_stats();
+        };
+
+        (0, 0, 0)
+    }
 
     /// return (deposited_amount)
     public(friend) fun deposit(
