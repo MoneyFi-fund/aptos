@@ -2,6 +2,7 @@ module moneyfi::wallet_account {
     use std::bcs;
     use std::signer;
     use std::vector;
+    use std::debug;
     use std::error;
     use std::option::{Self, Option};
     use aptos_std::ordered_map::{Self, OrderedMap};
@@ -16,7 +17,7 @@ module moneyfi::wallet_account {
     use moneyfi::storage;
 
     friend moneyfi::vault;
-    friend moneyfi::hyperion_strategy;
+    friend moneyfi::strategy;
 
     // -- Constants
     const WALLET_ACCOUNT_SEED: vector<u8> = b"WALLET_ACCOUNT";
@@ -44,7 +45,7 @@ module moneyfi::wallet_account {
         extend_ref: ExtendRef
     }
 
-    struct AccountAsset has drop, store {
+    struct AccountAsset has drop, store, copy {
         current_amount: u64,
         deposited_amount: u64,
         lp_amount: u64,
@@ -79,7 +80,7 @@ module moneyfi::wallet_account {
         verifier: &signer,
         wallet_id: vector<u8>,
         referrer_wallet_id: vector<u8>
-    ) acquires WalletAccount {
+    ) {
         access_control::must_be_service_account(verifier);
         let wallet_address = signer::address_of(sender);
         assert!(
@@ -152,6 +153,7 @@ module moneyfi::wallet_account {
 
         let asset_data = wallet_account.get_asset(asset);
         asset_data.deposited_amount = asset_data.deposited_amount + amount;
+        asset_data.current_amount = asset_data.current_amount + amount;
         asset_data.lp_amount = asset_data.lp_amount + lp_amount;
 
         wallet_account.set_asset(asset, asset_data);
@@ -255,9 +257,9 @@ module moneyfi::wallet_account {
         wallet_account.set_asset(asset, asset_data);
     }
 
-    public(friend) fun set_strategy_data<T: store>(
+    public(friend) fun set_strategy_data<T: store + drop + copy>(
         account: Object<WalletAccount>, data: T
-    ) acquires StrategyData {
+    ) acquires StrategyData, WalletAccount {
         let addr = object::object_address(&account);
         if (!exists<StrategyData<T>>(addr)) {
             let account_signer = get_wallet_account_signer(account);
@@ -268,7 +270,7 @@ module moneyfi::wallet_account {
         strategy_data.data = data;
     }
 
-    public(friend) fun get_strategy_data<T: store>(
+    public(friend) fun get_strategy_data<T: store + copy>(
         account: Object<WalletAccount>
     ): T acquires StrategyData {
         let addr = object::object_address(&account);
@@ -281,7 +283,7 @@ module moneyfi::wallet_account {
 
     public fun exists_strategy_data<T: store>(
         account: Object<WalletAccount>
-    ): bool acquires StrategyData {
+    ): bool {
         let addr = object::object_address(&account);
         exists<StrategyData<T>>(addr)
     }
@@ -399,16 +401,28 @@ module moneyfi::wallet_account {
 
     #[test_only]
     public fun create_wallet_account_for_test(
+        wallet: &signer,
         wallet_id: vector<u8>,
         chain_id: u8,
-        wallet_address: Option<address>,
         referrer_wallet_id: vector<u8>
     ): Object<WalletAccount> {
-        create_wallet_account(
-            wallet_id,
-            chain_id,
-            wallet_address,
-            referrer_wallet_id
-        )
+        let wallet_address = signer::address_of(wallet);
+        let account =
+            create_wallet_account(
+                wallet_id,
+                chain_id,
+                option::some(wallet_address),
+                referrer_wallet_id
+            );
+        move_to(wallet, WalletAccountObject { wallet_account: account });
+
+        account
+    }
+
+    #[test_only]
+    public fun get_wallet_account_signer_for_test(
+        addr: address
+    ): signer acquires WalletAccount, WalletAccountObject {
+        get_wallet_account_signer(get_wallet_account_by_address(addr))
     }
 }

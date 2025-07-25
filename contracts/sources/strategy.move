@@ -4,7 +4,7 @@ module moneyfi::strategy {
     use aptos_framework::fungible_asset::{Self, Metadata};
 
     use moneyfi::wallet_account::{Self, WalletAccount};
-    use moneyfi::hyperion_strategy;
+    // use moneyfi::hyperion_strategy;
 
     friend moneyfi::vault;
 
@@ -53,26 +53,6 @@ module moneyfi::strategy {
                 (0, 0, 0)
             };
         (total_deposited_amount, total_withdrawn_amount)
-    }
-
-    /// return (
-    ///     total_deposited_amount_0,
-    ///     total_deposited_amount_1,
-    ///     total_withdrawn_amount_0,
-    ///     total_withdrawn_amount_1,
-    /// )
-    public(friend) fun withdraw_pair(
-        strategy: u8,
-        account: Object<WalletAccount>,
-        pool: address,
-        asset_0: Object<Metadata>,
-        asset_1: Object<Metadata>,
-        min_amount_0: u64,
-        min_amount_1: u64,
-        extra_data: vector<u8>
-    ): (u64, u64, u64, u64) {
-        // TODO
-        (0, 0, 0, 0)
     }
 
     /// return (

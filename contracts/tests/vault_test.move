@@ -91,7 +91,7 @@ module moneyfi::vault_test {
         let (usdc) = setup(deployer, wallet1, wallet2);
 
         let wallet1_addr = signer::address_of(wallet1);
-        wallet_account::create_wallet_account_for_testing(wallet1, b"wallet1");
+        wallet_account::create_wallet_account_for_test(wallet1, b"wallet1", 0, vector[]);
 
         let acc = wallet_account::get_wallet_account_by_address(wallet1_addr);
         let acc_addr = object::object_address(&acc);
@@ -115,8 +115,7 @@ module moneyfi::vault_test {
         assert!(lp_balance == deposit_amount * 1000);
 
         let wallet2_addr = signer::address_of(wallet2);
-        let acc_signer =
-            wallet_account::get_wallet_account_signer_for_owner(wallet1, b"wallet1");
+        let acc_signer = wallet_account::get_wallet_account_signer_for_test(wallet1_addr);
         primary_fungible_store::transfer(&acc_signer, usdc, wallet2_addr, 1000);
 
         let balance = primary_fungible_store::balance(acc_addr, usdc);

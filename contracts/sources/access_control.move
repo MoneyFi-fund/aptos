@@ -119,16 +119,10 @@ module moneyfi::access_control {
 
         let registry = borrow_global_mut<Registry>(@moneyfi);
         ensure_registry_is_unlocked(registry);
+        assert!(ordered_map::contains(&registry.accounts, &account));
         ensure_account_is_safe_to_remove(registry, account);
 
-        let roles =
-            if (ordered_map::contains(&registry.accounts, &account)) {
-                let roles = *ordered_map::borrow(&registry.accounts, &account);
-                ordered_map::remove(&mut registry.accounts, &account);
-                roles
-            } else {
-                vector::empty<u8>()
-            };
+        ordered_map::remove(&mut registry.accounts, &account);
 
         event::emit(RemoveAccountEvent { account, timestamp: now_seconds() });
     }

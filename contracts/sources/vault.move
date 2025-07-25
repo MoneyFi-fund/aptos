@@ -65,7 +65,7 @@ module moneyfi::vault {
         assets: OrderedMap<address, FundingAsset>
     }
 
-    struct FundingAsset has store {
+    struct FundingAsset has store, copy, drop {
         amount: u128,
         lp_amount: u128,
         total_fee_amount: u64,
@@ -385,7 +385,7 @@ module moneyfi::vault {
         asset: Object<Metadata>,
         amount: u64,
         extra_data: vector<u8>
-    ) acquires FundingAccount {
+    ) {
         access_control::must_be_service_account(sender);
         let account = wallet_account::get_wallet_account(wallet_id);
         let (amount, _) = strategy::deposit(
@@ -496,7 +496,7 @@ module moneyfi::vault {
         from_amount: u64,
         to_amount: u64,
         extra_data: vector<u8>
-    ) {
+    ) acquires FundingAccount, Config, LPToken {
         access_control::must_be_service_account(sender);
         let account = wallet_account::get_wallet_account(wallet_id);
         let account_addr = object::object_address(&account);
@@ -743,6 +743,7 @@ module moneyfi::vault {
     fun add_referral_fees(
         self: &mut FundingAsset, data: OrderedMap<address, u64>
     ) {
+        let pending_referral_fees = self.pending_referral_fees;
         ordered_map::for_each(
             data,
             |k, v| {
@@ -750,8 +751,8 @@ module moneyfi::vault {
                     if (ordered_map::contains(&self.pending_referral_fees, &k)) {
                         *ordered_map::borrow(&self.pending_referral_fees, &k)
                     } else { 0 };
-
-                ordered_map::upsert(&mut self.pending_referral_fees, k, current + v);
+                v = v + current;
+                ordered_map::upsert(&mut pending_referral_fees, k, v);
             }
         );
     }
@@ -805,7 +806,7 @@ module moneyfi::vault {
         funding_account.set_funding_asset(asset, asset_data);
     }
 
-    fun get_funding_account_signer(self: &FundingAccount): signer acquires FundingAccount {
+    fun get_funding_account_signer(self: &FundingAccount): signer {
         object::generate_signer_for_extending(&self.extend_ref)
     }
 

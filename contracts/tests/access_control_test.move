@@ -42,10 +42,12 @@ module moneyfi::access_control_test {
     }
 
     #[test(deployer = @moneyfi, user = @0x2)]
-    #[expected_failure(abort_code = 0x50002, location = moneyfi::access_control)]
+    #[expected_failure(abort_code = 0x80001, location = moneyfi::access_control)]
     fun test_try_to_modify_without_permission(
         deployer: &signer, user: &signer
     ) {
+        setup_test_environment(deployer);
+
         let user_addr = signer::address_of(user);
         account::create_account_for_test(signer::address_of(deployer));
         access_control::init_module_for_testing(deployer);
