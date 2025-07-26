@@ -156,12 +156,12 @@ module moneyfi::hyperion_strategy {
         let extra_data = unpack_extra_data(extra_data);
         let position = get_position_data(account, pool);
         let (liquidity_remove, is_full_withdraw) =
-            if (amount_min < (position.amount - position.remaining_amount)) {
+            if (amount_min < (position.amount - position.remaining_amount + position.interest_amount)) {
                 let liquidity =
                     math128::mul_div(
                         position.lp_amount,
                         (amount_min as u128),
-                        ((position.amount - position.remaining_amount) as u128)
+                        ((position.amount - position.remaining_amount + position.interest_amount) as u128)
                     );
                 (liquidity, false)
             } else {
