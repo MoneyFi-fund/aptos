@@ -576,8 +576,7 @@ module moneyfi::hyperion_strategy {
         position.position
     }
 
-    //-- Views
-    #[view]
+    //Public
     public fun get_strategy_stats(asset: Object<Metadata>): (u128, u128, u128) acquires StrategyStats {
         let stats = borrow_global<StrategyStats>(@moneyfi);
         if (ordered_map::contains(&stats.assets, &asset)) {
@@ -587,7 +586,7 @@ module moneyfi::hyperion_strategy {
             (0, 0, 0)
         }
     }
-
+    //-- Views
     #[view]
     public fun pack_extra_data(
         fee_tier: u8,
