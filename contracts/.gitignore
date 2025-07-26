@@ -1,0 +1,5 @@
+.aptos/
+build/
+deps/*
+!deps/hyperion-interface
+tmp/

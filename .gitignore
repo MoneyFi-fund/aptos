@@ -1,0 +1,6 @@
+.zed
+.vscode
+/target
+/tmp
+tmp_test.rs
+build/
