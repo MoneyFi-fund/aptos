@@ -588,6 +588,17 @@ module moneyfi::hyperion_strategy {
     }
     //-- Views
     #[view]
+    public fun get_user_strategy_data(
+        wallet_id: vector<u8>
+    ): HyperionStrategyData {
+        let account = wallet_account::get_wallet_account(wallet_id);
+        if (!exists_hyperion_strategy_data(account)) {
+            assert!(false, E_HYPERION_STRATEGY_DATA_NOT_EXISTS);
+        };
+        wallet_account::get_strategy_data<HyperionStrategyData>(account)
+    }
+    
+    #[view]
     public fun pack_extra_data(
         fee_tier: u8,
         slippage_numerator: u256,
