@@ -625,8 +625,7 @@ module moneyfi::hyperion_strategy {
         total_profit
     }
 
-    #[view]
-    public fun get_pending_rewards_and_fees_usdc(position: Object<Info>): u64 {
+    fun get_pending_rewards_and_fees_usdc(position: Object<Info>): u64 {
         let stablecoin_metadata = object::address_to_object<Metadata>(USDC_ADDRESS);
         let total_stablecoin_amount: u64 = 0;
 

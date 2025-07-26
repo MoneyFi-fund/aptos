@@ -311,6 +311,17 @@ module moneyfi::wallet_account {
         object::address_to_object<WalletAccount>(addr)
     }
 
+    #[view]
+    public fun get_wallet_account_assets(
+        wallet_id: vector<u8>,
+    ): (vector<address>, vector<AccountAsset>) acquires WalletAccount {
+        let account = get_wallet_account(wallet_id);
+        let addr = object::object_address(&account);
+        let wallet_account = borrow_global<WalletAccount>(addr);
+
+        ordered_map::to_vec_pair<address, AccountAsset>(wallet_account.assets)
+    }
+
     public fun get_wallet_account_by_address(
         addr: address
     ): Object<WalletAccount> acquires WalletAccountObject {
