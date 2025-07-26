@@ -13,6 +13,11 @@ module moneyfi::wallet_account_test {
     use moneyfi::test_helpers;
     use moneyfi::wallet_account::{Self, WalletAccount, WalletAccountObject};
 
+     // Test strategy data operations
+    struct TestStrategy has store, drop, copy {
+        value: u64
+    }
+
     fun setup(deployer: &signer, wallet1: &signer, wallet2: &signer): (Object<Metadata>) {
         // setup clock
         timestamp::set_time_has_started_for_testing(
