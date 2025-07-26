@@ -4,7 +4,6 @@ module moneyfi::vault {
     use std::vector;
     use std::string;
     use std::option;
-    use aptos_std::copyable_any::{Self, Any};
     use aptos_framework::ordered_map::{Self, OrderedMap};
     use aptos_framework::object::{Self, Object, ObjectCore, ExtendRef};
     use aptos_framework::event;
@@ -383,7 +382,7 @@ module moneyfi::vault {
         pool: address,
         asset: Object<Metadata>,
         amount: u64,
-        extra_data: Any
+        extra_data: vector <vector<u8>>
     ) {
         access_control::must_be_service_account(sender);
         let account = wallet_account::get_wallet_account(wallet_id);
@@ -416,7 +415,7 @@ module moneyfi::vault {
         asset: Object<Metadata>,
         amount: u64,
         gas_fee: u64,
-        extra_data: Any
+        extra_data: vector <vector<u8>>
     ) acquires Config, FundingAccount {
         access_control::must_be_service_account(sender);
         let account = wallet_account::get_wallet_account(wallet_id);
@@ -499,6 +498,18 @@ module moneyfi::vault {
         );
     }
 
+    public entry fun update_tick(
+        sender: &signer,
+        wallet_id: vector<u8>,
+        strategy_id: u8,
+        pool: address,
+        extra_data: vector <vector<u8>>
+    ) {
+        access_control::must_be_service_account(sender);
+        let account = wallet_account::get_wallet_account(wallet_id);
+        strategy::update_tick(strategy_id, account, pool, extra_data);
+    }
+
     public entry fun swap_assets(
         sender: &signer,
         wallet_id: vector<u8>,
@@ -507,7 +518,7 @@ module moneyfi::vault {
         to_asset: Object<Metadata>,
         from_amount: u64,
         to_amount: u64,
-        extra_data: Any
+        extra_data: vector <vector<u8>>
     ) acquires FundingAccount, Config, LPToken {
         access_control::must_be_service_account(sender);
         let account = wallet_account::get_wallet_account(wallet_id);

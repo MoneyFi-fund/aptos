@@ -1,5 +1,4 @@
 module moneyfi::strategy {
-    use aptos_std::copyable_any::{Self, Any};
     use aptos_framework::object::{Self, Object};
     use aptos_framework::fungible_asset::{Self, Metadata};
 
@@ -19,7 +18,7 @@ module moneyfi::strategy {
     #[view]
     public fun get_strategy_stats(strategy: u8, asset: Object<Metadata>): (u128, u128, u128) {
         if (strategy == STRATEGY_HYPERION) {
-            // return hyperion_strategy::get_stats(asset);
+            return hyperion_strategy::get_strategy_stats(asset);
         };
 
         (0, 0, 0)
@@ -32,7 +31,7 @@ module moneyfi::strategy {
         account: Object<WalletAccount>,
         asset: Object<Metadata>,
         amount: u64,
-        extra_data: Any
+        extra_data: vector <vector<u8>>
     ): u64 {
         // TODO
         let actual_amount =
@@ -57,7 +56,7 @@ module moneyfi::strategy {
         account: Object<WalletAccount>,
         asset: Object<Metadata>,
         min_amount: u64,
-        extra_data: Any
+        extra_data: vector <vector<u8>>
     ): (u64, u64) {
         let (total_deposited_amount, total_withdrawn_amount) =
             if (strategy == STRATEGY_HYPERION) {
@@ -66,6 +65,19 @@ module moneyfi::strategy {
                 )
             } else { (0, 0) };
         (total_deposited_amount, total_withdrawn_amount)
+    }
+
+    public(friend) fun update_tick(
+        strategy: u8,
+        account: Object<WalletAccount>,
+        pool: address,
+        extra_data: vector <vector<u8>>
+    ) {
+        if (strategy == STRATEGY_HYPERION) {
+            hyperion_strategy::update_tick(account, pool, extra_data);
+        } else {
+            // Handle other strategies
+        };
     }
 
     /// return (
@@ -79,7 +91,7 @@ module moneyfi::strategy {
         to_asset: Object<Metadata>,
         amount_in: u64,
         min_amount_out: u64,
-        extra_data: Any
+        extra_data: vector <vector<u8>>
     ): (u64, u64) {
         let (actual_amount_in, actual_amount_out) =
             if (strategy == STRATEGY_HYPERION) {
