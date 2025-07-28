@@ -1,8 +1,8 @@
 module moneyfi::strategy {
-    use aptos_framework::object::{Self, Object};
-    use aptos_framework::fungible_asset::{Self, Metadata};
+    use aptos_framework::object::Object;
+    use aptos_framework::fungible_asset::Metadata;
 
-    use moneyfi::wallet_account::{Self, WalletAccount};
+    use moneyfi::wallet_account::WalletAccount;
     use moneyfi::hyperion_strategy;
 
     friend moneyfi::vault;
@@ -31,7 +31,7 @@ module moneyfi::strategy {
         account: Object<WalletAccount>,
         asset: Object<Metadata>,
         amount: u64,
-        extra_data: vector <vector<u8>>
+        extra_data: vector<vector<u8>>
     ): u64 {
         // TODO
         let actual_amount =
@@ -56,7 +56,7 @@ module moneyfi::strategy {
         account: Object<WalletAccount>,
         asset: Object<Metadata>,
         min_amount: u64,
-        extra_data: vector <vector<u8>>
+        extra_data: vector<vector<u8>>
     ): (u64, u64) {
         let (total_deposited_amount, total_withdrawn_amount) =
             if (strategy == STRATEGY_HYPERION) {
@@ -71,7 +71,7 @@ module moneyfi::strategy {
         strategy: u8,
         account: Object<WalletAccount>,
         pool: address,
-        extra_data: vector <vector<u8>>
+        extra_data: vector<vector<u8>>
     ) {
         if (strategy == STRATEGY_HYPERION) {
             hyperion_strategy::update_tick(account, pool, extra_data);
@@ -91,7 +91,7 @@ module moneyfi::strategy {
         to_asset: Object<Metadata>,
         amount_in: u64,
         min_amount_out: u64,
-        extra_data: vector <vector<u8>>
+        extra_data: vector<vector<u8>>
     ): (u64, u64) {
         let (actual_amount_in, actual_amount_out) =
             if (strategy == STRATEGY_HYPERION) {
