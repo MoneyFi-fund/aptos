@@ -46,18 +46,14 @@ module moneyfi::thala_strategy {
     }
 
     struct Position has copy, drop, store {
-        position: Object<Info>,
         lp_amount: u128, // Liquidity pool amount
         asset: Object<Metadata>,
         pair: Object<Metadata>,
         amount: u64,
-        fee_tier: u8,
-        tick_lower: u32,
-        tick_upper: u32,
+        staked_lp_amount: u64,
+        reward_metadata: Object<Metadata>,
         // The amount of interest earned from the position
-        interest_amount: u64,
-        // The remaining amount after update tick
-        remaining_amount: u64
+        interest_amount: u64
     }
 
     struct ExtraData has drop, copy, store {
