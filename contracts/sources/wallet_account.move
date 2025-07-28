@@ -16,6 +16,7 @@ module moneyfi::wallet_account {
     friend moneyfi::vault;
     friend moneyfi::strategy;
     friend moneyfi::hyperion_strategy;
+    friend moneyfi::thala_strategy;
 
     // -- Constants
     const WALLET_ACCOUNT_SEED: vector<u8> = b"WALLET_ACCOUNT";

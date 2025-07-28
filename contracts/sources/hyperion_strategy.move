@@ -23,11 +23,9 @@ module moneyfi::hyperion_strategy {
     const STRATEGY_ID: u8 = 1; // Hyperion strategy id
     //const FEE_RATE_VEC: vector<u64> = vector[100, 500, 3000, 10000]; fee_tier is [0, 1, 2, 3] for [0.01%, 0.05%, 0.3%, 1%] ??
 
-    //-- Errors
+    // -- Errors
     /// Hyperion Strategy data not exists
     const E_HYPERION_STRATEGY_DATA_NOT_EXISTS: u64 = 1;
-    /// Pool not exists
-    const E_HYPERION_POOL_NOT_EXISTS: u64 = 2;
     /// Position not exists
     const E_HYPERION_POSITION_NOT_EXISTS: u64 = 3;
 

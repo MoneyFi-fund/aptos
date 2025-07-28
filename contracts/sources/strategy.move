@@ -4,6 +4,7 @@ module moneyfi::strategy {
 
     use moneyfi::wallet_account::WalletAccount;
     use moneyfi::hyperion_strategy;
+    use moneyfi::thala_strategy;
 
     friend moneyfi::vault;
 
