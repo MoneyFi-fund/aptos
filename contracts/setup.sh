@@ -79,3 +79,4 @@ function download_package() {
 ## Thala
 download_package --account "$THALASWAP_V2" --package ThalaSwapV2 --output-dir deps/thala/thala_swap
 download_package --account "$THALA_STAKED_LPT" --package ThalaStakedLPT --output-dir deps/thala/thala_staked
+git checkout deps/thala

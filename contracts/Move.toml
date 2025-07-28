@@ -11,6 +11,11 @@ stablecoin = "0xbae207659db88bea0cbead6da0ed00aac12edcdda169e591cd41c94180b46f3b
 [dependencies.dex]
 local = "deps/hyperion-interface"
 
+[dependencies.ThalaSwapV2]
+local = "deps/thala/thala_swap"
+
+[dependencies.ThalaStakedLPT]
+local = "deps/thala/thala_staked"
 
 [dependencies.AptosFramework]
 git = "https://github.com/aptos-labs/aptos-framework.git"

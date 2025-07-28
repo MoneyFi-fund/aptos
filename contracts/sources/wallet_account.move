@@ -313,7 +313,7 @@ module moneyfi::wallet_account {
 
     #[view]
     public fun get_wallet_account_assets(
-        wallet_id: vector<u8>,
+        wallet_id: vector<u8>
     ): (vector<address>, vector<AccountAsset>) acquires WalletAccount {
         let account = get_wallet_account(wallet_id);
         let addr = object::object_address(&account);
