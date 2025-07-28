@@ -394,7 +394,7 @@ module moneyfi::vault {
         asset: Object<Metadata>,
         amount: u64,
         extra_data: vector<u8>
-    ) {
+    ) acquires FundingAccount {
         access_control::must_be_service_account(sender);
         let account = wallet_account::get_wallet_account(wallet_id);
         let amount = strategy::deposit(strategy_id, account, asset, amount, extra_data);
