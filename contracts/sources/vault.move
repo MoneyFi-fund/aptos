@@ -372,21 +372,13 @@ module moneyfi::vault {
         sender: &signer,
         wallet_id: vector<u8>,
         strategy_id: u8,
-        pool: address,
         asset: Object<Metadata>,
         amount: u64,
-        extra_data: vector<vector<u8>>
+        extra_data: vector<u8>
     ) {
         access_control::must_be_service_account(sender);
         let account = wallet_account::get_wallet_account(wallet_id);
-        let amount = strategy::deposit(
-            strategy_id,
-            pool,
-            account,
-            asset,
-            amount,
-            extra_data
-        );
+        let amount = strategy::deposit(strategy_id, account, asset, amount, extra_data);
         wallet_account::distributed_fund(account, asset, amount);
 
         event::emit(
@@ -404,11 +396,10 @@ module moneyfi::vault {
         sender: &signer,
         wallet_id: vector<u8>,
         strategy_id: u8,
-        pool: address,
         asset: Object<Metadata>,
         amount: u64,
         gas_fee: u64,
-        extra_data: vector<vector<u8>>
+        extra_data: vector<u8>
     ) acquires Config, FundingAccount {
         access_control::must_be_service_account(sender);
         let account = wallet_account::get_wallet_account(wallet_id);
@@ -419,14 +410,7 @@ module moneyfi::vault {
         let asset_data = funding_account.get_funding_asset(asset);
 
         let (deposited_amount, withdrawn_amount) =
-            strategy::withdraw(
-                strategy_id,
-                pool,
-                account,
-                asset,
-                amount,
-                extra_data
-            );
+            strategy::withdraw(strategy_id, account, asset, amount, extra_data);
 
         let interest_amount = 0;
         let loss_amount = 0;
@@ -495,12 +479,11 @@ module moneyfi::vault {
         sender: &signer,
         wallet_id: vector<u8>,
         strategy_id: u8,
-        pool: address,
-        extra_data: vector<vector<u8>>
+        extra_data: vector<u8>
     ) {
         access_control::must_be_service_account(sender);
         let account = wallet_account::get_wallet_account(wallet_id);
-        strategy::update_tick(strategy_id, account, pool, extra_data);
+        strategy::update_tick(strategy_id, account, extra_data);
     }
 
     public entry fun swap_assets(
@@ -511,7 +494,7 @@ module moneyfi::vault {
         to_asset: Object<Metadata>,
         from_amount: u64,
         to_amount: u64,
-        extra_data: vector<vector<u8>>
+        extra_data: vector<u8>
     ) acquires FundingAccount, Config, LPToken {
         access_control::must_be_service_account(sender);
         let account = wallet_account::get_wallet_account(wallet_id);
