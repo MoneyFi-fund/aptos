@@ -53,6 +53,7 @@ module moneyfi::strategy {
     /// return (
     ///     total_deposited_amount,
     ///     total_withdrawn_amount,
+    ///     withdraw_fee,
     /// )
     public(friend) fun withdraw(
         strategy: u8,
@@ -60,7 +61,7 @@ module moneyfi::strategy {
         asset: Object<Metadata>,
         min_amount: u64,
         extra_data: vector<u8>
-    ): (u64, u64) {
+    ): (u64, u64, u64) {
         let (total_deposited_amount, total_withdrawn_amount) =
             if (strategy == STRATEGY_HYPERION) {
                 hyperion_strategy::withdraw_fund_from_hyperion_single(
@@ -68,7 +69,7 @@ module moneyfi::strategy {
                 )
             } else { (0, 0) };
 
-        (total_deposited_amount, total_withdrawn_amount)
+        (total_deposited_amount, total_withdrawn_amount, 0)
     }
 
     public(friend) fun update_tick(
