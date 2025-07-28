@@ -1,5 +1,4 @@
 module moneyfi::storage {
-    use std::signer;
     use aptos_framework::object::{Self, Object, ObjectCore, TransferRef, ExtendRef};
 
     use moneyfi::access_control;
