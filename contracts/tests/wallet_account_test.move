@@ -13,7 +13,7 @@ module moneyfi::wallet_account_test {
     use moneyfi::test_helpers;
     use moneyfi::wallet_account::{Self, WalletAccount, WalletAccountObject};
 
-     // Test strategy data operations
+    // Test strategy data operations
     struct TestStrategy has store, drop, copy {
         value: u64
     }
@@ -52,7 +52,7 @@ module moneyfi::wallet_account_test {
 
         let wallet1_addr = signer::address_of(wallet1);
 
-        /// register
+        // register
         wallet_account::register(wallet1, deployer, b"wallet1", vector[]);
         let account1 = wallet_account::get_wallet_account(b"wallet1");
         let account2 = wallet_account::get_wallet_account_by_address(wallet1_addr);

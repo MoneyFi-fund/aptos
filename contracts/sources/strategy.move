@@ -1,4 +1,5 @@
 module moneyfi::strategy {
+    use std::vector;
     use aptos_framework::object::Object;
     use aptos_framework::fungible_asset::Metadata;
 
@@ -11,21 +12,24 @@ module moneyfi::strategy {
     const STRATEGY_HYPERION: u8 = 1;
     const STRATEGY_ARIES: u8 = 2;
 
-    // return (
+    // return [
     //     current_tvl,
     //     total_deposited,
     //     total_withdrawn,
-    // )
+    // ]
     #[view]
-    public fun get_strategy_stats(strategy: u8, asset: Object<Metadata>): (u128, u128, u128) {
+    public fun get_strategy_stats(strategy: u8, asset: Object<Metadata>): vector<u128> {
+        let stats = vector[];
+
         if (strategy == STRATEGY_HYPERION) {
-            return hyperion_strategy::get_strategy_stats(asset);
+            let (v1, v2, v3) = hyperion_strategy::get_strategy_stats(asset);
+            vector::append(&mut stats, vector[v1, v2, v3]);
         };
 
-        (0, 0, 0)
+        stats
     }
 
-    /// return (deposited_amount)
+    /// return deposited_amount
     public(friend) fun deposit(
         strategy: u8,
         account: Object<WalletAccount>,
@@ -43,12 +47,14 @@ module moneyfi::strategy {
                 // Handle other strategies
                 0
             };
+
         actual_amount
     }
 
     /// return (
     ///     total_deposited_amount,
     ///     total_withdrawn_amount,
+    ///     withdraw_fee,
     /// )
     public(friend) fun withdraw(
         strategy: u8,
@@ -56,14 +62,15 @@ module moneyfi::strategy {
         asset: Object<Metadata>,
         min_amount: u64,
         extra_data: vector<u8>
-    ): (u64, u64) {
+    ): (u64, u64, u64) {
         let (total_deposited_amount, total_withdrawn_amount) =
             if (strategy == STRATEGY_HYPERION) {
                 hyperion_strategy::withdraw_fund_from_hyperion_single(
                     account, asset, min_amount, extra_data
                 )
             } else { (0, 0) };
-        (total_deposited_amount, total_withdrawn_amount)
+
+        (total_deposited_amount, total_withdrawn_amount, 0)
     }
 
     public(friend) fun update_tick(
@@ -78,7 +85,7 @@ module moneyfi::strategy {
 
     /// return (
     ///     actual_amount_in,
-    ///     actual_amount_out
+    ///     actual_amount_out,
     /// )
     public(friend) fun swap(
         strategy: u8,
@@ -100,6 +107,7 @@ module moneyfi::strategy {
                     extra_data
                 )
             } else { (0, 0) };
+
         (actual_amount_in, actual_amount_out)
     }
 }

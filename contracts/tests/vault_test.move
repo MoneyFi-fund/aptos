@@ -98,7 +98,7 @@ module moneyfi::vault_test {
     }
 
     #[test(deployer = @moneyfi, wallet1 = @0x111, wallet2 = @0x222)]
-    #[expected_failure]
+    #[expected_failure(abort_code = 0x50008, location = aptos_framework::fungible_asset)]
     fun test_deployer_transfer_wallet_account_asset(
         deployer: &signer, wallet1: &signer, wallet2: &signer
     ) {
