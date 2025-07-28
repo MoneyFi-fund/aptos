@@ -197,6 +197,7 @@ module moneyfi::hyperion_strategy {
                 position.amount = position.amount - total;
                 position.interest_amount = 0;
                 position.remaining_amount = 0;
+                position.lp_amount = position_v3::get_liquidity(position.position);
                 (set_position_data(account, pool, position), total)
             } else {
                 (remove_position(account, pool), position.amount)
