@@ -7,7 +7,7 @@ module moneyfi::wallet_account {
     use aptos_std::ordered_map::{Self, OrderedMap};
     use aptos_framework::event;
     use aptos_framework::object::{Self, Object, ExtendRef};
-    use aptos_framework::fungible_asset::{Self, Metadata};
+    use aptos_framework::fungible_asset::Metadata;
     use aptos_framework::timestamp;
 
     use moneyfi::access_control;
@@ -29,6 +29,7 @@ module moneyfi::wallet_account {
     const E_WALLET_ACCOUNT_NOT_CONNECTED: u64 = 5;
     const E_WALLET_ACCOUNT_ALREADY_CONNECTED: u64 = 6;
     const E_INVALID_ARGUMENT: u64 = 7;
+    const E_STRATEGY_DATA_NOT_EXISTS: u64 = 8;
 
     // -- Structs
     #[resource_group_member(group = aptos_framework::object::ObjectGroup)]
@@ -165,7 +166,10 @@ module moneyfi::wallet_account {
         let wallet_account = borrow_global_mut<WalletAccount>(account_addr);
 
         let asset_data = wallet_account.get_asset(asset);
-        assert!(amount > 0 && asset_data.current_amount >= amount);
+        assert!(
+            amount > 0 && asset_data.current_amount >= amount,
+            E_INVALID_ARGUMENT
+        );
 
         let lp_amount =
             ((amount as u128) * (asset_data.lp_amount as u128)
@@ -195,7 +199,8 @@ module moneyfi::wallet_account {
         let asset_data_0 = wallet_account.get_asset(from_asset);
         let asset_data_1 = wallet_account.get_asset(to_asset);
         assert!(
-            from_amount > 0 && asset_data_0.current_amount >= from_amount
+            from_amount > 0 && asset_data_0.current_amount >= from_amount,
+            E_INVALID_ARGUMENT
         );
 
         let lp_amount_0 =
@@ -223,7 +228,7 @@ module moneyfi::wallet_account {
         let wallet_account = borrow_global_mut<WalletAccount>(account_addr);
 
         let asset_data = wallet_account.get_asset(asset);
-        assert!(asset_data.current_amount >= amount);
+        assert!(asset_data.current_amount >= amount, E_INVALID_ARGUMENT);
 
         asset_data.distributed_amount = asset_data.distributed_amount + amount;
         asset_data.current_amount = asset_data.current_amount - amount;
@@ -243,7 +248,7 @@ module moneyfi::wallet_account {
 
         let wallet_account = borrow_global_mut<WalletAccount>(account_addr);
         let asset_data = wallet_account.get_asset(asset);
-        assert!(asset_data.distributed_amount >= distributed_amount);
+        assert!(asset_data.distributed_amount >= distributed_amount, E_INVALID_ARGUMENT);
 
         asset_data.distributed_amount = asset_data.distributed_amount
             - distributed_amount;
@@ -272,7 +277,10 @@ module moneyfi::wallet_account {
         account: Object<WalletAccount>
     ): T acquires StrategyData {
         let addr = object::object_address(&account);
-        assert!(exists<StrategyData<T>>(addr));
+        assert!(
+            exists<StrategyData<T>>(addr),
+            E_STRATEGY_DATA_NOT_EXISTS
+        );
 
         let strategy_data = borrow_global<StrategyData<T>>(addr);
 

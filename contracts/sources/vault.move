@@ -5,16 +5,9 @@ module moneyfi::vault {
     use std::string;
     use std::option;
     use aptos_framework::ordered_map::{Self, OrderedMap};
-    use aptos_framework::object::{Self, Object, ObjectCore, ExtendRef};
+    use aptos_framework::object::{Self, Object, ExtendRef};
     use aptos_framework::event;
-    use aptos_framework::fungible_asset::{
-        Self,
-        FungibleAsset,
-        Metadata,
-        MintRef,
-        TransferRef,
-        BurnRef
-    };
+    use aptos_framework::fungible_asset::{Self, Metadata, MintRef, TransferRef, BurnRef};
     use aptos_framework::primary_fungible_store;
     use aptos_framework::timestamp::now_seconds;
 
@@ -356,7 +349,7 @@ module moneyfi::vault {
         access_control::must_be_admin(sender);
 
         let funding_account_addr = get_funding_account_address();
-        let funding_account = borrow_global_mut<FundingAccount>(funding_account_addr);
+        let funding_account = borrow_global<FundingAccount>(funding_account_addr);
 
         let (asset_addrs, asset_datas) = ordered_map::to_vec_pair(funding_account.assets);
         let len = vector::length(&asset_addrs);
@@ -379,21 +372,13 @@ module moneyfi::vault {
         sender: &signer,
         wallet_id: vector<u8>,
         strategy_id: u8,
-        pool: address,
         asset: Object<Metadata>,
         amount: u64,
-        extra_data: vector <vector<u8>>
+        extra_data: vector<u8>
     ) {
         access_control::must_be_service_account(sender);
         let account = wallet_account::get_wallet_account(wallet_id);
-        let amount = strategy::deposit(
-            strategy_id,
-            pool,
-            account,
-            asset,
-            amount,
-            extra_data
-        );
+        let amount = strategy::deposit(strategy_id, account, asset, amount, extra_data);
         wallet_account::distributed_fund(account, asset, amount);
 
         event::emit(
@@ -411,11 +396,10 @@ module moneyfi::vault {
         sender: &signer,
         wallet_id: vector<u8>,
         strategy_id: u8,
-        pool: address,
         asset: Object<Metadata>,
         amount: u64,
         gas_fee: u64,
-        extra_data: vector <vector<u8>>
+        extra_data: vector<u8>
     ) acquires Config, FundingAccount {
         access_control::must_be_service_account(sender);
         let account = wallet_account::get_wallet_account(wallet_id);
@@ -426,14 +410,7 @@ module moneyfi::vault {
         let asset_data = funding_account.get_funding_asset(asset);
 
         let (deposited_amount, withdrawn_amount) =
-            strategy::withdraw(
-                strategy_id,
-                pool,
-                account,
-                asset,
-                amount,
-                extra_data
-            );
+            strategy::withdraw(strategy_id, account, asset, amount, extra_data);
 
         let interest_amount = 0;
         let loss_amount = 0;
@@ -502,12 +479,11 @@ module moneyfi::vault {
         sender: &signer,
         wallet_id: vector<u8>,
         strategy_id: u8,
-        pool: address,
-        extra_data: vector <vector<u8>>
+        extra_data: vector<u8>
     ) {
         access_control::must_be_service_account(sender);
         let account = wallet_account::get_wallet_account(wallet_id);
-        strategy::update_tick(strategy_id, account, pool, extra_data);
+        strategy::update_tick(strategy_id, account, extra_data);
     }
 
     public entry fun swap_assets(
@@ -518,7 +494,7 @@ module moneyfi::vault {
         to_asset: Object<Metadata>,
         from_amount: u64,
         to_amount: u64,
-        extra_data: vector <vector<u8>>
+        extra_data: vector<u8>
     ) acquires FundingAccount, Config, LPToken {
         access_control::must_be_service_account(sender);
         let account = wallet_account::get_wallet_account(wallet_id);
@@ -587,7 +563,7 @@ module moneyfi::vault {
     #[view]
     public fun get_total_assets(): (vector<address>, vector<u128>) acquires FundingAccount {
         let funding_account_addr = get_funding_account_address();
-        let funding_account = borrow_global_mut<FundingAccount>(funding_account_addr);
+        let funding_account = borrow_global<FundingAccount>(funding_account_addr);
         let (keys, values) = ordered_map::to_vec_pair(funding_account.assets);
         let amount_values = vector::map_ref(&values, |v| v.amount);
 
@@ -764,7 +740,7 @@ module moneyfi::vault {
     }
 
     fun add_referral_fees(
-        self: &mut FundingAsset, data: OrderedMap<address, u64>
+        self: &FundingAsset, data: OrderedMap<address, u64>
     ) {
         let pending_referral_fees = self.pending_referral_fees;
         ordered_map::for_each(
