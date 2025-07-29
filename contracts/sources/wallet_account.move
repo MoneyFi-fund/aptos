@@ -19,6 +19,8 @@ module moneyfi::wallet_account {
 
     #[test_only]
     friend moneyfi::wallet_account_test;
+    #[test_only]
+    friend moneyfi::vault_test;
 
     // -- Constants
     const WALLET_ACCOUNT_SEED: vector<u8> = b"WALLET_ACCOUNT";
@@ -47,15 +49,19 @@ module moneyfi::wallet_account {
         extend_ref: ExtendRef
     }
 
-    struct AccountAsset has drop, store, copy {
+    struct AccountAsset has store, copy {
         current_amount: u64,
+        // accumulated deposited amount
         deposited_amount: u64,
         lp_amount: u64,
         swap_out_amount: u64,
         swap_in_amount: u64,
         distributed_amount: u64,
+        // accumulated withdrawn amount
         withdrawn_amount: u64,
+        // accumulated interest (gross), net_interest = interest_amount - interest_share_amount
         interest_amount: u64,
+        // accumulated shared interest
         interest_share_amount: u64,
         rewards: OrderedMap<address, u64>
     }
@@ -152,13 +158,10 @@ module moneyfi::wallet_account {
     ) acquires WalletAccount {
         let account_addr = object::object_address(&account);
         let wallet_account = borrow_global_mut<WalletAccount>(account_addr);
-
-        let asset_data = wallet_account.get_asset(asset);
+        let asset_data = wallet_account.get_asset_mut(&asset);
         asset_data.deposited_amount = asset_data.deposited_amount + amount;
         asset_data.current_amount = asset_data.current_amount + amount;
         asset_data.lp_amount = asset_data.lp_amount + lp_amount;
-
-        wallet_account.set_asset(asset, asset_data);
     }
 
     /// return amount of lp token
@@ -168,21 +171,20 @@ module moneyfi::wallet_account {
         let account_addr = object::object_address(&account);
         let wallet_account = borrow_global_mut<WalletAccount>(account_addr);
 
-        let asset_data = wallet_account.get_asset(asset);
+        let asset_data = wallet_account.get_asset_mut(&asset);
         assert!(
             amount > 0 && asset_data.current_amount >= amount,
             E_INVALID_ARGUMENT
         );
 
-        let lp_amount =
-            ((amount as u128) * (asset_data.lp_amount as u128)
-                / (asset_data.current_amount as u128)) as u64;
+        let total = asset_data.current_amount + asset_data.distributed_amount;
+
+        let lp_amount = ((amount as u128) * (asset_data.lp_amount as u128)
+            / (total as u128)) as u64;
 
         asset_data.withdrawn_amount = asset_data.withdrawn_amount + amount;
         asset_data.current_amount = asset_data.current_amount - amount;
         asset_data.lp_amount = asset_data.lp_amount - lp_amount;
-
-        wallet_account.set_asset(asset, asset_data);
 
         lp_amount
     }
@@ -199,27 +201,24 @@ module moneyfi::wallet_account {
         let account_addr = object::object_address(&account);
         let wallet_account = borrow_global_mut<WalletAccount>(account_addr);
 
-        let asset_data_0 = wallet_account.get_asset(from_asset);
-        let asset_data_1 = wallet_account.get_asset(to_asset);
+        let asset_data_0 = wallet_account.get_asset_mut(&from_asset);
         assert!(
             from_amount > 0 && asset_data_0.current_amount >= from_amount,
             E_INVALID_ARGUMENT
         );
 
+        let total_0 = asset_data_0.current_amount + asset_data_0.distributed_amount;
         let lp_amount_0 =
-            ((from_amount as u128) * (asset_data_0.lp_amount as u128)
-                / (asset_data_0.current_amount as u128)) as u64;
+            ((from_amount as u128) * (asset_data_0.lp_amount as u128) / (total_0 as u128)) as u64;
 
         asset_data_0.swap_out_amount = asset_data_0.swap_out_amount + from_amount;
         asset_data_0.current_amount = asset_data_0.current_amount - from_amount;
         asset_data_0.lp_amount = asset_data_0.lp_amount - lp_amount_0;
 
+        let asset_data_1 = wallet_account.get_asset_mut(&to_asset);
         asset_data_1.lp_amount = asset_data_1.lp_amount + to_lp_amount;
         asset_data_1.current_amount = asset_data_1.current_amount + to_amount;
         asset_data_1.swap_in_amount = asset_data_1.swap_in_amount + to_amount;
-
-        wallet_account.set_asset(from_asset, asset_data_0);
-        wallet_account.set_asset(to_asset, asset_data_1);
 
         lp_amount_0
     }
@@ -230,12 +229,11 @@ module moneyfi::wallet_account {
         let account_addr = object::object_address(&account);
         let wallet_account = borrow_global_mut<WalletAccount>(account_addr);
 
-        let asset_data = wallet_account.get_asset(asset);
+        let asset_data = wallet_account.get_asset_mut(&asset);
         assert!(asset_data.current_amount >= amount, E_INVALID_ARGUMENT);
 
         asset_data.distributed_amount = asset_data.distributed_amount + amount;
         asset_data.current_amount = asset_data.current_amount - amount;
-        wallet_account.set_asset(asset, asset_data);
     }
 
     public(friend) fun collected_fund(
@@ -250,7 +248,7 @@ module moneyfi::wallet_account {
         let account_addr = object::object_address(&account);
 
         let wallet_account = borrow_global_mut<WalletAccount>(account_addr);
-        let asset_data = wallet_account.get_asset(asset);
+        let asset_data = wallet_account.get_asset_mut(&asset);
         assert!(asset_data.distributed_amount >= distributed_amount, E_INVALID_ARGUMENT);
 
         asset_data.distributed_amount = asset_data.distributed_amount
@@ -259,8 +257,6 @@ module moneyfi::wallet_account {
         asset_data.interest_amount = asset_data.interest_amount + interest_amount;
         asset_data.interest_share_amount =
             asset_data.interest_share_amount + interest_share_amount;
-
-        wallet_account.set_asset(asset, asset_data);
     }
 
     public(friend) fun set_strategy_data<T: store + drop + copy>(
@@ -320,6 +316,23 @@ module moneyfi::wallet_account {
         );
 
         object::address_to_object<WalletAccount>(addr)
+    }
+
+    #[view]
+    public fun get_wallet_account_asset(
+        wallet_id: vector<u8>, asset: Object<Metadata>
+    ): AccountAsset acquires WalletAccount {
+        let addr = get_wallet_account_object_address(wallet_id);
+        assert!(
+            object::object_exists<WalletAccount>(addr),
+            error::not_found(E_WALLET_ACCOUNT_EXISTS)
+        );
+
+        let account = borrow_global<WalletAccount>(addr);
+        let asset_addr = object::object_address(&asset);
+        assert!(ordered_map::contains(&account.assets, &asset_addr));
+
+        *ordered_map::borrow(&account.assets, &asset_addr)
     }
 
     #[view]
@@ -387,31 +400,27 @@ module moneyfi::wallet_account {
         referrers
     }
 
-    fun get_asset(self: &WalletAccount, asset: Object<Metadata>): AccountAsset {
-        let addr = object::object_address(&asset);
-        if (ordered_map::contains(&self.assets, &addr)) {
-            return *ordered_map::borrow(&self.assets, &addr);
+    fun get_asset_mut(self: &mut WalletAccount, addr: &Object<Metadata>): &mut AccountAsset {
+        if (!ordered_map::contains(&self.assets, &object::object_address(addr))) {
+            ordered_map::add(
+                &mut self.assets,
+                object::object_address(addr),
+                AccountAsset {
+                    current_amount: 0,
+                    deposited_amount: 0,
+                    lp_amount: 0,
+                    swap_out_amount: 0,
+                    swap_in_amount: 0,
+                    distributed_amount: 0,
+                    withdrawn_amount: 0,
+                    interest_amount: 0,
+                    interest_share_amount: 0,
+                    rewards: ordered_map::new()
+                }
+            );
         };
 
-        AccountAsset {
-            current_amount: 0,
-            deposited_amount: 0,
-            lp_amount: 0,
-            swap_out_amount: 0,
-            swap_in_amount: 0,
-            distributed_amount: 0,
-            withdrawn_amount: 0,
-            interest_amount: 0,
-            interest_share_amount: 0,
-            rewards: ordered_map::new()
-        }
-    }
-
-    fun set_asset(
-        self: &mut WalletAccount, asset: Object<Metadata>, data: AccountAsset
-    ) {
-        let addr = object::object_address(&asset);
-        ordered_map::upsert(&mut self.assets, addr, data);
+        ordered_map::borrow_mut(&mut self.assets, &object::object_address(addr))
     }
 
     #[test_only]
