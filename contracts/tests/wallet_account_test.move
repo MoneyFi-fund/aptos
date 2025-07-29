@@ -58,4 +58,44 @@ module moneyfi::wallet_account_test {
         let account2 = wallet_account::get_wallet_account_by_address(wallet1_addr);
         assert!(account1 == account2);
     }
+
+    #[test(
+        deployer = @moneyfi, w1 = @0x111, w2 = @0x222, w3 = @0x333
+    )]
+    fun test_get_referrer_addresses(
+        deployer: &signer,
+        w1: &signer,
+        w2: &signer,
+        w3: &signer
+    ) {
+        storage::init_module_for_testing(deployer);
+
+        let a1 = wallet_account::create_wallet_account_for_test(w1, b"w1", 0, vector[]);
+        let referrers = wallet_account::get_referrer_addresses(a1, 2);
+        assert!(referrers == vector[]);
+
+        let a2 = wallet_account::create_wallet_account_for_test(w2, b"w2", 0, b"w1");
+        let a3 = wallet_account::create_wallet_account_for_test(w3, b"w3", 0, b"w2");
+
+        let referrers = wallet_account::get_referrer_addresses(a2, 3);
+        assert!(
+            referrers
+                == vector[wallet_account::get_wallet_account_object_address(b"w1")]
+        );
+
+        let referrers = wallet_account::get_referrer_addresses(a3, 3);
+        assert!(
+            referrers
+                == vector[
+                    wallet_account::get_wallet_account_object_address(b"w2"),
+                    wallet_account::get_wallet_account_object_address(b"w1")
+                ]
+        );
+
+        let referrers = wallet_account::get_referrer_addresses(a3, 1);
+        assert!(
+            referrers
+                == vector[wallet_account::get_wallet_account_object_address(b"w2")]
+        );
+    }
 }
