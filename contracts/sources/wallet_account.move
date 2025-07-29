@@ -1,5 +1,6 @@
 module moneyfi::wallet_account {
     use std::bcs;
+    use std::debug;
     use std::signer;
     use std::vector;
     use std::error;
@@ -17,6 +18,9 @@ module moneyfi::wallet_account {
     friend moneyfi::strategy;
     friend moneyfi::hyperion_strategy;
     friend moneyfi::thala_strategy;
+
+    #[test_only]
+    friend moneyfi::wallet_account_test;
 
     // -- Constants
     const WALLET_ACCOUNT_SEED: vector<u8> = b"WALLET_ACCOUNT";
@@ -376,10 +380,8 @@ module moneyfi::wallet_account {
             if (vector::is_empty(&account.referrer_wallet_id)) {
                 break;
             };
-            vector::push_back(
-                &mut referrers,
-                get_wallet_account_object_address(account.referrer_wallet_id)
-            );
+            addr = get_wallet_account_object_address(account.referrer_wallet_id);
+            vector::push_back(&mut referrers, addr);
 
             i = i + 1;
         };
@@ -413,9 +415,6 @@ module moneyfi::wallet_account {
         let addr = object::object_address(&asset);
         ordered_map::upsert(&mut self.assets, addr, data);
     }
-
-    #[test_only]
-    friend moneyfi::wallet_account_test;
 
     #[test_only]
     public fun create_wallet_account_for_test(
