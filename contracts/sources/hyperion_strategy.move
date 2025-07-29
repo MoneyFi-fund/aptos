@@ -190,7 +190,6 @@ module moneyfi::hyperion_strategy {
             extra_data.slippage_numerator,
             extra_data.slippage_denominator
         );
-        let total_interest = position.interest_amount + interest;
         let balance_after = primary_fungible_store::balance(wallet_address, asset);
         let (strategy_data, total_deposited_amount) =
             if (!is_full_withdraw) {
@@ -204,8 +203,9 @@ module moneyfi::hyperion_strategy {
                 (remove_position(account, extra_data.pool), position.amount)
             };
         wallet_account::set_strategy_data(account, strategy_data);
-        let total_withdrawn_amount = total_deposited_amount + total_interest;
-        strategy_stats_withdraw(asset, total_deposited_amount, total_interest);
+        let total_withdrawn_amount =
+            balance_after - balance_before + position.remaining_amount + interest;
+        strategy_stats_withdraw(asset, total_deposited_amount, total_withdrawn_amount);
         (total_deposited_amount, total_withdrawn_amount)
     }
 
@@ -454,7 +454,7 @@ module moneyfi::hyperion_strategy {
     }
 
     fun strategy_stats_withdraw(
-        asset: Object<Metadata>, deposit_amount: u64, interest: u64
+        asset: Object<Metadata>, deposit_amount: u64, withdraw_amount: u64
     ) acquires StrategyStats {
         let stats = borrow_global_mut<StrategyStats>(@moneyfi);
         if (ordered_map::contains(&stats.assets, &asset)) {
@@ -462,7 +462,7 @@ module moneyfi::hyperion_strategy {
             asset_stats.total_value_locked =
                 asset_stats.total_value_locked - (deposit_amount as u128);
             asset_stats.total_withdrawn =
-                asset_stats.total_withdrawn + ((deposit_amount + interest) as u128);
+                asset_stats.total_withdrawn + (withdraw_amount as u128);
         } else {
             assert!(false, E_HYPERION_POSITION_NOT_EXISTS);
         };
