@@ -1,6 +1,5 @@
 module moneyfi::wallet_account {
     use std::bcs;
-    use std::debug;
     use std::signer;
     use std::vector;
     use std::error;
