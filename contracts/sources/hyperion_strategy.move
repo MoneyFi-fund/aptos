@@ -66,7 +66,8 @@ module moneyfi::hyperion_strategy {
         slippage_numerator: u256,
         slippage_denominator: u256,
         threshold_numerator: u256,
-        threshold_denominator: u256
+        threshold_denominator: u256,
+        withdraw_fee: u64
     }
 
     //--initialization
@@ -150,7 +151,7 @@ module moneyfi::hyperion_strategy {
         actual_amount // returns (actual_amount)
     }
 
-    // return (total_deposited_amount, total_withdrawn_amount)
+    // return (total_deposited_amount, total_withdrawn_amount, withdraw_fee)
     public(friend) fun withdraw_fund_from_hyperion_single(
         account: Object<WalletAccount>,
         asset: Object<Metadata>,
@@ -206,7 +207,7 @@ module moneyfi::hyperion_strategy {
         let total_withdrawn_amount =
             balance_after - balance_before + position.remaining_amount + interest;
         strategy_stats_withdraw(asset, total_deposited_amount, total_withdrawn_amount);
-        (total_deposited_amount, total_withdrawn_amount)
+        (total_deposited_amount, total_withdrawn_amount, extra_data.withdraw_fee)
     }
 
     public(friend) fun update_tick(
@@ -598,7 +599,8 @@ module moneyfi::hyperion_strategy {
             slippage_numerator: bcs_stream::deserialize_u256(&mut bcs),
             slippage_denominator: bcs_stream::deserialize_u256(&mut bcs),
             threshold_numerator: bcs_stream::deserialize_u256(&mut bcs),
-            threshold_denominator: bcs_stream::deserialize_u256(&mut bcs)
+            threshold_denominator: bcs_stream::deserialize_u256(&mut bcs),
+            withdraw_fee: bcs_stream::deserialize_u64(&mut bcs)
         };
         extra_data
     }
@@ -620,7 +622,8 @@ module moneyfi::hyperion_strategy {
         slippage_numerator: u256,
         slippage_denominator: u256,
         threshold_numerator: u256,
-        threshold_denominator: u256
+        threshold_denominator: u256,
+        withdraw_fee: u64
     ): vector<u8> {
         let extra_data: vector<u8> = vector[];
         vector::append(&mut extra_data, to_bytes<u8>(&fee_tier));
@@ -629,6 +632,7 @@ module moneyfi::hyperion_strategy {
         vector::append(&mut extra_data, to_bytes<u256>(&slippage_denominator));
         vector::append(&mut extra_data, to_bytes<u256>(&threshold_numerator));
         vector::append(&mut extra_data, to_bytes<u256>(&threshold_denominator));
+        vector::append(&mut extra_data, to_bytes<u64>(&withdraw_fee));
         extra_data
     }
 
