@@ -441,4 +441,34 @@ module moneyfi::wallet_account {
     ): signer acquires WalletAccount, WalletAccountObject {
         get_wallet_account_signer(get_wallet_account_by_address(addr))
     }
+    
+    #[test_only]
+    public fun get_wallet_account_assets_for_test(
+        wallet_id: vector<u8>
+    ): (vector<address>, vector<AccountAsset>) acquires WalletAccount {
+        get_wallet_account_assets(wallet_id)
+    }
+
+     #[view]
+    public fun get_wallet_account_assets_detail_for_test(
+         wallet_id: vector<u8>, asset: Object<Metadata>
+    ): (u64, u64, u64, u64,u64, u64, u64,u64,u64, OrderedMap<address, u64>) acquires WalletAccount{
+        let account = get_wallet_account(wallet_id);
+        let addr = object::object_address(&account);
+        let wallet_account = borrow_global<WalletAccount>(addr);
+
+        let account_asset = *ordered_map::borrow(&wallet_account.assets, &object::object_address(&asset));
+        (
+            account_asset.current_amount,
+            account_asset.deposited_amount,
+            account_asset.lp_amount,
+            account_asset.swap_out_amount,
+            account_asset.swap_in_amount,
+            account_asset.distributed_amount,
+            account_asset.withdrawn_amount,
+            account_asset.interest_amount,
+            account_asset.interest_share_amount,
+            account_asset.rewards
+        )
+    }
 }
