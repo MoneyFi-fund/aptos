@@ -62,14 +62,16 @@ module moneyfi::strategy {
         min_amount: u64,
         extra_data: vector<u8>
     ): (u64, u64, u64) {
-        let (total_deposited_amount, total_withdrawn_amount) =
+        let (total_deposited_amount, total_withdrawn_amount, withdraw_fee) =
             if (strategy == STRATEGY_HYPERION) {
                 hyperion_strategy::withdraw_fund_from_hyperion_single(
                     account, asset, min_amount, extra_data
                 )
-            } else { (0, 0) };
+            } else {
+                (0, 0, 0)
+            };
 
-        (total_deposited_amount, total_withdrawn_amount, 0)
+        (total_deposited_amount, total_withdrawn_amount, withdraw_fee)
     }
 
     public(friend) fun update_tick(
