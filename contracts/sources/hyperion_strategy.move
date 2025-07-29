@@ -159,7 +159,7 @@ module moneyfi::hyperion_strategy {
         asset: Object<Metadata>,
         amount_min: u64,
         extra_data: vector<u8>
-    ): (u64, u64) acquires StrategyStats {
+    ): (u64, u64, u64) acquires StrategyStats {
         let extra_data = unpack_extra_data(extra_data);
         let position = get_position_data(account, extra_data.pool);
         let (liquidity_remove, is_full_withdraw) =
