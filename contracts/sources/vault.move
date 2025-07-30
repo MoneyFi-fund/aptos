@@ -393,7 +393,7 @@ module moneyfi::vault {
         strategy_id: u8,
         asset: Object<Metadata>,
         amount: u64,
-        extra_data: vector<u8>
+        extra_data: vector<vector<u8>>
     ) acquires FundingAccount {
         access_control::must_be_service_account(sender);
         let account = wallet_account::get_wallet_account(wallet_id);
@@ -426,7 +426,7 @@ module moneyfi::vault {
         asset: Object<Metadata>,
         amount: u64,
         gas_fee: u64,
-        extra_data: vector<u8>
+        extra_data: vector<vector<u8>>
     ) acquires Config, FundingAccount {
         access_control::must_be_service_account(sender);
         let account = wallet_account::get_wallet_account(wallet_id);
@@ -514,7 +514,7 @@ module moneyfi::vault {
         sender: &signer,
         wallet_id: vector<u8>,
         strategy_id: u8,
-        extra_data: vector<u8>
+        extra_data: vector<vector<u8>>
     ) {
         access_control::must_be_service_account(sender);
         let account = wallet_account::get_wallet_account(wallet_id);
@@ -529,7 +529,7 @@ module moneyfi::vault {
         to_asset: Object<Metadata>,
         from_amount: u64,
         to_amount: u64,
-        extra_data: vector<u8>
+        extra_data: vector<vector<u8>>
     ) acquires FundingAccount, Config, LPToken {
         access_control::must_be_service_account(sender);
         let account = wallet_account::get_wallet_account(wallet_id);
