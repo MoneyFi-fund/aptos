@@ -7,6 +7,7 @@ HYPERION_ADDRESS="0x8b4a2c4bb53857c718a04c020b98f8c2e1f99a68b0f57389a8bf5434cd22
 
 THALASWAP_V2="0x7730cd28ee1cdc9e999336cbc430f99e7c44397c0aa77516f6f23a78559bb5"
 THALA_STAKED_LPT="bab780b31d9cb1d61a47d3a09854c765e6b04e493f112c63294fabf8376d86a1"
+THALASWAP_V1="0x48271d39d0b05bd6efca2278f22277d6fcc375504f9839fd73f74ace240861af"
 
 set -e
 
@@ -77,6 +78,7 @@ function download_package() {
 # git checkout deps/hyperion
 
 ## Thala
+download_package --account "$THALASWAP_V1" --package ThalaSwap --output-dir deps/thala/thala_swap_v1
 download_package --account "$THALASWAP_V2" --package ThalaSwapV2 --output-dir deps/thala/thala_swap
 download_package --account "$THALA_STAKED_LPT" --package ThalaStakedLPT --output-dir deps/thala/thala_staked
 git checkout deps/thala

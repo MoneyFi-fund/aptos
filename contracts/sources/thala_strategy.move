@@ -10,8 +10,9 @@ module moneyfi::thala_strategy {
     use aptos_framework::primary_fungible_store;
     use aptos_framework::timestamp;
     use aptos_framework::fungible_asset::Metadata;
+    use aptos_framework::coin;
 
-    use thalaswap_v2::pool;
+    use thalaswap_v2::pool::{Self, Pool};
     use thalaswap_v2::coin_wrapper::{Self, Notacoin};
     use thala_staked_lpt::staked_lpt;
 
@@ -59,6 +60,7 @@ module moneyfi::thala_strategy {
 
     struct ExtraData has drop, copy, store {
         pool: address
+        reward_asset_addr: address
     }
 
     //--initialization
@@ -78,8 +80,23 @@ module moneyfi::thala_strategy {
         amount_in: u64,
         extra_data: vector<u8>
     ): u64 {
-        0
-        //TODO
+        let extra_data = unpack_extra_data(extra_data);
+        let position = create_or_get_exist_position(account, asset, extra_data);
+        let wallet_signer = wallet_account::get_wallet_account_signer(account);
+        let balance_pair_before =
+            primary_fungible_store::balance(
+                signer::address_of(&wallet_signer), position.pair
+            );
+        let balance_asset_before =
+            primary_fungible_store::balance(
+                signer::address_of(&wallet_signer), position.asset
+            );
+
+        coin_wrapper::add_liquidity_stable<Notacoin, Notacoin, Notacoin, Notacoin, Notacoin, Notacoin>(
+            &wallet_signer,
+            object::address_to_object<Pool>(extra_data.pool),
+            
+        );
     }
 
     // return (total_deposited_amount, total_withdrawn_amount)
@@ -176,6 +193,43 @@ module moneyfi::thala_strategy {
         strategy_data
     }
 
+    fun create_or_get_exist_position(
+        account: Object<WalletAccount>, asset: Object<Metadata>, extra_data: ExtraData
+    ): Position {
+        let strategy_data = ensure_hyperion_strategy_data(account);
+        let position =
+            if (exists_hyperion_postion(account, pool)) {
+                let position = ordered_map::borrow(&strategy_data.pools, &extra_data.pool);
+                *position
+            } else {
+                let pool_obj = object::address_to_object<Pool>(extra_data.pool);
+                let assets = pool::pool_assets_metadata(pool_obj);
+                let token_a = *vector::borrow(&assets, 0);
+                let token_b = *vector::borrow(&assets, 1);
+                let reward_metadata = object::address_to_object<Metadata>(extra_data.reward_asset_addr);
+                let pair =
+                    if (object::object_address<Metadata>(&asset)
+                        == object::object_address<Metadata>(&token_a)) {
+                        token_b
+                    } else {
+                        token_a
+                    };
+                let new_position =
+                    Position {
+                        lp_amount: 0, // Liquidity pool amount
+                        asset: asset,
+                        pair: pair,
+                        amount: 0,
+                        staked_lp_amount: 0,
+                        reward_metadata: reward_metadata,
+                        // The amount of interest earned from the position
+                        interest_amount: 0
+                    };
+                new_position
+            };
+        position
+    }
+
     fun remove_position(account: Object<WalletAccount>, pool: address): ThalaStrategyData {
         let strategy_data = ensure_thala_strategy_data(account);
         ordered_map::remove(&mut strategy_data.pools, &pool);
@@ -205,7 +259,10 @@ module moneyfi::thala_strategy {
 
     fun unpack_extra_data(extra_data: vector<u8>): ExtraData {
         let bcs = bcs_stream::new(extra_data);
-        let extra_data = ExtraData { pool: bcs_stream::deserialize_address(&mut bcs) };
+        let extra_data = ExtraData { 
+            pool: bcs_stream::deserialize_address(&mut bcs),
+            reward_asset_addr: bcs_stream::deserialize_address(&mut bcs)
+        };
         extra_data
     }
 
@@ -220,9 +277,10 @@ module moneyfi::thala_strategy {
     }
 
     #[view]
-    public fun pack_extra_data(pool: address): vector<u8> {
+    public fun pack_extra_data(pool: address, reward_addr: address): vector<u8> {
         let extra_data: vector<u8> = vector[];
         vector::append(&mut extra_data, to_bytes<address>(&pool));
+        vector::append(&mut extra_data, to_bytes<address>(&reward_addr));
         extra_data
     }
 

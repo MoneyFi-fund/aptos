@@ -201,4 +201,11 @@ module thalaswap_v2::pool {
     ) {
         abort(0)
     }
+
+    public fun pool_assets_metadata(
+        arg0: object::Object<Pool>
+    ): vector<object::Object<fungible_asset::Metadata>> acquires Pool {
+        let v0 = arg0;
+        borrow_global<Pool>(object::object_address<Pool>(&v0)).assets_metadata
+    }
 }
