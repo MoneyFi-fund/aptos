@@ -1,0 +1,25 @@
+[package]
+name = "ThalaStakedLPT"
+version = "1.0.0"
+authors = []
+
+[addresses]
+thala_staked_lpt = "0xbab780b31d9cb1d61a47d3a09854c765e6b04e493f112c63294fabf8376d86a1"
+thala_staked_lpt_deployer = "0x1bf23f0881f8fa149500ff6b7a047f608967c028a8ad7a2100caa84833ce851d"
+
+
+[dependencies.ThalaV2RateLimiter]
+local = "deps/thala-interface/rate-limiter"
+
+[dependencies.ThalaMasterchefLib]
+local = "deps/thala-interface/masterschef"
+
+[dependencies.AptosFramework]
+git = "https://github.com/aptos-labs/aptos-framework.git"
+rev = "mainnet"
+subdir = "aptos-framework"
+
+[dependencies.FixedPoint64]
+git = "https://github.com/ThalaLabs/fixed_point64.git"
+rev = "mainnet"
+
