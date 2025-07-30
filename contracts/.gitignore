@@ -3,4 +3,5 @@ build/
 deps/*
 tmp/
 !deps/thala-interface
+!deps/hyperion-interface
 !deps/hydra-interface

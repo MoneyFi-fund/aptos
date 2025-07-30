@@ -3,6 +3,7 @@ module moneyfi::thala_strategy {
     use std::vector;
     use std::bcs::to_bytes;
     use aptos_std::from_bcs;
+    use aptos_std::bcs_stream;
     use aptos_std::math128;
     use aptos_std::ordered_map::{Self, OrderedMap};
     use aptos_framework::object::{Self, Object};
@@ -76,7 +77,8 @@ module moneyfi::thala_strategy {
         asset: Object<Metadata>,
         amount_in: u64,
         extra_data: vector<u8>
-    ): u64 acquires StrategyStats {
+    ): u64 {
+        0
         //TODO
     }
 
@@ -86,7 +88,8 @@ module moneyfi::thala_strategy {
         asset: Object<Metadata>,
         amount_min: u64,
         extra_data: vector<u8>
-    ): (u64, u64) acquires StrategyStats {
+    ): (u64, u64) {
+        (0, 0)
         //TODO
     }
 
@@ -102,7 +105,7 @@ module moneyfi::thala_strategy {
         min_amount_out: u64,
         extra_data: vector<u8>
     ): (u64, u64) {
-        //TODO
+        (0, 0)
     }
 
     fun strategy_stats_deposit(asset: Object<Metadata>, amount: u64) acquires StrategyStats {
@@ -159,7 +162,7 @@ module moneyfi::thala_strategy {
     ): bool {
         assert!(
             exists_thala_strategy_data(account),
-            E_thala_STRATEGY_DATA_NOT_EXISTS
+            E_THALA_STRATEGY_DATA_NOT_EXISTS
         );
         let strategy_data = ensure_thala_strategy_data(account);
         ordered_map::contains(&strategy_data.pools, &pool)
@@ -211,7 +214,7 @@ module moneyfi::thala_strategy {
     public fun get_user_strategy_data(wallet_id: vector<u8>): ThalaStrategyData {
         let account = wallet_account::get_wallet_account(wallet_id);
         if (!exists_thala_strategy_data(account)) {
-            assert!(false, E_thala_STRATEGY_DATA_NOT_EXISTS);
+            assert!(false, E_THALA_STRATEGY_DATA_NOT_EXISTS);
         };
         wallet_account::get_strategy_data<ThalaStrategyData>(account)
     }
