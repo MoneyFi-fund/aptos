@@ -23,7 +23,8 @@ module moneyfi::vault_test {
     use moneyfi::access_control;
     use moneyfi::test_helpers;
 
-    fun setup(deployer: &signer, wallet1: &signer, wallet2: &signer): (Object<Metadata>) {
+    fun setup(deployer: &signer, wallet1: &signer, wallet2: &signer):
+        (Object<Metadata>, MintRef) {
         // setup clock
         timestamp::set_time_has_started_for_testing(
             &account::create_signer_for_test(@0x1)
@@ -52,14 +53,14 @@ module moneyfi::vault_test {
         primary_fungible_store::mint(&mint_ref, wallet1_addr, init_amount);
         primary_fungible_store::mint(&mint_ref, wallet2_addr, init_amount);
 
-        token
+        (token, mint_ref)
     }
 
     #[test(deployer = @moneyfi, wallet1 = @0x111, wallet2 = @0x222)]
     fun test_deposit(
         deployer: &signer, wallet1: &signer, wallet2: &signer
-    ): (Object<Metadata>, u64) {
-        let (usdc) = setup(deployer, wallet1, wallet2);
+    ) {
+        let (usdc, _) = setup(deployer, wallet1, wallet2);
 
         let wallet1_addr = signer::address_of(wallet1);
         wallet_account::create_wallet_account_for_test(wallet1, b"wallet1", 0, vector[]);
@@ -72,29 +73,26 @@ module moneyfi::vault_test {
         let deposit_amount = 10_000;
         vault::deposit(wallet1, usdc, deposit_amount);
 
+        // let asset_data = wallet_account::get_wallet_account_asset(b"wallet1", usdc);
+
         let balance_after = primary_fungible_store::balance(wallet1_addr, usdc);
         assert!(
             balance_after + deposit_amount == balance_before
         );
 
         let acc_balance = primary_fungible_store::balance(acc_addr, usdc);
-        debug::print(&acc_balance);
         assert!(acc_balance == deposit_amount);
 
         let lp_token = vault::get_lp_token();
         let lp_balance = primary_fungible_store::balance(wallet1_addr, lp_token);
         assert!(lp_balance == deposit_amount * 1000);
 
+        // test transfer from wallet account
         let wallet2_addr = signer::address_of(wallet2);
         let acc_signer = wallet_account::get_wallet_account_signer_for_test(wallet1_addr);
         primary_fungible_store::transfer(&acc_signer, usdc, wallet2_addr, 1000);
-
         let balance = primary_fungible_store::balance(acc_addr, usdc);
-        debug::print(&balance);
-
         assert!(balance + 1000 == acc_balance);
-
-        (usdc, deposit_amount)
     }
 
     #[test(deployer = @moneyfi, wallet1 = @0x111, wallet2 = @0x222)]
@@ -102,7 +100,9 @@ module moneyfi::vault_test {
     fun test_deployer_transfer_wallet_account_asset(
         deployer: &signer, wallet1: &signer, wallet2: &signer
     ) {
-        let (usdc, _) = test_deposit(deployer, wallet1, wallet2);
+        let (usdc, _) = setup(deployer, wallet1, wallet2);
+        wallet_account::create_wallet_account_for_test(wallet1, b"wallet1", 0, vector[]);
+        vault::deposit(wallet1, usdc, 10_000);
 
         let wallet1_addr = signer::address_of(wallet1);
         let acc = wallet_account::get_wallet_account_by_address(wallet1_addr);
@@ -121,7 +121,9 @@ module moneyfi::vault_test {
     fun test_lp_should_not_transferable(
         deployer: &signer, wallet1: &signer, wallet2: &signer
     ) {
-        test_deposit(deployer, wallet1, wallet2);
+        let (usdc, _) = setup(deployer, wallet1, wallet2);
+        wallet_account::create_wallet_account_for_test(wallet1, b"wallet1", 0, vector[]);
+        vault::deposit(wallet1, usdc, 10_000);
 
         let wallet1_addr = signer::address_of(wallet1);
         let wallet2_addr = signer::address_of(wallet2);
@@ -138,17 +140,26 @@ module moneyfi::vault_test {
     fun test_withdraw(
         deployer: &signer, wallet1: &signer, wallet2: &signer
     ) {
-        let (usdc, deposit_amount) = test_deposit(deployer, wallet1, wallet2);
+        let (usdc, mint_ref) = setup(deployer, wallet1, wallet2);
+        wallet_account::create_wallet_account_for_test(wallet1, b"wallet1", 0, vector[]);
+        vault::deposit(wallet1, usdc, 10_000);
+
         let wallet1_addr = signer::address_of(wallet1);
         let acc = wallet_account::get_wallet_account_by_address(wallet1_addr);
         let acc_addr = object::object_address(&acc);
 
+        // simulate distributing/collecting fund
+        wallet_account::distributed_fund(acc, usdc, 3000);
+        wallet_account::distributed_fund(acc, usdc, 5000);
+        wallet_account::collected_fund(acc, usdc, 5000, 9000, 5000, 1000);
+        primary_fungible_store::mint(&mint_ref, wallet1_addr, 4000);
+
         let balance_before = primary_fungible_store::balance(wallet1_addr, usdc);
         let acc_balance_before = primary_fungible_store::balance(acc_addr, usdc);
-        let withdraw_amount = 1000;
+        let withdraw_amount = 2000;
+        let burn_lp_amount = 2000 * 1000 * 10_000 / 14000;
         vault::withdraw(wallet1, usdc, withdraw_amount);
         let balance_after = primary_fungible_store::balance(wallet1_addr, usdc);
-
         assert!(
             balance_before == balance_after - withdraw_amount
         );
@@ -160,8 +171,6 @@ module moneyfi::vault_test {
 
         let lp_token = vault::get_lp_token();
         let lp_balance = primary_fungible_store::balance(wallet1_addr, lp_token);
-        assert!(
-            lp_balance == (deposit_amount - withdraw_amount) * 1000
-        );
+        assert!(lp_balance == 10_000_000 - burn_lp_amount);
     }
 }

@@ -98,4 +98,18 @@ module moneyfi::wallet_account_test {
                 == vector[wallet_account::get_wallet_account_object_address(b"w2")]
         );
     }
+
+    #[test(deployer = @moneyfi, w1 = @0x111)]
+    fun test_strategy_data(deployer: &signer, w1: &signer) {
+        storage::init_module_for_testing(deployer);
+        let a1 = wallet_account::create_wallet_account_for_test(w1, b"w1", 0, vector[]);
+
+        wallet_account::set_strategy_data(a1, TestStrategy { value: 123 });
+        let data = wallet_account::get_strategy_data<TestStrategy>(a1);
+        assert!(data.value == 123);
+
+        wallet_account::set_strategy_data(a1, TestStrategy { value: 456 });
+        data = wallet_account::get_strategy_data<TestStrategy>(a1);
+        assert!(data.value == 456);
+    }
 }

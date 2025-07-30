@@ -4,3 +4,4 @@ deps/*
 !deps/hyperion-interface
 tmp/
 !deps/thala
+gas-profiling/
