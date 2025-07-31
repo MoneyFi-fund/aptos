@@ -1,9 +1,10 @@
 module moneyfi::thala_strategy {
     use std::signer;
     use std::vector;
+    use std::option;
+    use std::string::String;
     use std::bcs::to_bytes;
     use aptos_std::from_bcs;
-    use aptos_std::bcs_stream;
     use aptos_std::math128;
     use aptos_std::ordered_map::{Self, OrderedMap};
     use aptos_framework::object::{Self, Object};
@@ -17,6 +18,7 @@ module moneyfi::thala_strategy {
     use thala_staked_lpt::staked_lpt;
 
     use moneyfi::wallet_account::{Self, WalletAccount};
+    use dex_contract::router_v3;
     friend moneyfi::strategy;
 
     // -- Constants
@@ -29,7 +31,9 @@ module moneyfi::thala_strategy {
     /// Thala Strategy data not exists
     const E_THALA_STRATEGY_DATA_NOT_EXISTS: u64 = 1;
     /// Position not exists
-    const E_THALA_POSITION_NOT_EXISTS: u64 = 3;
+    const E_THALA_POSITION_NOT_EXISTS: u64 = 2;
+    /// Invalid asset
+    const E_INVALID_ASSET: u64 = 3;
 
     // -- Structs
     struct StrategyStats has key {
@@ -53,14 +57,13 @@ module moneyfi::thala_strategy {
         pair: Object<Metadata>,
         amount: u64,
         staked_lp_amount: u64,
-        reward_metadata: Object<Metadata>,
-        // The amount of interest earned from the position
-        interest_amount: u64
+        reward_ids: vector<String>
     }
 
     struct ExtraData has drop, copy, store {
-        pool: address
-        reward_asset_addr: address
+        pool: address,
+        reward_a: String,
+        reward_b: String
     }
 
     //--initialization
@@ -78,25 +81,58 @@ module moneyfi::thala_strategy {
         account: Object<WalletAccount>,
         asset: Object<Metadata>,
         amount_in: u64,
-        extra_data: vector<u8>
-    ): u64 {
+        extra_data: vector<vector<u8>>
+    ): u64 acquires StrategyStats{
         let extra_data = unpack_extra_data(extra_data);
         let position = create_or_get_exist_position(account, asset, extra_data);
         let wallet_signer = wallet_account::get_wallet_account_signer(account);
-        let balance_pair_before =
-            primary_fungible_store::balance(
-                signer::address_of(&wallet_signer), position.pair
-            );
+        let pool_obj = object::address_to_object<Pool>(extra_data.pool);
+        let assets = pool::pool_assets_metadata(pool_obj);
+        let token_a = *vector::borrow(&assets, 0);
+        let token_b = *vector::borrow(&assets, 1);
+
+        // Determine which token we're depositing and create amounts vector
+        let amounts = vector::empty<u64>();
+        
+        if (asset == token_a) {
+            // Depositing token A (first token)
+            vector::push_back(&mut amounts, amount_in);  // Amount for token A
+            vector::push_back(&mut amounts, 0);          // 0 for token B
+        } else if (asset == token_b) {
+            // Depositing token B (second token)
+            vector::push_back(&mut amounts, 0);          // 0 for token A
+            vector::push_back(&mut amounts, amount_in);  // Amount for token B
+        } else {
+            // Asset is not part of this pool
+            assert!(false ,E_INVALID_ASSET);
+        };
+
         let balance_asset_before =
             primary_fungible_store::balance(
                 signer::address_of(&wallet_signer), position.asset
             );
-
+        let preview = pool::preview_add_liquidity_stable(pool_obj, assets, amounts);
+        let (lp_amount, _) = pool::add_liquidity_preview_info(preview);
         coin_wrapper::add_liquidity_stable<Notacoin, Notacoin, Notacoin, Notacoin, Notacoin, Notacoin>(
             &wallet_signer,
-            object::address_to_object<Pool>(extra_data.pool),
-            
+            pool_obj,
+            amounts,
+            lp_amount
         );
+
+        let actual_amount = balance_asset_before - primary_fungible_store::balance(signer::address_of(&wallet_signer), position.asset);
+        let pool_lp_token_metadata = pool::pool_lp_token_metadata(pool_obj);
+        staked_lpt::stake_entry(
+            &wallet_signer,
+            pool_lp_token_metadata,
+            lp_amount
+        );
+        position.lp_amount = position.lp_amount + (lp_amount as u128);
+        position.amount = position.amount + actual_amount;
+        position.staked_lp_amount = position.staked_lp_amount + lp_amount;
+        strategy_stats_deposit(asset, actual_amount);
+        set_position_data(account, extra_data.pool, position);
+        actual_amount
     }
 
     // return (total_deposited_amount, total_withdrawn_amount)
@@ -104,10 +140,12 @@ module moneyfi::thala_strategy {
         account: Object<WalletAccount>,
         asset: Object<Metadata>,
         amount_min: u64,
-        extra_data: vector<u8>
+        extra_data: vector<vector<u8>>
     ): (u64, u64) {
-        (0, 0)
-        //TODO
+        let extra_data = unpack_extra_data(extra_data);
+        let position = get_position_data(account, extra_data.pool);
+        (0,0)
+
     }
 
     // return (
@@ -120,7 +158,7 @@ module moneyfi::thala_strategy {
         to_asset: Object<Metadata>,
         amount_in: u64,
         min_amount_out: u64,
-        extra_data: vector<u8>
+        extra_data: vector<vector<u8>>
     ): (u64, u64) {
         (0, 0)
     }
@@ -196,9 +234,9 @@ module moneyfi::thala_strategy {
     fun create_or_get_exist_position(
         account: Object<WalletAccount>, asset: Object<Metadata>, extra_data: ExtraData
     ): Position {
-        let strategy_data = ensure_hyperion_strategy_data(account);
+        let strategy_data = ensure_thala_strategy_data(account);
         let position =
-            if (exists_hyperion_postion(account, pool)) {
+            if (exists_thala_postion(account, extra_data.pool)) {
                 let position = ordered_map::borrow(&strategy_data.pools, &extra_data.pool);
                 *position
             } else {
@@ -206,7 +244,8 @@ module moneyfi::thala_strategy {
                 let assets = pool::pool_assets_metadata(pool_obj);
                 let token_a = *vector::borrow(&assets, 0);
                 let token_b = *vector::borrow(&assets, 1);
-                let reward_metadata = object::address_to_object<Metadata>(extra_data.reward_asset_addr);
+                let reward_ids = vector::singleton<String>(extra_data.reward_a);
+                vector::push_back(&mut reward_ids, extra_data.reward_b);
                 let pair =
                     if (object::object_address<Metadata>(&asset)
                         == object::object_address<Metadata>(&token_a)) {
@@ -221,9 +260,7 @@ module moneyfi::thala_strategy {
                         pair: pair,
                         amount: 0,
                         staked_lp_amount: 0,
-                        reward_metadata: reward_metadata,
-                        // The amount of interest earned from the position
-                        interest_amount: 0
+                        reward_ids: reward_ids
                     };
                 new_position
             };
@@ -257,11 +294,11 @@ module moneyfi::thala_strategy {
         }
     }
 
-    fun unpack_extra_data(extra_data: vector<u8>): ExtraData {
-        let bcs = bcs_stream::new(extra_data);
+    fun unpack_extra_data(extra_data: vector<vector<u8>>): ExtraData {
         let extra_data = ExtraData { 
-            pool: bcs_stream::deserialize_address(&mut bcs),
-            reward_asset_addr: bcs_stream::deserialize_address(&mut bcs)
+            pool: from_bcs::to_address(*vector::borrow(&extra_data, 0)),
+            reward_a: from_bcs::to_string(*vector::borrow(&extra_data, 1)),
+            reward_b: from_bcs::to_string(*vector::borrow(&extra_data, 2))
         };
         extra_data
     }
@@ -277,10 +314,10 @@ module moneyfi::thala_strategy {
     }
 
     #[view]
-    public fun pack_extra_data(pool: address, reward_addr: address): vector<u8> {
-        let extra_data: vector<u8> = vector[];
-        vector::append(&mut extra_data, to_bytes<address>(&pool));
-        vector::append(&mut extra_data, to_bytes<address>(&reward_addr));
+    public fun pack_extra_data(pool: address, reward_a: String, reward_b: String): vector<vector<u8>> {
+        let extra_data = vector::singleton<vector<u8>>(to_bytes<address>(&pool));
+        vector::push_back(&mut extra_data, to_bytes<String>(&reward_a));
+        vector::push_back(&mut extra_data, to_bytes<String>(&reward_b));
         extra_data
     }
 
@@ -294,7 +331,86 @@ module moneyfi::thala_strategy {
         let total_profit: u64 = 0;
         let pools = ordered_map::keys<address, Position>(&strategy_data.pools);
         let i = 0;
+        let pools_len = vector::length(&pools);
+
+        while (i < pools_len) {
+            let pool_address = *vector::borrow(&pools, i);
+            let position = ordered_map::borrow<address, Position>(&strategy_data.pools, &pool_address);
+            let pool = object::address_to_object<Pool>(pool_address);
+            let profit = get_pending_rewards_and_fees_usdc(object::object_address(&account), pool, *position);
+            total_profit = total_profit + profit;
+            i = i + 1;
+        };
 
         total_profit
+    }
+
+    fun get_pending_rewards_and_fees_usdc(wallet_address: address, pool: Object<Pool>, position: Position): u64 {
+        let stablecoin_metadata = object::address_to_object<Metadata>(USDC_ADDRESS);
+        let pool_lp_token_metadata = pool::pool_lp_token_metadata(pool);
+        let assets = pool::pool_assets_metadata(pool);
+        let amounts = pool::remove_liquidity_preview_info(pool::preview_remove_liquidity(pool, pool_lp_token_metadata, position.lp_amount as u64));
+        let reward_ids = position.reward_ids;
+        let amount_rewards = vector::map(reward_ids, |reward_id| 
+            staked_lpt::claimable_reward(
+                wallet_address, 
+                staked_lpt::get_staked_lpt_metadata_from_lpt(pool_lp_token_metadata), 
+                reward_id
+            )
+        );
+        
+        let total_stablecoin_amount: u64 = 0;
+        let i = 0;
+        let assets_len = vector::length(&assets);
+        while (i < assets_len) {
+            let asset_metadata = *vector::borrow(&assets, i);
+            let asset_amount = *vector::borrow(&amounts, i);
+            
+            if (object::object_address(&asset_metadata) == object::object_address(&stablecoin_metadata)) {
+                total_stablecoin_amount = total_stablecoin_amount + asset_amount;
+            } else {
+                let swap_preview = pool::preview_swap_exact_in_stable(
+                    pool, 
+                    asset_metadata, 
+                    stablecoin_metadata, 
+                    asset_amount, 
+                    option::none()
+                );
+                let (_, _, amount_out, _, _, _, _, _, _, _) = pool::swap_preview_info(swap_preview);
+                total_stablecoin_amount = total_stablecoin_amount + amount_out;
+            };
+            i = i + 1;
+        };
+        
+        let lp_path: vector<address> = vector[
+            @0x692ba87730279862aa1a93b5fef9a175ea0cccc1f29dfc84d3ec7fbe1561aef3,
+            @0x925660b8618394809f89f8002e2926600c775221f43bf1919782b297a79400d8
+        ];
+        
+        let j = 0;
+        let rewards_len = vector::length(&reward_ids);
+        while (j < rewards_len) {
+            let reward_id = *vector::borrow(&reward_ids, j);
+            let reward_amount = *vector::borrow(&amount_rewards, j);
+            
+            let reward_metadata = staked_lpt::get_reward_metadata(reward_id);
+            
+            if (object::object_address(&reward_metadata) == object::object_address(&stablecoin_metadata)) {
+                total_stablecoin_amount = total_stablecoin_amount + reward_amount;
+            } else {
+                 if (reward_amount > 0) {
+                    let usdc_amount = router_v3::get_batch_amount_out(
+                        lp_path,
+                        reward_amount,
+                        reward_metadata,
+                        stablecoin_metadata
+                    );
+                    total_stablecoin_amount = total_stablecoin_amount + usdc_amount;
+                };
+            };
+            j = j + 1;
+        };
+        
+        total_stablecoin_amount
     }
 }

@@ -6,6 +6,7 @@ module thala_staked_lpt::staked_lpt {
     use aptos_framework::function_info;
     use rate_limiter::rate_limiter;
     use masterchef_lib::masterchef;
+    use aptos_std::string_utils;
 
     struct NewRewardEvent has drop, store {
         reward_id: string::String,
@@ -104,5 +105,23 @@ module thala_staked_lpt::staked_lpt {
         arg0: address, arg1: object::Object<fungible_asset::Metadata>, arg2: string::String
     ): u64 {
         0
+    }
+
+
+    public fun get_pool_id_from_staked_lpt_metadata(arg0: object::Object<fungible_asset::Metadata>) : string::String {
+        let v0 = object::object_address<fungible_asset::Metadata>(&arg0);
+        string_utils::to_string<address>(&v0)
+    }
+    
+    public fun get_reward_metadata(arg0: string::String) : object::Object<fungible_asset::Metadata> {
+        object::address_to_object<fungible_asset::Metadata>(@0xa)
+    }
+    
+    public fun get_staked_lpt_metadata_from_lpt(arg0: object::Object<fungible_asset::Metadata>) : object::Object<fungible_asset::Metadata> {
+        arg0
+    }
+    
+    public fun get_staked_lpt_metadata_from_pool_id(arg0: string::String) : object::Object<fungible_asset::Metadata> {
+        object::address_to_object<fungible_asset::Metadata>(@0xa)
     }
 }
