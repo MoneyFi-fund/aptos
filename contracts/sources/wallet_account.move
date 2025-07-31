@@ -4,6 +4,7 @@ module moneyfi::wallet_account {
     use std::vector;
     use std::error;
     use std::option::{Self, Option};
+    use aptos_std::math128;
     use aptos_std::ordered_map::{Self, OrderedMap};
     use aptos_framework::event;
     use aptos_framework::object::{Self, Object, ExtendRef};
@@ -180,9 +181,9 @@ module moneyfi::wallet_account {
 
         let total = asset_data.current_amount + asset_data.distributed_amount;
 
-        let lp_amount = ((amount as u128) * (asset_data.lp_amount as u128)
-            / (total as u128)) as u64;
-
+        // let lp_amount = ((amount as u128) * (asset_data.lp_amount as u128)
+        //     / (total as u128)) as u64;
+        let lp_amount = math128::mul_div((amount as u128), (asset_data.lp_amount as u128),(total as u128)) as u64;
         asset_data.withdrawn_amount = asset_data.withdrawn_amount + amount;
         asset_data.current_amount = asset_data.current_amount - amount;
         asset_data.lp_amount = asset_data.lp_amount - lp_amount;
