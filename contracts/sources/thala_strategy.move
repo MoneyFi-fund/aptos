@@ -12,10 +12,12 @@ module moneyfi::thala_strategy {
     use aptos_framework::timestamp;
     use aptos_framework::fungible_asset::Metadata;
     use aptos_framework::coin;
+    use aptos_framework::aptos_coin::AptosCoin;
 
     use thalaswap_v2::pool::{Self, Pool};
     use thalaswap_v2::coin_wrapper::{Self, Notacoin};
     use thala_staked_lpt::staked_lpt;
+    use thala_lsd::staking::ThalaAPT;
 
     use moneyfi::wallet_account::{Self, WalletAccount};
     use dex_contract::router_v3;
@@ -144,6 +146,71 @@ module moneyfi::thala_strategy {
     ): (u64, u64) {
         let extra_data = unpack_extra_data(extra_data);
         let position = get_position_data(account, extra_data.pool);
+        let pool_obj = object::address_to_object<Pool>(extra_data.pool);
+        let wallet_signer = wallet_account::get_wallet_account_signer(account);
+        let wallet_address = signer::address_of(&wallet_signer);
+        let (liquidity_remove, is_full_withdraw) =
+            if (amount_min < position.amount) {
+                let liquidity =
+                    math128::mul_div(
+                        position.lp_amount,
+                        (amount_min as u128),
+                        (position.amount as u128)
+                    );
+                (liquidity, false)
+            } else {
+                (position.lp_amount, true)
+            };
+        let balance_asset_after = primary_fungible_store::balance(wallet_address, position.asset);
+        let balance_pair_after = primary_fungible_store::balance(wallet_address, position.pair);
+        //Claim reward
+        let pool_lp_token_metadata = pool::pool_lp_token_metadata(pool_obj);
+        let reward_ids = position.reward_ids;
+        vector::for_each(reward_ids, |reward_id| 
+            let amount = staked_lpt::claimable_reward(
+                wallet_address, 
+                staked_lpt::get_staked_lpt_metadata_from_lpt(pool_lp_token_metadata), 
+                reward_id
+            );
+            staked_lpt::claim_reward(
+                &wallet_signer,
+                wallet_address, 
+                staked_lpt::get_staked_lpt_metadata_from_lpt(pool_lp_token_metadata), 
+                reward_id
+            );
+            if(object::object_address(&position.asset) == object::object_address(&staked_lpt::get_reward_metadata(reward_id))){
+                if(amount > 0){
+                    let lp_path: vector<address> = vector[
+                        @0x692ba87730279862aa1a93b5fef9a175ea0cccc1f29dfc84d3ec7fbe1561aef3,
+                        @0x925660b8618394809f89f8002e2926600c775221f43bf1919782b297a79400d8
+                    ];
+                    router_v3::swap_batch_coin_entry<ThalaAPT>(
+                        &wallet_signer,
+                        lp_path,
+                        staked_lpt::get_reward_metadata(reward_id),
+                        position.asset,
+                        amount,
+                        0,
+                        wallet_address
+                    );
+                }
+            }
+        );
+        //Remove lp
+        assets = pool::pool_assets_metadata(pool_obj);
+        amounts = pool::remove_liquidity_preview_info(pool_obj, pool_lp_token_metadata, liquidity_remove);
+        pool::remove_liquidity_entry(
+            &wallet_signer,
+            pool_obj, 
+            pool_lp_token_metadata, 
+            liquidity_remove,
+            amounts
+        );
+        vector::
+        coin_wrapper::swap_exact_in_stable(
+
+        )
+        
         (0,0)
 
     }
@@ -411,6 +478,6 @@ module moneyfi::thala_strategy {
             j = j + 1;
         };
         
-        total_stablecoin_amount
+        total_stablecoin_amount - position.amount
     }
 }

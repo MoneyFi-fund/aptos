@@ -17,6 +17,9 @@ local = "deps/thala-interface/stake"
 [dependencies.ThalaSwapV2]
 local = "deps/thala-interface/swap"
 
+[dependencies.ThalaLSD]
+local = "deps/thala-interface/thala_lsd"
+
 [dependencies.AptosFramework]
 git = "https://github.com/aptos-labs/aptos-framework.git"
 rev = "mainnet"
