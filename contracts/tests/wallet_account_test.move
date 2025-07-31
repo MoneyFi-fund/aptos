@@ -71,19 +71,19 @@ module moneyfi::wallet_account_test {
         storage::init_module_for_testing(deployer);
 
         let a1 = wallet_account::create_wallet_account_for_test(w1, b"w1", 0, vector[]);
-        let referrers = wallet_account::get_referrer_addresses(a1, 2);
+        let referrers = wallet_account::get_referrer_addresses(&a1, 2);
         assert!(referrers == vector[]);
 
         let a2 = wallet_account::create_wallet_account_for_test(w2, b"w2", 0, b"w1");
         let a3 = wallet_account::create_wallet_account_for_test(w3, b"w3", 0, b"w2");
 
-        let referrers = wallet_account::get_referrer_addresses(a2, 3);
+        let referrers = wallet_account::get_referrer_addresses(&a2, 3);
         assert!(
             referrers
                 == vector[wallet_account::get_wallet_account_object_address(b"w1")]
         );
 
-        let referrers = wallet_account::get_referrer_addresses(a3, 3);
+        let referrers = wallet_account::get_referrer_addresses(&a3, 3);
         assert!(
             referrers
                 == vector[
@@ -92,7 +92,7 @@ module moneyfi::wallet_account_test {
                 ]
         );
 
-        let referrers = wallet_account::get_referrer_addresses(a3, 1);
+        let referrers = wallet_account::get_referrer_addresses(&a3, 1);
         assert!(
             referrers
                 == vector[wallet_account::get_wallet_account_object_address(b"w2")]
@@ -104,12 +104,12 @@ module moneyfi::wallet_account_test {
         storage::init_module_for_testing(deployer);
         let a1 = wallet_account::create_wallet_account_for_test(w1, b"w1", 0, vector[]);
 
-        wallet_account::set_strategy_data(a1, TestStrategy { value: 123 });
-        let data = wallet_account::get_strategy_data<TestStrategy>(a1);
+        wallet_account::set_strategy_data(&a1, TestStrategy { value: 123 });
+        let data = wallet_account::get_strategy_data<TestStrategy>(&a1);
         assert!(data.value == 123);
 
-        wallet_account::set_strategy_data(a1, TestStrategy { value: 456 });
-        data = wallet_account::get_strategy_data<TestStrategy>(a1);
+        wallet_account::set_strategy_data(&a1, TestStrategy { value: 456 });
+        data = wallet_account::get_strategy_data<TestStrategy>(&a1);
         assert!(data.value == 456);
     }
 }

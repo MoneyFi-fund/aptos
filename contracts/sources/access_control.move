@@ -12,11 +12,13 @@ module moneyfi::access_control {
     const ROLE_ADMIN: u8 = 1;
     // ROLE_MANAGER can add/remove account (registry must be unlocked by ADMIN first)
     const ROLE_ROLE_MANAGER: u8 = 2;
-    // SERVICE_ACCOUNT is backend service
+    // SERVICE_ACCOUNT can deposit/withdraw fund f
     const ROLE_SERVICE_ACCOUNT: u8 = 3;
+    // FEE_MANAGER can config fee, withdraw fee
+    const ROLE_FEE_MANAGER: u8 = 4;
 
     // IMPORTANT: increse this value when add/remove role
-    const ROLE_COUNT: u8 = 3;
+    const ROLE_COUNT: u8 = 4;
 
     // -- Error Codes
     const E_ALREADY_INITIALIZED: u64 = 1;
@@ -64,7 +66,11 @@ module moneyfi::access_control {
             } else { addr };
 
         let accounts = ordered_map::new<address, vector<u8>>();
-        ordered_map::add(&mut accounts, admin_addr, vector[ROLE_ADMIN]);
+        ordered_map::add(
+            &mut accounts,
+            admin_addr,
+            vector[ROLE_ADMIN, ROLE_FEE_MANAGER]
+        );
 
         move_to(sender, Registry { accounts, locked_at: now_seconds() + 600 });
     }
@@ -87,12 +93,12 @@ module moneyfi::access_control {
         if (count == 0) {
             // allow admin to add the first role manager
             assert!(
-                registry.has_role(addr, ROLE_ADMIN),
+                registry.has_role(&addr, ROLE_ADMIN),
                 error::permission_denied(E_NOT_AUTHORIZED)
             )
         } else {
             assert!(
-                registry.has_role(addr, ROLE_ROLE_MANAGER),
+                registry.has_role(&addr, ROLE_ROLE_MANAGER),
                 error::permission_denied(E_NOT_AUTHORIZED)
             )
         };
@@ -120,7 +126,7 @@ module moneyfi::access_control {
         let registry = borrow_global_mut<Registry>(@moneyfi);
         ensure_registry_is_unlocked(registry);
         assert!(ordered_map::contains(&registry.accounts, &account));
-        ensure_account_is_safe_to_remove(registry, account);
+        ensure_account_is_safe_to_remove(registry, &account);
 
         ordered_map::remove(&mut registry.accounts, &account);
 
@@ -148,7 +154,7 @@ module moneyfi::access_control {
         let registry = borrow_global<Registry>(@moneyfi);
         let addr = signer::address_of(sender);
         assert!(
-            registry.has_role(addr, ROLE_ADMIN),
+            registry.has_role(&addr, ROLE_ADMIN),
             error::permission_denied(E_NOT_AUTHORIZED)
         )
     }
@@ -157,7 +163,7 @@ module moneyfi::access_control {
         let registry = borrow_global<Registry>(@moneyfi);
         let addr = signer::address_of(sender);
         assert!(
-            registry.has_role(addr, ROLE_ROLE_MANAGER),
+            registry.has_role(&addr, ROLE_ROLE_MANAGER),
             error::permission_denied(E_NOT_AUTHORIZED)
         )
     }
@@ -166,16 +172,25 @@ module moneyfi::access_control {
         let registry = borrow_global<Registry>(@moneyfi);
         let addr = signer::address_of(sender);
         assert!(
-            registry.has_role(addr, ROLE_SERVICE_ACCOUNT),
+            registry.has_role(&addr, ROLE_SERVICE_ACCOUNT),
+            error::permission_denied(E_NOT_AUTHORIZED)
+        )
+    }
+
+    public fun must_be_fee_manager(sender: &signer) acquires Registry {
+        let registry = borrow_global<Registry>(@moneyfi);
+        let addr = signer::address_of(sender);
+        assert!(
+            registry.has_role(&addr, ROLE_FEE_MANAGER),
             error::permission_denied(E_NOT_AUTHORIZED)
         )
     }
 
     // -- Private
 
-    fun has_role(self: &Registry, addr: address, role: u8): bool {
-        if (ordered_map::contains(&self.accounts, &addr)) {
-            let roles = ordered_map::borrow(&self.accounts, &addr);
+    fun has_role(self: &Registry, addr: &address, role: u8): bool {
+        if (ordered_map::contains(&self.accounts, addr)) {
+            let roles = ordered_map::borrow(&self.accounts, addr);
             vector::contains(roles, &role)
         } else { false }
     }
@@ -195,7 +210,7 @@ module moneyfi::access_control {
     }
 
     fun ensure_account_is_safe_to_remove(
-        registry: &Registry, account: address
+        registry: &Registry, account: &address
     ) {
         if (has_role(registry, account, ROLE_ADMIN)) {
             let count = registry.count_role(ROLE_ADMIN);

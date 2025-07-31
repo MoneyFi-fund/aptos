@@ -149,9 +149,9 @@ module moneyfi::vault_test {
         let acc_addr = object::object_address(&acc);
 
         // simulate distributing/collecting fund
-        wallet_account::distributed_fund(acc, usdc, 3000);
-        wallet_account::distributed_fund(acc, usdc, 5000);
-        wallet_account::collected_fund(acc, usdc, 5000, 9000, 5000, 1000);
+        wallet_account::distributed_fund(&acc, &usdc, 3000);
+        wallet_account::distributed_fund(&acc, &usdc, 5000);
+        wallet_account::collected_fund(&acc, &usdc, 5000, 9000, 5000, 1000);
         primary_fungible_store::mint(&mint_ref, wallet1_addr, 4000);
 
         let balance_before = primary_fungible_store::balance(wallet1_addr, usdc);

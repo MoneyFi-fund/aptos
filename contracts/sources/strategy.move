@@ -31,8 +31,8 @@ module moneyfi::strategy {
     /// return deposited_amount
     public(friend) fun deposit(
         strategy: u8,
-        account: Object<WalletAccount>,
-        asset: Object<Metadata>,
+        account: &Object<WalletAccount>,
+        asset: &Object<Metadata>,
         amount: u64,
         extra_data: vector<vector<u8>>
     ): u64 {
@@ -57,8 +57,8 @@ module moneyfi::strategy {
     /// )
     public(friend) fun withdraw(
         strategy: u8,
-        account: Object<WalletAccount>,
-        asset: Object<Metadata>,
+        account: &Object<WalletAccount>,
+        asset: &Object<Metadata>,
         min_amount: u64,
         extra_data: vector<vector<u8>>
     ): (u64, u64, u64) {
@@ -75,7 +75,7 @@ module moneyfi::strategy {
     }
 
     public(friend) fun update_tick(
-        strategy: u8, account: Object<WalletAccount>, extra_data: vector<vector<u8>>
+        strategy: u8, account: &Object<WalletAccount>, extra_data: vector<vector<u8>>
     ) {
         if (strategy == STRATEGY_HYPERION) {
             hyperion_strategy::update_tick(account, extra_data);
@@ -90,9 +90,9 @@ module moneyfi::strategy {
     /// )
     public(friend) fun swap(
         strategy: u8,
-        account: Object<WalletAccount>,
-        from_asset: Object<Metadata>,
-        to_asset: Object<Metadata>,
+        account: &Object<WalletAccount>,
+        from_asset: &Object<Metadata>,
+        to_asset: &Object<Metadata>,
         amount_in: u64,
         min_amount_out: u64,
         extra_data: vector<vector<u8>>

@@ -46,6 +46,9 @@ module moneyfi::wallet_account {
         wallet_address: Option<address>,
         referrer_wallet_id: vector<u8>,
         assets: OrderedMap<address, AccountAsset>,
+        system_fee_percent: Option<u64>, // 100 => 1%
+        // [level_1, level_2, level_3, ...]
+        referral_percents: vector<u64>, // 100 => 1%,
         extend_ref: ExtendRef
     }
 
@@ -83,6 +86,16 @@ module moneyfi::wallet_account {
         timestamp: u64
     }
 
+    #[event]
+    struct ConfigFeeEvent has drop, store {
+        account: Object<WalletAccount>,
+        system_fee_percent_before: Option<u64>,
+        system_fee_percent: Option<u64>,
+        referral_percents_before: vector<u64>,
+        referral_percents: vector<u64>,
+        timestamp: u64
+    }
+
     public entry fun register(
         sender: &signer,
         verifier: &signer,
@@ -115,6 +128,43 @@ module moneyfi::wallet_account {
         );
     }
 
+    public entry fun config_fee(
+        sender: &signer,
+        account: Object<WalletAccount>,
+        system_fee_percent: Option<u64>,
+        referral_percents: vector<u64>
+    ) acquires WalletAccount {
+        if (option::is_some(&system_fee_percent)) {
+            let v = option::borrow(&system_fee_percent);
+            assert!(*v <= 10000, error::invalid_argument(E_INVALID_ARGUMENT));
+        };
+        access_control::must_be_fee_manager(sender);
+        let account_addr = object::object_address(&account);
+        let acc = borrow_global_mut<WalletAccount>(account_addr);
+        let system_fee_percent_before = acc.system_fee_percent;
+        let referral_percents_before = acc.referral_percents;
+
+        event::emit(
+            ConfigFeeEvent {
+                account,
+                system_fee_percent_before,
+                system_fee_percent,
+                referral_percents_before,
+                referral_percents,
+                timestamp: timestamp::now_seconds()
+            }
+        );
+    }
+
+    public fun get_fee_config(
+        account: &Object<WalletAccount>
+    ): (Option<u64>, vector<u64>) acquires WalletAccount {
+        let account_addr = object::object_address(account);
+        let acc = borrow_global_mut<WalletAccount>(account_addr);
+
+        (acc.system_fee_percent, acc.referral_percents)
+    }
+
     fun create_wallet_account(
         wallet_id: vector<u8>,
         chain_id: u8,
@@ -141,6 +191,8 @@ module moneyfi::wallet_account {
                 wallet_address,
                 referrer_wallet_id,
                 assets: ordered_map::new(),
+                system_fee_percent: option::none(),
+                referral_percents: vector[],
                 extend_ref: extend_ref
             }
         );
@@ -151,14 +203,14 @@ module moneyfi::wallet_account {
     }
 
     public(friend) fun deposit(
-        account: Object<WalletAccount>,
-        asset: Object<Metadata>,
+        account: &Object<WalletAccount>,
+        asset: &Object<Metadata>,
         amount: u64,
         lp_amount: u64
     ) acquires WalletAccount {
-        let account_addr = object::object_address(&account);
+        let account_addr = object::object_address(account);
         let wallet_account = borrow_global_mut<WalletAccount>(account_addr);
-        let asset_data = wallet_account.get_asset_mut(&asset);
+        let asset_data = wallet_account.get_asset_mut(asset);
         asset_data.deposited_amount = asset_data.deposited_amount + amount;
         asset_data.current_amount = asset_data.current_amount + amount;
         asset_data.lp_amount = asset_data.lp_amount + lp_amount;
@@ -166,12 +218,12 @@ module moneyfi::wallet_account {
 
     /// return amount of lp token
     public(friend) fun withdraw(
-        account: Object<WalletAccount>, asset: Object<Metadata>, amount: u64
+        account: &Object<WalletAccount>, asset: &Object<Metadata>, amount: u64
     ): u64 acquires WalletAccount {
-        let account_addr = object::object_address(&account);
+        let account_addr = object::object_address(account);
         let wallet_account = borrow_global_mut<WalletAccount>(account_addr);
 
-        let asset_data = wallet_account.get_asset_mut(&asset);
+        let asset_data = wallet_account.get_asset_mut(asset);
         assert!(
             amount > 0 && asset_data.current_amount >= amount,
             E_INVALID_ARGUMENT
@@ -191,17 +243,17 @@ module moneyfi::wallet_account {
 
     // return lp amount for src asset
     public(friend) fun swap(
-        account: Object<WalletAccount>,
-        from_asset: Object<Metadata>,
-        to_asset: Object<Metadata>,
+        account: &Object<WalletAccount>,
+        from_asset: &Object<Metadata>,
+        to_asset: &Object<Metadata>,
         from_amount: u64,
         to_amount: u64,
         to_lp_amount: u64
     ): u64 acquires WalletAccount {
-        let account_addr = object::object_address(&account);
+        let account_addr = object::object_address(account);
         let wallet_account = borrow_global_mut<WalletAccount>(account_addr);
 
-        let asset_data_0 = wallet_account.get_asset_mut(&from_asset);
+        let asset_data_0 = wallet_account.get_asset_mut(from_asset);
         assert!(
             from_amount > 0 && asset_data_0.current_amount >= from_amount,
             E_INVALID_ARGUMENT
@@ -215,7 +267,7 @@ module moneyfi::wallet_account {
         asset_data_0.current_amount = asset_data_0.current_amount - from_amount;
         asset_data_0.lp_amount = asset_data_0.lp_amount - lp_amount_0;
 
-        let asset_data_1 = wallet_account.get_asset_mut(&to_asset);
+        let asset_data_1 = wallet_account.get_asset_mut(to_asset);
         asset_data_1.lp_amount = asset_data_1.lp_amount + to_lp_amount;
         asset_data_1.current_amount = asset_data_1.current_amount + to_amount;
         asset_data_1.swap_in_amount = asset_data_1.swap_in_amount + to_amount;
@@ -224,12 +276,12 @@ module moneyfi::wallet_account {
     }
 
     public(friend) fun distributed_fund(
-        account: Object<WalletAccount>, asset: Object<Metadata>, amount: u64
+        account: &Object<WalletAccount>, asset: &Object<Metadata>, amount: u64
     ) acquires WalletAccount {
-        let account_addr = object::object_address(&account);
+        let account_addr = object::object_address(account);
         let wallet_account = borrow_global_mut<WalletAccount>(account_addr);
 
-        let asset_data = wallet_account.get_asset_mut(&asset);
+        let asset_data = wallet_account.get_asset_mut(asset);
         assert!(asset_data.current_amount >= amount, E_INVALID_ARGUMENT);
 
         asset_data.distributed_amount = asset_data.distributed_amount + amount;
@@ -237,18 +289,18 @@ module moneyfi::wallet_account {
     }
 
     public(friend) fun collected_fund(
-        account: Object<WalletAccount>,
-        asset: Object<Metadata>,
+        account: &Object<WalletAccount>,
+        asset: &Object<Metadata>,
         distributed_amount: u64,
         collected_amount: u64,
         interest_amount: u64,
         interest_share_amount: u64
 
     ) acquires WalletAccount {
-        let account_addr = object::object_address(&account);
+        let account_addr = object::object_address(account);
 
         let wallet_account = borrow_global_mut<WalletAccount>(account_addr);
-        let asset_data = wallet_account.get_asset_mut(&asset);
+        let asset_data = wallet_account.get_asset_mut(asset);
         assert!(asset_data.distributed_amount >= distributed_amount, E_INVALID_ARGUMENT);
 
         asset_data.distributed_amount = asset_data.distributed_amount
@@ -260,9 +312,9 @@ module moneyfi::wallet_account {
     }
 
     public(friend) fun set_strategy_data<T: store + drop + copy>(
-        account: Object<WalletAccount>, data: T
+        account: &Object<WalletAccount>, data: T
     ) acquires StrategyData, WalletAccount {
-        let addr = object::object_address(&account);
+        let addr = object::object_address(account);
         if (!exists<StrategyData<T>>(addr)) {
             let account_signer = get_wallet_account_signer(account);
             move_to(&account_signer, StrategyData { data });
@@ -273,9 +325,9 @@ module moneyfi::wallet_account {
     }
 
     public(friend) fun get_strategy_data<T: store + copy>(
-        account: Object<WalletAccount>
+        account: &Object<WalletAccount>
     ): T acquires StrategyData {
-        let addr = object::object_address(&account);
+        let addr = object::object_address(account);
         assert!(
             exists<StrategyData<T>>(addr),
             E_STRATEGY_DATA_NOT_EXISTS
@@ -286,10 +338,10 @@ module moneyfi::wallet_account {
         strategy_data.data
     }
 
-    public fun exists_strategy_data<T: store>(
-        account: Object<WalletAccount>
+    public fun strategy_data_exists<T: store>(
+        account: &Object<WalletAccount>
     ): bool {
-        let addr = object::object_address(&account);
+        let addr = object::object_address(account);
         exists<StrategyData<T>>(addr)
     }
 
@@ -368,21 +420,21 @@ module moneyfi::wallet_account {
     }
 
     public(friend) fun get_wallet_account_signer(
-        account: Object<WalletAccount>
+        account: &Object<WalletAccount>
     ): signer acquires WalletAccount {
-        let addr = object::object_address(&account);
+        let addr = object::object_address(account);
 
         let wallet_account = borrow_global<WalletAccount>(addr);
         object::generate_signer_for_extending(&wallet_account.extend_ref)
     }
 
     public(friend) fun get_referrer_addresses(
-        account: Object<WalletAccount>, max: u8
+        account: &Object<WalletAccount>, max: u8
     ): vector<address> acquires WalletAccount {
         let referrers = vector[];
 
         let i = 0;
-        let addr = object::object_address(&account);
+        let addr = object::object_address(account);
         while (i < max) {
             if (!exists<WalletAccount>(addr)) {
                 break;
@@ -447,6 +499,6 @@ module moneyfi::wallet_account {
     public fun get_wallet_account_signer_for_test(
         addr: address
     ): signer acquires WalletAccount, WalletAccountObject {
-        get_wallet_account_signer(get_wallet_account_by_address(addr))
+        get_wallet_account_signer(&get_wallet_account_by_address(addr))
     }
 }

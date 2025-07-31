@@ -5,7 +5,7 @@ module moneyfi::vault {
     use std::string;
     use std::option;
     use aptos_framework::ordered_map::{Self, OrderedMap};
-    use aptos_framework::object::{Self, Object, ExtendRef};
+    use aptos_framework::object::{Self, Object, ObjectCore, ExtendRef};
     use aptos_framework::event;
     use aptos_framework::fungible_asset::{Self, Metadata, MintRef, TransferRef, BurnRef};
     use aptos_framework::primary_fungible_store;
@@ -32,6 +32,7 @@ module moneyfi::vault {
         enable_deposit: bool,
         enable_withdraw: bool,
         system_fee_percent: u64, // 100 => 1%
+        fee_recipient: address,
         // [level_1, level_2, level_3, ...]
         referral_percents: vector<u64>, // 100 => 1%,
         supported_assets: OrderedMap<address, AssetConfig>
@@ -152,6 +153,7 @@ module moneyfi::vault {
     #[event]
     struct WithdrawFeeEvent has drop, store {
         asset: Object<Metadata>,
+        recipient: address,
         amount: u64,
         timestamp: u64
     }
@@ -166,12 +168,18 @@ module moneyfi::vault {
 
         init_funding_account();
 
+        let admin_addr =
+            if (object::is_object(addr)) {
+                object::root_owner(object::address_to_object<ObjectCore>(addr))
+            } else { addr };
+
         move_to(
             sender,
             Config {
                 enable_deposit: true,
                 enable_withdraw: true,
                 system_fee_percent: 2000, // 20%
+                fee_recipient: admin_addr,
                 referral_percents: vector[2500],
                 supported_assets: ordered_map::new()
             }
@@ -188,10 +196,11 @@ module moneyfi::vault {
         system_fee_percent: u64,
         referral_percents: vector<u64>
     ) acquires Config {
-        assert!(system_fee_percent <= 10000);
+        assert!(system_fee_percent <= 10_000);
         // TODO: validate referrals_percents
 
         access_control::must_be_admin(sender);
+        access_control::must_be_fee_manager(sender);
         let config = borrow_global_mut<Config>(@moneyfi);
 
         config.enable_deposit = enable_deposit;
@@ -224,7 +233,7 @@ module moneyfi::vault {
         let config = borrow_global_mut<Config>(@moneyfi);
 
         config.upsert_asset(
-            asset,
+            &asset,
             AssetConfig {
                 enabled,
                 min_deposit,
@@ -252,7 +261,7 @@ module moneyfi::vault {
     ) acquires Config, LPToken, FundingAccount {
         let config = borrow_global<Config>(@moneyfi);
         assert!(
-            config.can_deposit(asset, amount),
+            config.can_deposit(&asset, amount),
             error::permission_denied(E_DEPOSIT_NOT_ALLOWED)
         );
 
@@ -263,12 +272,12 @@ module moneyfi::vault {
         let funding_account = borrow_global_mut<FundingAccount>(funding_account_addr);
         let asset_data = funding_account.get_funding_asset_mut(&asset);
 
-        let asset_config = config.get_asset_config(asset);
+        let asset_config = config.get_asset_config(&asset);
         let lp_amount = asset_config.calc_mint_lp_amount(amount);
         let account_addr = object::object_address(&account);
 
         primary_fungible_store::transfer(sender, asset, account_addr, amount);
-        wallet_account::deposit(account, asset, amount, lp_amount);
+        wallet_account::deposit(&account, &asset, amount, lp_amount);
         mint_lp(wallet_addr, lp_amount);
 
         asset_data.total_lp_amount = asset_data.total_lp_amount + (lp_amount as u128);
@@ -299,7 +308,7 @@ module moneyfi::vault {
         let asset_data = funding_account.get_funding_asset_mut(&asset);
 
         // transfer pending referral fee to wallet account first
-        let pending_referral_fee = asset_data.get_pending_referral_fee(account);
+        let pending_referral_fee = asset_data.get_pending_referral_fee(&account);
         if (pending_referral_fee > 0) {
             primary_fungible_store::transfer(
                 &account_signer,
@@ -317,14 +326,14 @@ module moneyfi::vault {
 
         let config = borrow_global<Config>(@moneyfi);
         assert!(
-            config.can_withdraw(asset, amount),
+            config.can_withdraw(&asset, amount),
             error::permission_denied(E_DEPOSIT_NOT_ALLOWED)
         );
 
-        let account_signer = wallet_account::get_wallet_account_signer(account);
+        let account_signer = wallet_account::get_wallet_account_signer(&account);
 
         primary_fungible_store::transfer(&account_signer, asset, wallet_addr, amount);
-        let lp_amount = wallet_account::withdraw(account, asset, amount);
+        let lp_amount = wallet_account::withdraw(&account, &asset, amount);
         burn_lp(wallet_addr, lp_amount);
 
         assert!(asset_data.total_lp_amount >= (lp_amount as u128));
@@ -346,13 +355,11 @@ module moneyfi::vault {
     }
 
     public entry fun withdraw_fee(
-        sender: &signer,
-        to: address,
-        asset: Object<Metadata>,
-        amount: u64
-    ) acquires FundingAccount {
-        access_control::must_be_admin(sender);
+        sender: &signer, asset: Object<Metadata>, amount: u64
+    ) acquires Config, FundingAccount {
+        access_control::must_be_fee_manager(sender);
 
+        let config = borrow_global<Config>(@moneyfi);
         let funding_account_addr = get_funding_account_address();
         let funding_account = borrow_global_mut<FundingAccount>(funding_account_addr);
         let account_signer = funding_account.get_funding_account_signer();
@@ -360,15 +367,28 @@ module moneyfi::vault {
         let asset_data = funding_account.get_funding_asset_mut(&asset);
         assert!(asset_data.pending_fee_amount >= amount);
 
-        primary_fungible_store::transfer(&account_signer, asset, to, amount);
+        primary_fungible_store::transfer(
+            &account_signer,
+            asset,
+            config.fee_recipient,
+            amount
+        );
         asset_data.pending_fee_amount = asset_data.pending_fee_amount - amount;
 
-        event::emit(WithdrawFeeEvent { asset, amount, timestamp: now_seconds() })
+        event::emit(
+            WithdrawFeeEvent {
+                asset,
+                amount,
+                recipient: config.fee_recipient,
+                timestamp: now_seconds()
+            }
+        )
     }
 
-    public entry fun withdraw_all_fee(sender: &signer, to: address) acquires FundingAccount {
-        access_control::must_be_admin(sender);
+    public entry fun withdraw_all_fee(sender: &signer) acquires FundingAccount, Config {
+        access_control::must_be_fee_manager(sender);
 
+        let config = borrow_global<Config>(@moneyfi);
         let funding_account_addr = get_funding_account_address();
         let funding_account = borrow_global_mut<FundingAccount>(funding_account_addr);
         let account_signer = funding_account.get_funding_account_signer();
@@ -381,7 +401,10 @@ module moneyfi::vault {
 
                 if (fee_amount > 0) {
                     primary_fungible_store::transfer(
-                        &account_signer, asset_obj, to, fee_amount
+                        &account_signer,
+                        asset_obj,
+                        config.fee_recipient,
+                        fee_amount
                     );
                     asset_data.pending_fee_amount =
                         asset_data.pending_fee_amount - fee_amount;
@@ -389,6 +412,7 @@ module moneyfi::vault {
                     event::emit(
                         WithdrawFeeEvent {
                             asset: asset_obj,
+                            recipient: config.fee_recipient,
                             amount: fee_amount,
                             timestamp: now_seconds()
                         }
@@ -408,8 +432,8 @@ module moneyfi::vault {
     ) acquires FundingAccount {
         access_control::must_be_service_account(sender);
         let account = wallet_account::get_wallet_account(wallet_id);
-        let amount = strategy::deposit(strategy_id, account, asset, amount, extra_data);
-        wallet_account::distributed_fund(account, asset, amount);
+        let amount = strategy::deposit(strategy_id, &account, &asset, amount, extra_data);
+        wallet_account::distributed_fund(&account, &asset, amount);
 
         let funding_account_addr = get_funding_account_address();
         let funding_account = borrow_global_mut<FundingAccount>(funding_account_addr);
@@ -447,7 +471,7 @@ module moneyfi::vault {
         let asset_data = funding_account.get_funding_asset_mut(&asset);
 
         let (deposited_amount, withdrawn_amount, fee) =
-            strategy::withdraw(strategy_id, account, asset, amount, extra_data);
+            strategy::withdraw(strategy_id, &account, &asset, amount, extra_data);
         assert!(fee <= withdrawn_amount);
         assert!(asset_data.total_distributed_amount >= (deposited_amount as u128));
 
@@ -472,10 +496,10 @@ module moneyfi::vault {
                 asset_data.total_amount - (loss_amount as u128)
             } else { 0 };
 
-        let system_fee = config.calc_system_fee(interest_amount);
+        let system_fee = config.calc_system_fee(&account, interest_amount);
         let total_fee = fee + system_fee + gas_fee;
         if (total_fee > 0) {
-            let account_signer = wallet_account::get_wallet_account_signer(account);
+            let account_signer = wallet_account::get_wallet_account_signer(&account);
             primary_fungible_store::transfer(
                 &account_signer,
                 asset,
@@ -489,16 +513,16 @@ module moneyfi::vault {
             collected_amount = collected_amount - gas_fee;
 
             let (remaining_fee, referral_fees) =
-                config.calc_referral_shares(account, system_fee);
+                config.calc_referral_shares(&account, system_fee);
             asset_data.total_fee_amount = asset_data.total_fee_amount + remaining_fee;
             asset_data.pending_fee_amount = asset_data.pending_fee_amount
                 + remaining_fee;
-            asset_data.add_referral_fees(referral_fees);
+            asset_data.add_referral_fees(&referral_fees);
         };
 
         wallet_account::collected_fund(
-            account,
-            asset,
+            &account,
+            &asset,
             deposited_amount,
             collected_amount,
             interest_amount,
@@ -526,7 +550,7 @@ module moneyfi::vault {
     ) {
         access_control::must_be_service_account(sender);
         let account = wallet_account::get_wallet_account(wallet_id);
-        strategy::update_tick(strategy_id, account, extra_data);
+        strategy::update_tick(strategy_id, &account, extra_data);
     }
 
     public entry fun swap_assets(
@@ -546,14 +570,14 @@ module moneyfi::vault {
 
         let funding_account_addr = get_funding_account_address();
         let funding_account = borrow_global_mut<FundingAccount>(funding_account_addr);
-        let asset_config_1 = config.get_asset_config(to_asset);
+        let asset_config_1 = config.get_asset_config(&to_asset);
 
         let (amount_in, amount_out) =
             strategy::swap(
                 strategy_id,
-                account,
-                from_asset,
-                to_asset,
+                &account,
+                &from_asset,
+                &to_asset,
                 from_amount,
                 to_amount,
                 extra_data
@@ -562,9 +586,9 @@ module moneyfi::vault {
         let lp_amount_1 = asset_config_1.calc_mint_lp_amount(amount_out);
         let lp_amount_0 =
             wallet_account::swap(
-                account,
-                from_asset,
-                to_asset,
+                &account,
+                &from_asset,
+                &to_asset,
                 amount_in,
                 amount_out,
                 lp_amount_1
@@ -720,22 +744,22 @@ module moneyfi::vault {
     }
 
     fun upsert_asset(
-        self: &mut Config, asset: Object<Metadata>, config: AssetConfig
+        self: &mut Config, asset: &Object<Metadata>, config: AssetConfig
     ) {
-        let addr = object::object_address(&asset);
+        let addr = object::object_address(asset);
         ordered_map::upsert(&mut self.supported_assets, addr, config);
     }
 
-    fun get_asset_config(self: &Config, asset: Object<Metadata>): AssetConfig {
-        let addr = object::object_address(&asset);
+    fun get_asset_config(self: &Config, asset: &Object<Metadata>): AssetConfig {
+        let addr = object::object_address(asset);
         *ordered_map::borrow(&self.supported_assets, &addr)
     }
 
-    fun can_deposit(self: &Config, asset: Object<Metadata>, amount: u64): bool {
+    fun can_deposit(self: &Config, asset: &Object<Metadata>, amount: u64): bool {
         if (amount == 0) return false;
         if (!self.enable_deposit) return false;
 
-        let addr = object::object_address(&asset);
+        let addr = object::object_address(asset);
         if (ordered_map::contains(&self.supported_assets, &addr)) {
             let config = ordered_map::borrow(&self.supported_assets, &addr);
 
@@ -750,12 +774,12 @@ module moneyfi::vault {
     }
 
     fun can_withdraw(
-        self: &Config, asset: Object<Metadata>, amount: u64
+        self: &Config, asset: &Object<Metadata>, amount: u64
     ): bool {
         if (amount == 0) return false;
         if (!self.enable_withdraw) return false;
 
-        let addr = object::object_address(&asset);
+        let addr = object::object_address(asset);
         if (ordered_map::contains(&self.supported_assets, &addr)) {
             let config = ordered_map::borrow(&self.supported_assets, &addr);
 
@@ -791,24 +815,38 @@ module moneyfi::vault {
         self.lp_exchange_rate * token_amount
     }
 
-    fun calc_system_fee(self: &Config, interest_amount: u64): u64 {
-        interest_amount * self.system_fee_percent / 10_000
+    fun calc_system_fee(
+        self: &Config, account: &Object<WalletAccount>, interest_amount: u64
+    ): u64 {
+        let percent = self.system_fee_percent;
+        let (system_fee_percent, _) = wallet_account::get_fee_config(account);
+        if (option::is_some(&system_fee_percent)) {
+            percent = *option::borrow(&system_fee_percent);
+        };
+
+        interest_amount * percent / 10_000
     }
 
     /// return (remaining_fee, share_fees)
     fun calc_referral_shares(
-        self: &Config, account: Object<WalletAccount>, total_fee: u64
+        self: &Config, account: &Object<WalletAccount>, total_fee: u64
     ): (u64, OrderedMap<address, u64>) {
         let share_fees = ordered_map::new();
         let remaining_fee = total_fee;
 
-        let len = vector::length(&self.referral_percents);
+        let percents = self.referral_percents;
+        let (_, referral_percents) = wallet_account::get_fee_config(account);
+        if (!vector::is_empty(&referral_percents)) {
+            percents = referral_percents;
+        };
+
+        let len = vector::length(&percents);
         let referrers = wallet_account::get_referrer_addresses(account, len as u8);
         len = vector::length(&referrers);
         let i = 0;
         while (i < len) {
             let addr = *vector::borrow(&referrers, i);
-            let percent = *vector::borrow(&self.referral_percents, i);
+            let percent = *vector::borrow(&percents, i);
             let fee = total_fee * percent / 10_000;
             assert!(remaining_fee > fee);
             remaining_fee = remaining_fee - fee;
@@ -821,26 +859,26 @@ module moneyfi::vault {
     }
 
     fun add_referral_fees(
-        self: &FundingAsset, data: OrderedMap<address, u64>
+        self: &FundingAsset, data: &OrderedMap<address, u64>
     ) {
         let pending_referral_fees = self.pending_referral_fees;
-        ordered_map::for_each(
+        ordered_map::for_each_ref(
             data,
             |k, v| {
                 let current =
-                    if (ordered_map::contains(&self.pending_referral_fees, &k)) {
-                        *ordered_map::borrow(&self.pending_referral_fees, &k)
+                    if (ordered_map::contains(&self.pending_referral_fees, k)) {
+                        *ordered_map::borrow(&self.pending_referral_fees, k)
                     } else { 0 };
-                v = v + current;
-                ordered_map::upsert(&mut pending_referral_fees, k, v);
+                let v = *v + current;
+                ordered_map::upsert(&mut pending_referral_fees, *k, v);
             }
         );
     }
 
     fun get_pending_referral_fee(
-        self: &FundingAsset, account: Object<WalletAccount>
+        self: &FundingAsset, account: &Object<WalletAccount>
     ): u64 {
-        let addr = object::object_address(&account);
+        let addr = object::object_address(account);
         if (ordered_map::contains(&self.pending_referral_fees, &addr)) {
             *ordered_map::borrow(&self.pending_referral_fees, &addr)
         } else { 0 }

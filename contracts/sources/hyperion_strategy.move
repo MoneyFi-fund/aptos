@@ -87,8 +87,8 @@ module moneyfi::hyperion_strategy {
 
     // returns(actual_amount)
     public(friend) fun deposit_fund_to_hyperion_single(
-        account: Object<WalletAccount>,
-        asset: Object<Metadata>,
+        account: &Object<WalletAccount>,
+        asset: &Object<Metadata>,
         amount_in: u64,
         extra_data: vector<vector<u8>>
     ): u64 acquires StrategyStats {
@@ -134,7 +134,7 @@ module moneyfi::hyperion_strategy {
                 0,
                 4295048016 + 1,
                 position.pair,
-                asset,
+                *asset,
                 signer::address_of(&wallet_signer),
                 timestamp::now_seconds() + DEADLINE_BUFFER
             );
@@ -156,8 +156,8 @@ module moneyfi::hyperion_strategy {
 
     // return (total_deposited_amount, total_withdrawn_amount, withdraw_fee)
     public(friend) fun withdraw_fund_from_hyperion_single(
-        account: Object<WalletAccount>,
-        asset: Object<Metadata>,
+        account: &Object<WalletAccount>,
+        asset: &Object<Metadata>,
         amount_min: u64,
         extra_data: vector<vector<u8>>
     ): (u64, u64, u64) acquires StrategyStats {
@@ -185,16 +185,16 @@ module moneyfi::hyperion_strategy {
         let (interest) = claim_fees_and_rewards_single(account, position);
         let wallet_signer = wallet_account::get_wallet_account_signer(account);
         let wallet_address = signer::address_of(&wallet_signer);
-        let balance_before = primary_fungible_store::balance(wallet_address, asset);
+        let balance_before = primary_fungible_store::balance(wallet_address, *asset);
         router_v3::remove_liquidity_single(
             &wallet_signer,
             position.position,
             liquidity_remove,
-            asset,
+            *asset,
             extra_data.slippage_numerator,
             extra_data.slippage_denominator
         );
-        let balance_after = primary_fungible_store::balance(wallet_address, asset);
+        let balance_after = primary_fungible_store::balance(wallet_address, *asset);
         let (strategy_data, total_deposited_amount) =
             if (!is_full_withdraw) {
                 let total = balance_after - balance_before + position.remaining_amount;
@@ -214,7 +214,7 @@ module moneyfi::hyperion_strategy {
     }
 
     public(friend) fun update_tick(
-        account: Object<WalletAccount>, extra_data: vector<vector<u8>>
+        account: &Object<WalletAccount>, extra_data: vector<vector<u8>>
     ) {
         let extra_data = unpack_extra_data(extra_data);
         if (!exists_hyperion_strategy_data(account)) { return };
@@ -310,9 +310,9 @@ module moneyfi::hyperion_strategy {
     //    actual_amount_out
     // )
     public(friend) fun swap(
-        account: Object<WalletAccount>,
-        from_asset: Object<Metadata>,
-        to_asset: Object<Metadata>,
+        account: &Object<WalletAccount>,
+        from_asset: &Object<Metadata>,
+        to_asset: &Object<Metadata>,
         amount_in: u64,
         min_amount_out: u64,
         extra_data: vector<vector<u8>>
@@ -321,9 +321,9 @@ module moneyfi::hyperion_strategy {
         let wallet_signer = wallet_account::get_wallet_account_signer(account);
         let wallet_address = signer::address_of(&wallet_signer);
         let balance_in_before =
-            primary_fungible_store::balance(wallet_address, from_asset);
+            primary_fungible_store::balance(wallet_address, *from_asset);
         let balance_out_before = primary_fungible_store::balance(
-            wallet_address, to_asset
+            wallet_address, *to_asset
         );
         router_v3::exact_input_swap_entry(
             &wallet_signer,
@@ -331,23 +331,23 @@ module moneyfi::hyperion_strategy {
             amount_in,
             min_amount_out,
             4295048016 + 1, // min
-            from_asset,
-            to_asset,
+            *from_asset,
+            *to_asset,
             wallet_address,
             timestamp::now_seconds() + DEADLINE_BUFFER // deadline
         );
         let balance_in_after = primary_fungible_store::balance(
-            wallet_address, from_asset
+            wallet_address, *from_asset
         );
         let balance_out_after = primary_fungible_store::balance(
-            wallet_address, to_asset
+            wallet_address, *to_asset
         );
 
         (balance_in_before - balance_in_after, balance_out_after - balance_out_before)
     }
 
     fun claim_fees_and_rewards_single(
-        account: Object<WalletAccount>, position: Position
+        account: &Object<WalletAccount>, position: Position
     ): u64 { //return all_profit and amount_swap_token_pair
         // Get pool and fee information (still needed for swapping)
         let pending_fees = pool_v3::get_pending_fees(position.position);
@@ -443,10 +443,10 @@ module moneyfi::hyperion_strategy {
         (balance_after - balance_before)
     }
 
-    fun strategy_stats_deposit(asset: Object<Metadata>, amount: u64) acquires StrategyStats {
+    fun strategy_stats_deposit(asset: &Object<Metadata>, amount: u64) acquires StrategyStats {
         let stats = borrow_global_mut<StrategyStats>(@moneyfi);
-        if (ordered_map::contains(&stats.assets, &asset)) {
-            let asset_stats = ordered_map::borrow_mut(&mut stats.assets, &asset);
+        if (ordered_map::contains(&stats.assets, asset)) {
+            let asset_stats = ordered_map::borrow_mut(&mut stats.assets, asset);
             asset_stats.total_value_locked =
                 asset_stats.total_value_locked + (amount as u128);
             asset_stats.total_deposited = asset_stats.total_deposited
@@ -457,16 +457,16 @@ module moneyfi::hyperion_strategy {
                 total_deposited: (amount as u128),
                 total_withdrawn: 0
             };
-            ordered_map::upsert(&mut stats.assets, asset, new_asset_stats);
+            ordered_map::upsert(&mut stats.assets, *asset, new_asset_stats);
         };
     }
 
     fun strategy_stats_withdraw(
-        asset: Object<Metadata>, deposit_amount: u64, withdraw_amount: u64
+        asset: &Object<Metadata>, deposit_amount: u64, withdraw_amount: u64
     ) acquires StrategyStats {
         let stats = borrow_global_mut<StrategyStats>(@moneyfi);
-        if (ordered_map::contains(&stats.assets, &asset)) {
-            let asset_stats = ordered_map::borrow_mut(&mut stats.assets, &asset);
+        if (ordered_map::contains(&stats.assets, asset)) {
+            let asset_stats = ordered_map::borrow_mut(&mut stats.assets, asset);
             asset_stats.total_value_locked =
                 asset_stats.total_value_locked - (deposit_amount as u128);
             asset_stats.total_withdrawn =
@@ -476,7 +476,7 @@ module moneyfi::hyperion_strategy {
         };
     }
 
-    fun ensure_hyperion_strategy_data(account: Object<WalletAccount>): HyperionStrategyData {
+    fun ensure_hyperion_strategy_data(account: &Object<WalletAccount>): HyperionStrategyData {
         if (!exists_hyperion_strategy_data(account)) {
             let strategy_data = HyperionStrategyData {
                 strategy_id: STRATEGY_ID,
@@ -491,12 +491,12 @@ module moneyfi::hyperion_strategy {
         strategy_data
     }
 
-    fun exists_hyperion_strategy_data(account: Object<WalletAccount>): bool {
-        wallet_account::exists_strategy_data<HyperionStrategyData>(account)
+    fun exists_hyperion_strategy_data(account: &Object<WalletAccount>): bool {
+        wallet_account::strategy_data_exists<HyperionStrategyData>(account)
     }
 
     fun exists_hyperion_postion(
-        account: Object<WalletAccount>, pool: address
+        account: &Object<WalletAccount>, pool: address
     ): bool {
         assert!(
             exists_hyperion_strategy_data(account),
@@ -507,20 +507,20 @@ module moneyfi::hyperion_strategy {
     }
 
     fun set_position_data(
-        account: Object<WalletAccount>, pool: address, position: Position
+        account: &Object<WalletAccount>, pool: address, position: Position
     ): HyperionStrategyData {
         let strategy_data = ensure_hyperion_strategy_data(account);
         ordered_map::upsert(&mut strategy_data.pools, pool, position);
         strategy_data
     }
 
-    fun remove_position(account: Object<WalletAccount>, pool: address): HyperionStrategyData {
+    fun remove_position(account: &Object<WalletAccount>, pool: address): HyperionStrategyData {
         let strategy_data = ensure_hyperion_strategy_data(account);
         ordered_map::remove(&mut strategy_data.pools, &pool);
         strategy_data
     }
 
-    fun get_position_data(account: Object<WalletAccount>, pool: address): Position {
+    fun get_position_data(account: &Object<WalletAccount>, pool: address): Position {
         assert!(exists_hyperion_postion(account, pool), E_HYPERION_POSITION_NOT_EXISTS);
         let strategy_data = ensure_hyperion_strategy_data(account);
         let position = ordered_map::borrow(&strategy_data.pools, &pool);
@@ -528,8 +528,8 @@ module moneyfi::hyperion_strategy {
     }
 
     fun create_or_get_exist_position(
-        account: Object<WalletAccount>,
-        asset: Object<Metadata>,
+        account: &Object<WalletAccount>,
+        asset: &Object<Metadata>,
         pool: address,
         fee_tier: u8
     ): Position {
@@ -542,8 +542,8 @@ module moneyfi::hyperion_strategy {
                 assert!(object::object_exists<LiquidityPoolV3>(pool), 0x10034);
                 let pool_obj = object::address_to_object<LiquidityPoolV3>(pool);
                 let assets = pool_v3::supported_inner_assets(pool_obj);
-                let token_a = *vector::borrow(&assets, 0);
-                let token_b = *vector::borrow(&assets, 1);
+                let token_a = vector::borrow(&assets, 0);
+                let token_b = vector::borrow(&assets, 1);
                 let (current_tick, _) = pool_v3::current_tick_and_price(pool);
                 let tick_spacing = pool_v3::get_tick_spacing(fee_tier);
                 let tick_lower =
@@ -557,23 +557,23 @@ module moneyfi::hyperion_strategy {
                 let position =
                     pool_v3::open_position(
                         &wallet_account::get_wallet_account_signer(account),
-                        token_a,
-                        token_b,
+                        *token_a,
+                        *token_b,
                         fee_tier,
                         i32::as_u32(tick_lower),
                         i32::as_u32(tick_upper)
                     );
                 let pair =
-                    if (object::object_address<Metadata>(&asset)
-                        == object::object_address<Metadata>(&token_a)) {
-                        token_b
+                    if (object::object_address<Metadata>(asset)
+                        == object::object_address<Metadata>(token_a)) {
+                        *token_b
                     } else {
-                        token_a
+                        *token_a
                     };
                 let new_position = Position {
                     position,
                     lp_amount: 0,
-                    asset,
+                    asset: *asset,
                     pair,
                     amount: 0,
                     fee_tier,
@@ -587,7 +587,7 @@ module moneyfi::hyperion_strategy {
         position
     }
 
-    fun get_position(account: Object<WalletAccount>, pool: address): Object<Info> {
+    fun get_position(account: &Object<WalletAccount>, pool: address): Object<Info> {
         let position = get_position_data(account, pool);
         position.position
     }
@@ -611,10 +611,10 @@ module moneyfi::hyperion_strategy {
     #[view]
     public fun get_user_strategy_data(wallet_id: vector<u8>): HyperionStrategyData {
         let account = wallet_account::get_wallet_account(wallet_id);
-        if (!exists_hyperion_strategy_data(account)) {
+        if (!exists_hyperion_strategy_data(&account)) {
             assert!(false, E_HYPERION_STRATEGY_DATA_NOT_EXISTS);
         };
-        wallet_account::get_strategy_data<HyperionStrategyData>(account)
+        wallet_account::get_strategy_data<HyperionStrategyData>(&account)
     }
 
     fun unpack_extra_data(extra_data: vector<vector<u8>>): ExtraData {
@@ -653,18 +653,18 @@ module moneyfi::hyperion_strategy {
     #[view]
     public fun get_profit(wallet_id: vector<u8>): u64 {
         let account = wallet_account::get_wallet_account(wallet_id);
-        if (!exists_hyperion_strategy_data(account)) {
+        if (!exists_hyperion_strategy_data(&account)) {
             return 0
         };
         let strategy_data =
-            wallet_account::get_strategy_data<HyperionStrategyData>(account);
+            wallet_account::get_strategy_data<HyperionStrategyData>(&account);
         let total_profit: u64 = 0;
         let pools = ordered_map::keys<address, Position>(&strategy_data.pools);
         let i = 0;
         let len = ordered_map::length(&strategy_data.pools);
         while (i < len) {
             let pool = *vector::borrow<address>(&pools, i);
-            let position = get_position(account, pool);
+            let position = get_position(&account, pool);
             total_profit = total_profit + get_pending_rewards_and_fees_usdc(position);
             i = i + 1;
         };
