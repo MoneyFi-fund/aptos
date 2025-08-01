@@ -69,9 +69,6 @@ module moneyfi::hyperion {
             threshold_denominator
         );
 
-        let balance_after =
-            primary_fungible_store::balance(signer::address_of(&wallet_signer), token_a);
-
         let remaining_balance =
             primary_fungible_store::balance(signer::address_of(&wallet_signer), token_b);
         if (remaining_balance > 0) {
@@ -87,6 +84,9 @@ module moneyfi::hyperion {
                 timestamp::now_seconds() + DEADLINE_BUFFER
             );
         };
+
+        let balance_after =
+            primary_fungible_store::balance(signer::address_of(&wallet_signer), token_a);
 
         wallet_account::add_position_opened(
             wallet_id,
