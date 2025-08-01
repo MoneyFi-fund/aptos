@@ -161,7 +161,13 @@ module moneyfi::thala_strategy {
             } else {
                 (position.lp_amount, true)
             };
+        let pair = if(object::object_address(&asset) == object::object_address(&position.asset)){
+            position.pair
+        }else{
+            position.asset
+        };
         let balance_asset_after = primary_fungible_store::balance(wallet_address, asset);
+        let balance_pair_after = primary_fungible_store::balance(wallet_address, pair);
         //Claim reward
         let pool_lp_token_metadata = pool::pool_lp_token_metadata(pool_obj);
         let reward_ids = position.reward_ids;
@@ -177,7 +183,7 @@ module moneyfi::thala_strategy {
                 staked_lpt::get_staked_lpt_metadata_from_lpt(pool_lp_token_metadata), 
                 reward_id
             );
-            if(object::object_address(&position.asset) == object::object_address(&staked_lpt::get_reward_metadata(reward_id))){
+            if(object::object_address(&asset) != object::object_address(&staked_lpt::get_reward_metadata(reward_id))){
                 if(amount > 0){
                     let lp_path: vector<address> = vector[
                         @0x692ba87730279862aa1a93b5fef9a175ea0cccc1f29dfc84d3ec7fbe1561aef3,
@@ -187,7 +193,7 @@ module moneyfi::thala_strategy {
                         &wallet_signer,
                         lp_path,
                         staked_lpt::get_reward_metadata(reward_id),
-                        position.asset,
+                        asset,
                         amount,
                         0,
                         wallet_address
@@ -195,8 +201,9 @@ module moneyfi::thala_strategy {
                 }
             };
         });
+        //Unstake
+        staked_lpt::unstake_entry(&wallet_signer, staked_lpt::get_staked_lpt_metadata_from_lpt(pool_lp_token_metadata), liquidity_remove as u64);
         //Remove lp
-        let assets = pool::pool_assets_metadata(pool_obj);
         let amounts = pool::remove_liquidity_preview_info(pool::preview_remove_liquidity(pool_obj, pool_lp_token_metadata, liquidity_remove as u64));
         pool::remove_liquidity_entry(
             &wallet_signer,
@@ -205,29 +212,23 @@ module moneyfi::thala_strategy {
             liquidity_remove as u64,
             amounts
         );
-        let i = 0;
-        while (i < vector::length(&assets)) {
-            let token = *vector::borrow(&assets, i);
-            if (object::object_address(&token) != object::object_address(&asset)) {
-                let (_, index) = vector::index_of(&assets, &token);
-                let amount = *vector::borrow(&amounts, index);
-                let (_, _, amount_out, _, _, _, _, _, _, _) = pool::swap_preview_info(pool::preview_swap_exact_in_stable(
-                    pool_obj, 
-                    token, 
-                    asset, 
-                    amount, 
-                    option::none()
-                ));
-                coin_wrapper::swap_exact_in_stable<AptosCoin>(
-                    &wallet_signer,
-                    pool_obj,
-                    token,
-                    amount,
-                    asset,
-                    amount_out
-                );
-            };
-            i = i + 1;
+        let remaining = primary_fungible_store::balance(wallet_address, pair) - balance_pair_after;  
+        if (remaining > 0) {
+            let (_, _, amount_out, _, _, _, _, _, _, _) = pool::swap_preview_info(pool::preview_swap_exact_in_stable(
+                pool_obj, 
+                pair, 
+                asset, 
+                remaining, 
+                option::none()
+            ));
+            coin_wrapper::swap_exact_in_stable<Notacoin>(
+                &wallet_signer,
+                pool_obj,
+                pair,
+                remaining,
+                asset,
+                amount_out
+            );
         };
         let balance_asset_before = primary_fungible_store::balance(wallet_address, asset);
         let total_withdrawn_amount = balance_asset_before - balance_asset_after;
@@ -508,6 +509,10 @@ module moneyfi::thala_strategy {
             j = j + 1;
         };
         
-        total_stablecoin_amount - position.amount
+        if(total_stablecoin_amount > position.amount){
+            total_stablecoin_amount - position.amount
+        }else{
+            0
+        }
     }
 }
