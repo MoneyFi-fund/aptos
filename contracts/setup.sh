@@ -78,7 +78,7 @@ function download_package() {
 # git checkout deps/hyperion
 
 ## Thala
-download_package --account "$THALASWAP_V1" --package ThalaSwap --output-dir deps/thala/thala_swap_v1
-download_package --account "$THALASWAP_V2" --package ThalaSwapV2 --output-dir deps/thala/thala_swap
-download_package --account "$THALA_STAKED_LPT" --package ThalaStakedLPT --output-dir deps/thala/thala_staked
-git checkout deps/thala
+# download_package --account "$THALASWAP_V1" --package ThalaSwap --output-dir deps/thala/thala_swap_v1
+# download_package --account "$THALASWAP_V2" --package ThalaSwapV2 --output-dir deps/thala/thala_swap
+# download_package --account "$THALA_STAKED_LPT" --package ThalaStakedLPT --output-dir deps/thala/thala_staked
+# git checkout deps/thala
