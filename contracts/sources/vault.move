@@ -119,7 +119,7 @@ module moneyfi::vault {
 
     #[event]
     struct DepositToStrategyEvent has drop, store {
-        account: Object<WalletAccount>,
+        wallet_id: vector<u8>,
         asset: Object<Metadata>,
         strategy: u8,
         amount: u64,
@@ -128,7 +128,7 @@ module moneyfi::vault {
 
     #[event]
     struct WithdrawFromStrategyEvent has drop, store {
-        account: Object<WalletAccount>,
+        wallet_id: vector<u8>,
         asset: Object<Metadata>,
         strategy: u8,
         amount: u64,
@@ -139,7 +139,7 @@ module moneyfi::vault {
 
     #[event]
     struct SwapAssetsEvent has drop, store {
-        account: Object<WalletAccount>,
+        wallet_id: vector<u8>,
         strategy: u8,
         from_asset: Object<Metadata>,
         to_asset: Object<Metadata>,
@@ -444,7 +444,7 @@ module moneyfi::vault {
 
         event::emit(
             DepositToStrategyEvent {
-                account,
+                wallet_id,
                 asset,
                 strategy: strategy_id,
                 amount,
@@ -531,7 +531,7 @@ module moneyfi::vault {
 
         event::emit(
             WithdrawFromStrategyEvent {
-                account,
+                wallet_id,
                 asset,
                 strategy: strategy_id,
                 amount: collected_amount,
@@ -565,7 +565,7 @@ module moneyfi::vault {
     ) acquires FundingAccount, Config, LPToken {
         access_control::must_be_service_account(sender);
         let account = wallet_account::get_wallet_account(wallet_id);
-        let account_addr = object::object_address(&account);
+        let account_addr = wallet_account::get_owner_address(wallet_id);
         let config = borrow_global<Config>(@moneyfi);
 
         let funding_account_addr = get_funding_account_address();
@@ -615,7 +615,7 @@ module moneyfi::vault {
 
         event::emit(
             SwapAssetsEvent {
-                account,
+                wallet_id,
                 strategy: strategy_id,
                 from_asset,
                 to_asset,

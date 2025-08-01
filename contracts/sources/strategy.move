@@ -6,11 +6,13 @@ module moneyfi::strategy {
 
     use moneyfi::wallet_account::WalletAccount;
     use moneyfi::hyperion_strategy;
+    use moneyfi::thala_strategy;
 
     friend moneyfi::vault;
 
     const STRATEGY_HYPERION: u8 = 1;
     const STRATEGY_ARIES: u8 = 2;
+    const STRATEGY_THALA: u8 = 3;
 
     const E_UNKNOWN_STRATEGY: u64 = 1;
     const E_NOT_SUPPORTED_BY_STRATEGY: u64 = 2;
@@ -27,8 +29,10 @@ module moneyfi::strategy {
         if (strategy == STRATEGY_HYPERION) {
             let (v1, v2, v3) = hyperion_strategy::get_strategy_stats(asset);
             vector::append(&mut stats, vector[v1, v2, v3]);
+        }else if(strategy == STRATEGY_THALA){
+            let (v1, v2, v3) = thala_strategy::get_strategy_stats(asset);
+            vector::append(&mut stats, vector[v1, v2, v3]);
         };
-
         stats
     }
 
@@ -40,11 +44,18 @@ module moneyfi::strategy {
         amount: u64,
         extra_data: vector<vector<u8>>
     ): u64 {
-        if (strategy == STRATEGY_HYPERION) {
-            return hyperion_strategy::deposit_fund_to_hyperion_single(
-                account, asset, amount, extra_data
-            );
-        };
+        let actual_amount =
+            if (strategy == STRATEGY_HYPERION) {
+                hyperion_strategy::deposit_fund_to_hyperion_single(
+                    account, asset, amount, extra_data
+                )
+            } else if(strategy == STRATEGY_THALA){
+                thala_strategy::deposit_fund_to_thala_single(
+                    account, asset, amount, extra_data
+                )
+            }else{
+                0
+            };
 
         abort(error::invalid_argument(E_UNKNOWN_STRATEGY));
         0
@@ -62,11 +73,18 @@ module moneyfi::strategy {
         min_amount: u64,
         extra_data: vector<vector<u8>>
     ): (u64, u64, u64) {
-        if (strategy == STRATEGY_HYPERION) {
-            return hyperion_strategy::withdraw_fund_from_hyperion_single(
-                account, asset, min_amount, extra_data
-            );
-        };
+        let (total_deposited_amount, total_withdrawn_amount, withdraw_fee) =
+            if (strategy == STRATEGY_HYPERION) {
+                hyperion_strategy::withdraw_fund_from_hyperion_single(
+                    account, asset, min_amount, extra_data
+                )
+            }else if(strategy == STRATEGY_THALA) {
+                thala_strategy::withdraw_fund_from_thala_single(
+                    account, asset, min_amount, extra_data
+                )
+            }else {
+                (0, 0, 0)
+            };
 
         abort(error::invalid_argument(E_UNKNOWN_STRATEGY));
         (0, 0, 0)
