@@ -541,7 +541,7 @@ module moneyfi::vault {
     ) acquires FundingAccount, Config, LPToken {
         access_control::must_be_service_account(sender);
         let account = wallet_account::get_wallet_account(wallet_id);
-        let account_addr = object::object_address(&account);
+        let account_addr = wallet_account::get_owner_address(wallet_id);
         let config = borrow_global<Config>(@moneyfi);
 
         let funding_account_addr = get_funding_account_address();

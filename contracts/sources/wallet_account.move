@@ -209,9 +209,7 @@ module moneyfi::wallet_account {
         );
 
         let total_0 = asset_data_0.current_amount + asset_data_0.distributed_amount;
-        let lp_amount_0 =
-            ((from_amount as u128) * (asset_data_0.lp_amount as u128) / (total_0 as u128)) as u64;
-
+        let lp_amount_0 = math128::mul_div((from_amount as u128), (asset_data_0.lp_amount as u128), (total_0 as u128)) as u64;
         asset_data_0.swap_out_amount = asset_data_0.swap_out_amount + from_amount;
         asset_data_0.current_amount = asset_data_0.current_amount - from_amount;
         asset_data_0.lp_amount = asset_data_0.lp_amount - lp_amount_0;
@@ -345,6 +343,14 @@ module moneyfi::wallet_account {
         let wallet_account = borrow_global<WalletAccount>(addr);
 
         ordered_map::to_vec_pair<address, AccountAsset>(wallet_account.assets)
+    }
+
+    public fun get_owner_address(wallet_id: vector<u8>): address acquires WalletAccount {
+        let account = get_wallet_account(wallet_id);
+        let addr = object::object_address(&account);
+        let wallet_account = borrow_global<WalletAccount>(addr);
+        assert!(option::is_some(&wallet_account.wallet_address), E_NOT_OWNER);
+        *option::borrow(&wallet_account.wallet_address)
     }
 
     public fun get_wallet_account_by_address(

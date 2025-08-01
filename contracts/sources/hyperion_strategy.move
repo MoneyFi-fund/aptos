@@ -225,7 +225,7 @@ module moneyfi::hyperion_strategy {
         let (current_tick, _) = pool_v3::current_tick_and_price(extra_data.pool);
         let (token_a, token_b, _) = position_v3::get_pool_info(position.position);
         if (i32::gt(i32::from_u32(current_tick), i32::from_u32(position.tick_lower))
-            && i32::lt(i32::from_u32(current_tick), i32::from_u32(position.tick_lower))) {
+            && i32::lt(i32::from_u32(current_tick), i32::from_u32(position.tick_upper))) {
             return
         };
         let tick_spacing = pool_v3::get_tick_spacing(position.fee_tier);
@@ -325,16 +325,15 @@ module moneyfi::hyperion_strategy {
         let balance_out_before = primary_fungible_store::balance(
             wallet_address, to_asset
         );
-        router_v3::exact_input_swap_entry(
+        let lp_path = vector::singleton<address>(extra_data.pool);
+        router_v3::swap_batch(
             &wallet_signer,
-            extra_data.fee_tier, // fee_tier for reward swaps
-            amount_in,
-            min_amount_out,
-            4295048016 + 1, // min
+            lp_path,
             from_asset,
             to_asset,
+            amount_in,
+            min_amount_out,
             wallet_address,
-            timestamp::now_seconds() + DEADLINE_BUFFER // deadline
         );
         let balance_in_after = primary_fungible_store::balance(
             wallet_address, from_asset
