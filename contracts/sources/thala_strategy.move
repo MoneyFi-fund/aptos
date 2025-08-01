@@ -63,7 +63,8 @@ module moneyfi::thala_strategy {
     struct ExtraData has drop, copy, store {
         pool: address,
         reward_a: String,
-        reward_b: String
+        reward_b: String,
+        withdraw_fee: u64
     }
 
     //--initialization
@@ -142,7 +143,7 @@ module moneyfi::thala_strategy {
         asset: Object<Metadata>,
         amount_min: u64,
         extra_data: vector<vector<u8>>
-    ): (u64, u64) {
+    ): (u64, u64, u64) {
         let extra_data = unpack_extra_data(extra_data);
         let position = get_position_data(account, extra_data.pool);
         let pool_obj = object::address_to_object<Pool>(extra_data.pool);
@@ -239,7 +240,7 @@ module moneyfi::thala_strategy {
             (amount_min, set_position_data(account, extra_data.pool, position))
         };
         wallet_account::set_strategy_data(account, strategy_data);
-        (total_deposited_amount, total_withdrawn_amount)
+        (total_deposited_amount, total_withdrawn_amount, extra_data.withdraw_fee)
     }
 
     // return (
@@ -392,7 +393,8 @@ module moneyfi::thala_strategy {
         let extra_data = ExtraData { 
             pool: from_bcs::to_address(*vector::borrow(&extra_data, 0)),
             reward_a: from_bcs::to_string(*vector::borrow(&extra_data, 1)),
-            reward_b: from_bcs::to_string(*vector::borrow(&extra_data, 2))
+            reward_b: from_bcs::to_string(*vector::borrow(&extra_data, 2)),
+            withdraw_fee: from_bcs::to_u64(*vector::borrow(&extra_data, 3))
         };
         extra_data
     }
@@ -408,10 +410,11 @@ module moneyfi::thala_strategy {
     }
 
     #[view]
-    public fun pack_extra_data(pool: address, reward_a: String, reward_b: String): vector<vector<u8>> {
+    public fun pack_extra_data(pool: address, reward_a: String, reward_b: String, withdraw_fee: u64): vector<vector<u8>> {
         let extra_data = vector::singleton<vector<u8>>(to_bytes<address>(&pool));
         vector::push_back(&mut extra_data, to_bytes<String>(&reward_a));
         vector::push_back(&mut extra_data, to_bytes<String>(&reward_b));
+        vector::push_back(&mut extra_data, to_bytes<u64>(&withdraw_fee));
         extra_data
     }
 

@@ -28,8 +28,7 @@ module moneyfi::strategy {
         }else if(strategy == STRATEGY_THALA){
             let (v1, v2, v3) = thala_strategy::get_strategy_stats(asset);
             vector::append(&mut stats, vector[v1, v2, v3]);
-        }
-
+        };
         stats
     }
 
@@ -48,12 +47,12 @@ module moneyfi::strategy {
                     account, asset, amount, extra_data
                 )
             } else if(strategy == STRATEGY_THALA){
-                thala_strategy::deposit_fund_to_hyperion_single(
+                thala_strategy::deposit_fund_to_thala_single(
                     account, asset, amount, extra_data
                 )
             }else{
                 0
-            }
+            };
 
         actual_amount
     }
@@ -76,7 +75,7 @@ module moneyfi::strategy {
                     account, asset, min_amount, extra_data
                 )
             }else if(strategy == STRATEGY_THALA) {
-                thala_strategy::withdraw_fund_from_hyperion_single(
+                thala_strategy::withdraw_fund_from_thala_single(
                     account, asset, min_amount, extra_data
                 )
             }else {
