@@ -9,9 +9,7 @@ module moneyfi::thala_strategy {
     use aptos_std::ordered_map::{Self, OrderedMap};
     use aptos_framework::object::{Self, Object};
     use aptos_framework::primary_fungible_store;
-    use aptos_framework::timestamp;
     use aptos_framework::fungible_asset::Metadata;
-    use aptos_framework::coin;
     use aptos_framework::aptos_coin::AptosCoin;
 
     use thalaswap_v2::pool::{Self, Pool};
@@ -27,7 +25,7 @@ module moneyfi::thala_strategy {
     const DEADLINE_BUFFER: u64 = 31556926; // 1 years
     const USDC_ADDRESS: address = @stablecoin;
 
-    const STRATEGY_ID: u8 = 2;
+    const STRATEGY_ID: u8 = 3;
 
     // -- Error
     /// Thala Strategy data not exists
@@ -133,7 +131,8 @@ module moneyfi::thala_strategy {
         position.amount = position.amount + actual_amount;
         position.staked_lp_amount = position.staked_lp_amount + lp_amount;
         strategy_stats_deposit(asset, actual_amount);
-        set_position_data(account, extra_data.pool, position);
+        let strategy_data = set_position_data(account, extra_data.pool, position);
+        wallet_account::set_strategy_data(account, strategy_data);
         actual_amount
     }
 
@@ -161,12 +160,11 @@ module moneyfi::thala_strategy {
             } else {
                 (position.lp_amount, true)
             };
-        let balance_asset_after = primary_fungible_store::balance(wallet_address, position.asset);
-        let balance_pair_after = primary_fungible_store::balance(wallet_address, position.pair);
+        let balance_asset_after = primary_fungible_store::balance(wallet_address, asset);
         //Claim reward
         let pool_lp_token_metadata = pool::pool_lp_token_metadata(pool_obj);
         let reward_ids = position.reward_ids;
-        vector::for_each(reward_ids, |reward_id| 
+        vector::for_each(reward_ids, |reward_id| {
             let amount = staked_lpt::claimable_reward(
                 wallet_address, 
                 staked_lpt::get_staked_lpt_metadata_from_lpt(pool_lp_token_metadata), 
@@ -194,25 +192,54 @@ module moneyfi::thala_strategy {
                         wallet_address
                     );
                 }
-            }
-        );
+            };
+        });
         //Remove lp
-        assets = pool::pool_assets_metadata(pool_obj);
-        amounts = pool::remove_liquidity_preview_info(pool_obj, pool_lp_token_metadata, liquidity_remove);
+        let assets = pool::pool_assets_metadata(pool_obj);
+        let amounts = pool::remove_liquidity_preview_info(pool::preview_remove_liquidity(pool_obj, pool_lp_token_metadata, liquidity_remove as u64));
         pool::remove_liquidity_entry(
             &wallet_signer,
             pool_obj, 
             pool_lp_token_metadata, 
-            liquidity_remove,
+            liquidity_remove as u64,
             amounts
         );
-        vector::
-        coin_wrapper::swap_exact_in_stable(
-
-        )
-        
-        (0,0)
-
+        let i = 0;
+        while (i < vector::length(&assets)) {
+            let token = *vector::borrow(&assets, i);
+            if (object::object_address(&token) != object::object_address(&asset)) {
+                let (_, index) = vector::index_of(&assets, &token);
+                let amount = *vector::borrow(&amounts, index);
+                let (_, _, amount_out, _, _, _, _, _, _, _) = pool::swap_preview_info(pool::preview_swap_exact_in_stable(
+                    pool_obj, 
+                    token, 
+                    asset, 
+                    amount, 
+                    option::none()
+                ));
+                coin_wrapper::swap_exact_in_stable<AptosCoin>(
+                    &wallet_signer,
+                    pool_obj,
+                    token,
+                    amount,
+                    asset,
+                    amount_out
+                );
+            };
+            i = i + 1;
+        };
+        let balance_asset_before = primary_fungible_store::balance(wallet_address, asset);
+        let total_withdrawn_amount = balance_asset_before - balance_asset_after;
+        let (total_deposited_amount, strategy_data) = if(is_full_withdraw) {
+            (position.amount, remove_position(account, extra_data.pool))
+        }else {
+            position.amount = position.amount - amount_min;
+            position.lp_amount = position.lp_amount - liquidity_remove;
+            position.staked_lp_amount= position.staked_lp_amount - (liquidity_remove as u64);
+            (amount_min, set_position_data(account, extra_data.pool, position))
+        };
+        wallet_account::set_strategy_data(account, strategy_data);
+        (total_deposited_amount, total_withdrawn_amount)
     }
 
     // return (

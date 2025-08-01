@@ -226,7 +226,7 @@ module moneyfi::hyperion_strategy {
         let (token_a, token_b, _) = position_v3::get_pool_info(position.position);
 
         if (i32::gt(i32::from_u32(current_tick), i32::from_u32(position.tick_lower))
-            && i32::lt(i32::from_u32(current_tick), i32::from_u32(position.tick_lower))) {
+            && i32::lt(i32::from_u32(current_tick), i32::from_u32(position.tick_upper))) {
             return
         };
 
@@ -239,7 +239,7 @@ module moneyfi::hyperion_strategy {
         let liquidity = position_v3::get_liquidity(position.position);
 
         if (liquidity == 0) { return };
-        
+
         let balance_before_remove =
             primary_fungible_store::balance(wallet_address, position.asset);
         let interest = claim_fees_and_rewards_single(account, position);
