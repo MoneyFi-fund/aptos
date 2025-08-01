@@ -7,10 +7,10 @@ module moneyfi::thala_strategy {
     use aptos_std::from_bcs;
     use aptos_std::math128;
     use aptos_std::ordered_map::{Self, OrderedMap};
+    use aptos_framework::error;
     use aptos_framework::object::{Self, Object};
     use aptos_framework::primary_fungible_store;
     use aptos_framework::fungible_asset::Metadata;
-    use aptos_framework::aptos_coin::AptosCoin;
 
     use thalaswap_v2::pool::{Self, Pool};
     use thalaswap_v2::coin_wrapper::{Self, Notacoin};
@@ -79,8 +79,8 @@ module moneyfi::thala_strategy {
 
     // returns(actual_amount)
     public(friend) fun deposit_fund_to_thala_single(
-        account: Object<WalletAccount>,
-        asset: Object<Metadata>,
+        account: &Object<WalletAccount>,
+        asset: &Object<Metadata>,
         amount_in: u64,
         extra_data: vector<vector<u8>>
     ): u64 acquires StrategyStats{
@@ -95,17 +95,17 @@ module moneyfi::thala_strategy {
         // Determine which token we're depositing and create amounts vector
         let amounts = vector::empty<u64>();
         
-        if (asset == token_a) {
+        if (*asset == token_a) {
             // Depositing token A (first token)
             vector::push_back(&mut amounts, amount_in);  // Amount for token A
             vector::push_back(&mut amounts, 0);          // 0 for token B
-        } else if (asset == token_b) {
+        } else if (*asset == token_b) {
             // Depositing token B (second token)
             vector::push_back(&mut amounts, 0);          // 0 for token A
             vector::push_back(&mut amounts, amount_in);  // Amount for token B
         } else {
             // Asset is not part of this pool
-            assert!(false ,E_INVALID_ASSET);
+            assert!(false ,error::invalid_argument(E_INVALID_ASSET));
         };
 
         let balance_asset_before =
@@ -139,8 +139,8 @@ module moneyfi::thala_strategy {
 
     // return (total_deposited_amount, total_withdrawn_amount)
     public(friend) fun withdraw_fund_from_thala_single(
-        account: Object<WalletAccount>,
-        asset: Object<Metadata>,
+        account: &Object<WalletAccount>,
+        asset: &Object<Metadata>,
         amount_min: u64,
         extra_data: vector<vector<u8>>
     ): (u64, u64, u64) {
@@ -161,12 +161,12 @@ module moneyfi::thala_strategy {
             } else {
                 (position.lp_amount, true)
             };
-        let pair = if(object::object_address(&asset) == object::object_address(&position.asset)){
+        let pair = if(object::object_address(asset) == object::object_address(&position.asset)){
             position.pair
         }else{
             position.asset
         };
-        let balance_asset_after = primary_fungible_store::balance(wallet_address, asset);
+        let balance_asset_after = primary_fungible_store::balance(wallet_address, *asset);
         let balance_pair_after = primary_fungible_store::balance(wallet_address, pair);
         //Claim reward
         let pool_lp_token_metadata = pool::pool_lp_token_metadata(pool_obj);
@@ -183,7 +183,7 @@ module moneyfi::thala_strategy {
                 staked_lpt::get_staked_lpt_metadata_from_lpt(pool_lp_token_metadata), 
                 reward_id
             );
-            if(object::object_address(&asset) != object::object_address(&staked_lpt::get_reward_metadata(reward_id))){
+            if(object::object_address(asset) != object::object_address(&staked_lpt::get_reward_metadata(reward_id))){
                 if(amount > 0){
                     let lp_path: vector<address> = vector[
                         @0x692ba87730279862aa1a93b5fef9a175ea0cccc1f29dfc84d3ec7fbe1561aef3,
@@ -193,7 +193,7 @@ module moneyfi::thala_strategy {
                         &wallet_signer,
                         lp_path,
                         staked_lpt::get_reward_metadata(reward_id),
-                        asset,
+                        *asset,
                         amount,
                         0,
                         wallet_address
@@ -217,7 +217,7 @@ module moneyfi::thala_strategy {
             let (_, _, amount_out, _, _, _, _, _, _, _) = pool::swap_preview_info(pool::preview_swap_exact_in_stable(
                 pool_obj, 
                 pair, 
-                asset, 
+                *asset, 
                 remaining, 
                 option::none()
             ));
@@ -226,11 +226,11 @@ module moneyfi::thala_strategy {
                 pool_obj,
                 pair,
                 remaining,
-                asset,
+                *asset,
                 amount_out
             );
         };
-        let balance_asset_before = primary_fungible_store::balance(wallet_address, asset);
+        let balance_asset_before = primary_fungible_store::balance(wallet_address, *asset);
         let total_withdrawn_amount = balance_asset_before - balance_asset_after;
         let (total_deposited_amount, strategy_data) = if(is_full_withdraw) {
             (position.amount, remove_position(account, extra_data.pool))
@@ -249,20 +249,46 @@ module moneyfi::thala_strategy {
     //    actual_amount_out
     // )
     public(friend) fun swap(
-        account: Object<WalletAccount>,
-        from_asset: Object<Metadata>,
-        to_asset: Object<Metadata>,
+        account: &Object<WalletAccount>,
+        from_asset: &Object<Metadata>,
+        to_asset: &Object<Metadata>,
         amount_in: u64,
         min_amount_out: u64,
         extra_data: vector<vector<u8>>
     ): (u64, u64) {
-        (0, 0)
+        let extra_data = unpack_extra_data(extra_data);
+        let wallet_signer = wallet_account::get_wallet_account_signer(account);
+        let wallet_address = signer::address_of(&wallet_signer);
+        let pool_obj = object::address_to_object<Pool>(extra_data.pool);
+        let balance_in_before =
+            primary_fungible_store::balance(wallet_address, *from_asset);
+        let balance_out_before = primary_fungible_store::balance(
+            wallet_address, *to_asset
+        );
+
+        coin_wrapper::swap_exact_in_stable<Notacoin>(
+                &wallet_signer,
+                pool_obj,
+                *from_asset,
+                amount_in,
+                *to_asset,
+                min_amount_out
+            );
+
+        let balance_in_after = primary_fungible_store::balance(
+            wallet_address, *from_asset
+        );
+        let balance_out_after = primary_fungible_store::balance(
+            wallet_address, *to_asset
+        );
+
+        (balance_in_before - balance_in_after, balance_out_after - balance_out_before)
     }
 
-    fun strategy_stats_deposit(asset: Object<Metadata>, amount: u64) acquires StrategyStats {
+    fun strategy_stats_deposit(asset: &Object<Metadata>, amount: u64) acquires StrategyStats {
         let stats = borrow_global_mut<StrategyStats>(@moneyfi);
-        if (ordered_map::contains(&stats.assets, &asset)) {
-            let asset_stats = ordered_map::borrow_mut(&mut stats.assets, &asset);
+        if (ordered_map::contains(&stats.assets, asset)) {
+            let asset_stats = ordered_map::borrow_mut(&mut stats.assets, asset);
             asset_stats.total_value_locked =
                 asset_stats.total_value_locked + (amount as u128);
             asset_stats.total_deposited = asset_stats.total_deposited
@@ -273,26 +299,26 @@ module moneyfi::thala_strategy {
                 total_deposited: (amount as u128),
                 total_withdrawn: 0
             };
-            ordered_map::upsert(&mut stats.assets, asset, new_asset_stats);
+            ordered_map::upsert(&mut stats.assets, *asset, new_asset_stats);
         };
     }
 
     fun strategy_stats_withdraw(
-        asset: Object<Metadata>, deposit_amount: u64, interest: u64
+        asset: &Object<Metadata>, deposit_amount: u64, interest: u64
     ) acquires StrategyStats {
         let stats = borrow_global_mut<StrategyStats>(@moneyfi);
-        if (ordered_map::contains(&stats.assets, &asset)) {
-            let asset_stats = ordered_map::borrow_mut(&mut stats.assets, &asset);
+        if (ordered_map::contains(&stats.assets, asset)) {
+            let asset_stats = ordered_map::borrow_mut(&mut stats.assets, asset);
             asset_stats.total_value_locked =
                 asset_stats.total_value_locked - (deposit_amount as u128);
             asset_stats.total_withdrawn =
                 asset_stats.total_withdrawn + ((deposit_amount + interest) as u128);
         } else {
-            assert!(false, E_THALA_POSITION_NOT_EXISTS);
+            assert!(false, error::not_found(E_THALA_POSITION_NOT_EXISTS));
         };
     }
 
-    fun ensure_thala_strategy_data(account: Object<WalletAccount>): ThalaStrategyData {
+    fun ensure_thala_strategy_data(account: &Object<WalletAccount>): ThalaStrategyData {
         if (!exists_thala_strategy_data(account)) {
             let strategy_data = ThalaStrategyData {
                 strategy_id: STRATEGY_ID,
@@ -304,23 +330,23 @@ module moneyfi::thala_strategy {
         strategy_data
     }
 
-    fun exists_thala_strategy_data(account: Object<WalletAccount>): bool {
-        wallet_account::exists_strategy_data<ThalaStrategyData>(account)
+    fun exists_thala_strategy_data(account: &Object<WalletAccount>): bool {
+        wallet_account::strategy_data_exists<ThalaStrategyData>(account)
     }
 
     fun exists_thala_postion(
-        account: Object<WalletAccount>, pool: address
+        account: &Object<WalletAccount>, pool: address
     ): bool {
         assert!(
             exists_thala_strategy_data(account),
-            E_THALA_STRATEGY_DATA_NOT_EXISTS
+            error::not_found(E_THALA_STRATEGY_DATA_NOT_EXISTS)
         );
         let strategy_data = ensure_thala_strategy_data(account);
         ordered_map::contains(&strategy_data.pools, &pool)
     }
 
     fun set_position_data(
-        account: Object<WalletAccount>, pool: address, position: Position
+        account: &Object<WalletAccount>, pool: address, position: Position
     ): ThalaStrategyData {
         let strategy_data = ensure_thala_strategy_data(account);
         ordered_map::upsert(&mut strategy_data.pools, pool, position);
@@ -328,7 +354,7 @@ module moneyfi::thala_strategy {
     }
 
     fun create_or_get_exist_position(
-        account: Object<WalletAccount>, asset: Object<Metadata>, extra_data: ExtraData
+        account: &Object<WalletAccount>, asset: &Object<Metadata>, extra_data: ExtraData
     ): Position {
         let strategy_data = ensure_thala_strategy_data(account);
         let position =
@@ -343,7 +369,7 @@ module moneyfi::thala_strategy {
                 let reward_ids = vector::singleton<String>(extra_data.reward_a);
                 vector::push_back(&mut reward_ids, extra_data.reward_b);
                 let pair =
-                    if (object::object_address<Metadata>(&asset)
+                    if (object::object_address<Metadata>(asset)
                         == object::object_address<Metadata>(&token_a)) {
                         token_b
                     } else {
@@ -352,7 +378,7 @@ module moneyfi::thala_strategy {
                 let new_position =
                     Position {
                         lp_amount: 0, // Liquidity pool amount
-                        asset: asset,
+                        asset: *asset,
                         pair: pair,
                         amount: 0,
                         staked_lp_amount: 0,
@@ -363,14 +389,14 @@ module moneyfi::thala_strategy {
         position
     }
 
-    fun remove_position(account: Object<WalletAccount>, pool: address): ThalaStrategyData {
+    fun remove_position(account: &Object<WalletAccount>, pool: address): ThalaStrategyData {
         let strategy_data = ensure_thala_strategy_data(account);
         ordered_map::remove(&mut strategy_data.pools, &pool);
         strategy_data
     }
 
-    fun get_position_data(account: Object<WalletAccount>, pool: address): Position {
-        assert!(exists_thala_postion(account, pool), E_THALA_POSITION_NOT_EXISTS);
+    fun get_position_data(account: &Object<WalletAccount>, pool: address): Position {
+        assert!(exists_thala_postion(account, pool), error::not_found(E_THALA_POSITION_NOT_EXISTS));
         let strategy_data = ensure_thala_strategy_data(account);
         let position = ordered_map::borrow(&strategy_data.pools, &pool);
         *position
@@ -404,10 +430,10 @@ module moneyfi::thala_strategy {
     #[view]
     public fun get_user_strategy_data(wallet_id: vector<u8>): ThalaStrategyData {
         let account = wallet_account::get_wallet_account(wallet_id);
-        if (!exists_thala_strategy_data(account)) {
-            assert!(false, E_THALA_STRATEGY_DATA_NOT_EXISTS);
+        if (!exists_thala_strategy_data(&account)) {
+            assert!(false, error::not_found(E_THALA_STRATEGY_DATA_NOT_EXISTS));
         };
-        wallet_account::get_strategy_data<ThalaStrategyData>(account)
+        wallet_account::get_strategy_data<ThalaStrategyData>(&account)
     }
 
     #[view]
@@ -422,10 +448,10 @@ module moneyfi::thala_strategy {
     #[view]
     public fun get_profit(wallet_id: vector<u8>): u64 {
         let account = wallet_account::get_wallet_account(wallet_id);
-        if (!exists_thala_strategy_data(account)) {
+        if (!exists_thala_strategy_data(&account)) {
             return 0
         };
-        let strategy_data = wallet_account::get_strategy_data<ThalaStrategyData>(account);
+        let strategy_data = wallet_account::get_strategy_data<ThalaStrategyData>(&account);
         let total_profit: u64 = 0;
         let pools = ordered_map::keys<address, Position>(&strategy_data.pools);
         let i = 0;

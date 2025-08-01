@@ -44,18 +44,16 @@ module moneyfi::strategy {
         amount: u64,
         extra_data: vector<vector<u8>>
     ): u64 {
-        let actual_amount =
-            if (strategy == STRATEGY_HYPERION) {
-                hyperion_strategy::deposit_fund_to_hyperion_single(
-                    account, asset, amount, extra_data
-                )
-            } else if(strategy == STRATEGY_THALA){
-                thala_strategy::deposit_fund_to_thala_single(
-                    account, asset, amount, extra_data
-                )
-            }else{
-                0
-            };
+        if (strategy == STRATEGY_HYPERION) {
+            return hyperion_strategy::deposit_fund_to_hyperion_single(
+                account, asset, amount, extra_data
+            );
+        };
+        if(strategy == STRATEGY_THALA){
+            return thala_strategy::deposit_fund_to_thala_single(
+                account, asset, amount, extra_data
+            );
+        };
 
         abort(error::invalid_argument(E_UNKNOWN_STRATEGY));
         0
@@ -73,19 +71,16 @@ module moneyfi::strategy {
         min_amount: u64,
         extra_data: vector<vector<u8>>
     ): (u64, u64, u64) {
-        let (total_deposited_amount, total_withdrawn_amount, withdraw_fee) =
-            if (strategy == STRATEGY_HYPERION) {
-                hyperion_strategy::withdraw_fund_from_hyperion_single(
-                    account, asset, min_amount, extra_data
-                )
-            }else if(strategy == STRATEGY_THALA) {
-                thala_strategy::withdraw_fund_from_thala_single(
-                    account, asset, min_amount, extra_data
-                )
-            }else {
-                (0, 0, 0)
-            };
-
+        if (strategy == STRATEGY_HYPERION) {
+            return hyperion_strategy::withdraw_fund_from_hyperion_single(
+                account, asset, min_amount, extra_data
+            );
+        };
+        if(strategy == STRATEGY_THALA) {
+            return thala_strategy::withdraw_fund_from_thala_single(
+                account, asset, min_amount, extra_data
+            );
+        };
         abort(error::invalid_argument(E_UNKNOWN_STRATEGY));
         (0, 0, 0)
     }
@@ -95,9 +90,8 @@ module moneyfi::strategy {
     ) {
         if (strategy == STRATEGY_HYPERION) {
             hyperion_strategy::update_tick(account, extra_data);
-        } else {
-            // Handle other strategies
         };
+        abort(error::not_implemented(E_NOT_SUPPORTED_BY_STRATEGY));
     }
 
     /// return (
@@ -115,6 +109,16 @@ module moneyfi::strategy {
     ): (u64, u64) {
         if (strategy == STRATEGY_HYPERION) {
             return hyperion_strategy::swap(
+                account,
+                from_asset,
+                to_asset,
+                amount_in,
+                min_amount_out,
+                extra_data
+            );
+        };
+        if (strategy == STRATEGY_HYPERION) {
+            return thala_strategy::swap(
                 account,
                 from_asset,
                 to_asset,

@@ -5,6 +5,7 @@ module moneyfi::hyperion_strategy {
     use aptos_std::from_bcs;
     use aptos_std::math128;
     use aptos_std::ordered_map::{Self, OrderedMap};
+    use aptos_framework::error;
     use aptos_framework::object::{Self, Object};
     use aptos_framework::primary_fungible_store;
     use aptos_framework::timestamp;
@@ -333,8 +334,8 @@ module moneyfi::hyperion_strategy {
         router_v3::swap_batch(
             &wallet_signer,
             lp_path,
-            from_asset,
-            to_asset,
+            *from_asset,
+            *to_asset,
             amount_in,
             min_amount_out,
             wallet_address,
@@ -475,7 +476,7 @@ module moneyfi::hyperion_strategy {
             asset_stats.total_withdrawn =
                 asset_stats.total_withdrawn + (withdraw_amount as u128);
         } else {
-            assert!(false, E_HYPERION_POSITION_NOT_EXISTS);
+            assert!(false, error::not_found(E_HYPERION_POSITION_NOT_EXISTS));
         };
     }
 
@@ -503,7 +504,7 @@ module moneyfi::hyperion_strategy {
     ): bool {
         assert!(
             exists_hyperion_strategy_data(account),
-            E_HYPERION_STRATEGY_DATA_NOT_EXISTS
+            error::not_found(E_HYPERION_STRATEGY_DATA_NOT_EXISTS)
         );
         let strategy_data = ensure_hyperion_strategy_data(account);
         ordered_map::contains(&strategy_data.pools, &pool)
@@ -524,7 +525,7 @@ module moneyfi::hyperion_strategy {
     }
 
     fun get_position_data(account: &Object<WalletAccount>, pool: address): Position {
-        assert!(exists_hyperion_postion(account, pool), E_HYPERION_POSITION_NOT_EXISTS);
+        assert!(exists_hyperion_postion(account, pool), error::not_found(E_HYPERION_POSITION_NOT_EXISTS));
         let strategy_data = ensure_hyperion_strategy_data(account);
         let position = ordered_map::borrow(&strategy_data.pools, &pool);
         *position
@@ -615,7 +616,7 @@ module moneyfi::hyperion_strategy {
     public fun get_user_strategy_data(wallet_id: vector<u8>): HyperionStrategyData {
         let account = wallet_account::get_wallet_account(wallet_id);
         if (!exists_hyperion_strategy_data(&account)) {
-            assert!(false, E_HYPERION_STRATEGY_DATA_NOT_EXISTS);
+            assert!(false, error::not_found(E_HYPERION_STRATEGY_DATA_NOT_EXISTS));
         };
         wallet_account::get_strategy_data<HyperionStrategyData>(&account)
     }
