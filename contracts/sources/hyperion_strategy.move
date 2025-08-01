@@ -24,11 +24,9 @@ module moneyfi::hyperion_strategy {
     const STRATEGY_ID: u8 = 1; // Hyperion strategy id
     //const FEE_RATE_VEC: vector<u64> = vector[100, 500, 3000, 10000]; fee_tier is [0, 1, 2, 3] for [0.01%, 0.05%, 0.3%, 1%] ??
 
-    //-- Errors
+    // -- Errors
     /// Hyperion Strategy data not exists
     const E_HYPERION_STRATEGY_DATA_NOT_EXISTS: u64 = 1;
-    /// Pool not exists
-    const E_HYPERION_POOL_NOT_EXISTS: u64 = 2;
     /// Position not exists
     const E_HYPERION_POSITION_NOT_EXISTS: u64 = 3;
 
@@ -217,17 +215,21 @@ module moneyfi::hyperion_strategy {
         account: Object<WalletAccount>, extra_data: vector<vector<u8>>
     ) {
         let extra_data = unpack_extra_data(extra_data);
+
         if (!exists_hyperion_strategy_data(account)) { return };
         if (!exists_hyperion_postion(account, extra_data.pool)) { return };
+
         let position = get_position_data(account, extra_data.pool);
         let wallet_signer = wallet_account::get_wallet_account_signer(account);
         let wallet_address = signer::address_of(&wallet_signer);
         let (current_tick, _) = pool_v3::current_tick_and_price(extra_data.pool);
         let (token_a, token_b, _) = position_v3::get_pool_info(position.position);
+
         if (i32::gt(i32::from_u32(current_tick), i32::from_u32(position.tick_lower))
             && i32::lt(i32::from_u32(current_tick), i32::from_u32(position.tick_upper))) {
             return
         };
+
         let tick_spacing = pool_v3::get_tick_spacing(position.fee_tier);
         let new_tick_lower =
             i32::wrapping_sub(i32::from_u32(current_tick), i32::from_u32(tick_spacing));
@@ -235,7 +237,9 @@ module moneyfi::hyperion_strategy {
             i32::wrapping_add(i32::from_u32(current_tick), i32::from_u32(tick_spacing));
 
         let liquidity = position_v3::get_liquidity(position.position);
+
         if (liquidity == 0) { return };
+
         let balance_before_remove =
             primary_fungible_store::balance(wallet_address, position.asset);
         let interest = claim_fees_and_rewards_single(account, position);

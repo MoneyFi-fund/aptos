@@ -5,11 +5,13 @@ module moneyfi::strategy {
 
     use moneyfi::wallet_account::WalletAccount;
     use moneyfi::hyperion_strategy;
+    use moneyfi::thala_strategy;
 
     friend moneyfi::vault;
 
     const STRATEGY_HYPERION: u8 = 1;
     const STRATEGY_ARIES: u8 = 2;
+    const STRATEGY_THALA: u8 = 3;
 
     // return [
     //     current_tvl,
@@ -23,7 +25,10 @@ module moneyfi::strategy {
         if (strategy == STRATEGY_HYPERION) {
             let (v1, v2, v3) = hyperion_strategy::get_strategy_stats(asset);
             vector::append(&mut stats, vector[v1, v2, v3]);
-        };
+        }else if(strategy == STRATEGY_THALA){
+            let (v1, v2, v3) = thala_strategy::get_strategy_stats(asset);
+            vector::append(&mut stats, vector[v1, v2, v3]);
+        }
 
         stats
     }
@@ -42,10 +47,13 @@ module moneyfi::strategy {
                 hyperion_strategy::deposit_fund_to_hyperion_single(
                     account, asset, amount, extra_data
                 )
-            } else {
-                // Handle other strategies
+            } else if(strategy == STRATEGY_THALA){
+                thala_strategy::deposit_fund_to_hyperion_single(
+                    account, asset, amount, extra_data
+                )
+            }else{
                 0
-            };
+            }
 
         actual_amount
     }
@@ -67,7 +75,11 @@ module moneyfi::strategy {
                 hyperion_strategy::withdraw_fund_from_hyperion_single(
                     account, asset, min_amount, extra_data
                 )
-            } else {
+            }else if(strategy == STRATEGY_THALA) {
+                thala_strategy::withdraw_fund_from_hyperion_single(
+                    account, asset, min_amount, extra_data
+                )
+            }else {
                 (0, 0, 0)
             };
 
