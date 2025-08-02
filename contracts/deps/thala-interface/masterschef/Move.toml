@@ -1,0 +1,13 @@
+[package]
+name = "MasterchefLib"
+version = "1.0.0"
+authors = []
+
+[addresses]
+masterchef_lib = "f30149dce351ecbb2c423806b15fd0235ae8b7be5824fbe95dd04702d87f89d3"
+masterchef_lib_deployer = "0x1bf23f0881f8fa149500ff6b7a047f608967c028a8ad7a2100caa84833ce851d"
+
+[dependencies.AptosFramework]
+git = "https://github.com/aptos-labs/aptos-framework.git"
+rev = "mainnet"
+subdir = "aptos-framework"
