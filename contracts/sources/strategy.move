@@ -90,6 +90,7 @@ module moneyfi::strategy {
     ) {
         if (strategy == STRATEGY_HYPERION) {
             hyperion_strategy::update_tick(account, extra_data);
+            return
         };
         abort(error::not_implemented(E_NOT_SUPPORTED_BY_STRATEGY));
     }
@@ -117,7 +118,7 @@ module moneyfi::strategy {
                 extra_data
             );
         };
-        if (strategy == STRATEGY_HYPERION) {
+        if (strategy == STRATEGY_THALA) {
             return thala_strategy::swap(
                 account,
                 from_asset,
