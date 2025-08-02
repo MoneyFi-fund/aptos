@@ -598,9 +598,6 @@ module moneyfi::hyperion {
                 1
             );
 
-            let total_asset_amonut_added =
-                balance_before - primary_fungible_store::balance(wallet_address, asset);
-
             let remaining_balance =
                 primary_fungible_store::balance(wallet_address, token_pair);
             if (remaining_balance > 0) {
@@ -616,6 +613,8 @@ module moneyfi::hyperion {
                     timestamp::now_seconds() + DEADLINE_BUFFER
                 );
             };
+            let total_asset_amonut_added =
+                balance_before - primary_fungible_store::balance(wallet_address, asset);
             wallet_account::add_position_opened(
                 wallet_id,
                 object::object_address<Info>(&new_position),
