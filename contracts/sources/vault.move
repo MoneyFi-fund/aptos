@@ -116,6 +116,7 @@ module moneyfi::vault {
         enable_withdraw: bool,
         system_fee_percent: u64,
         referral_percents: vector<u64>,
+        fee_recipient: address,
         timestamp: u64
     }
 
@@ -196,7 +197,8 @@ module moneyfi::vault {
         enable_deposit: bool,
         enable_withdraw: bool,
         system_fee_percent: u64,
-        referral_percents: vector<u64>
+        referral_percents: vector<u64>,
+        fee_recipient: address
     ) acquires Config {
         assert!(system_fee_percent <= 10_000);
         // TODO: validate referrals_percents
@@ -209,6 +211,7 @@ module moneyfi::vault {
         config.enable_withdraw = enable_withdraw;
         config.system_fee_percent = system_fee_percent;
         config.referral_percents = referral_percents;
+        config.fee_recipient = fee_recipient;
 
         event::emit(
             ConfigureEvent {
@@ -216,6 +219,7 @@ module moneyfi::vault {
                 enable_withdraw,
                 system_fee_percent,
                 referral_percents,
+                fee_recipient,
                 timestamp: now_seconds()
             }
         );
