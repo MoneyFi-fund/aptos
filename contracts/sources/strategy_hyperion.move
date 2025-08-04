@@ -241,20 +241,24 @@ module moneyfi::strategy_hyperion {
 
         if (liquidity == 0) { return };
 
-        let balance_before_remove =
-            primary_fungible_store::balance(wallet_address, position.asset);
+        let balance_asset_before_remove =
+            primary_fungible_store::balance(wallet_address, position.asset) - position.remaining_amount;
+        let balance_pair_before_remove =
+            primary_fungible_store::balance(wallet_address, position.pair);
+
         let interest = claim_fees_and_rewards_single(account, position);
-        router_v3::remove_liquidity_single(
+        router_v3::remove_liquidity(
             &wallet_signer,
             position.position,
             liquidity,
-            position.asset,
-            extra_data.slippage_numerator,
-            extra_data.slippage_denominator
+            0,
+            0,
+            wallet_address,
+            timestamp::now_seconds() + DEADLINE_BUFFER
         );
-        let balance_after_remove =
+        let balance_asset_after_remove =
             primary_fungible_store::balance(wallet_address, position.asset);
-        let balance_pair_before =
+        let balance_pair_after_remove =
             primary_fungible_store::balance(wallet_address, position.pair);
         let new_position =
             pool_v3::open_position(
@@ -265,30 +269,41 @@ module moneyfi::strategy_hyperion {
                 i32::as_u32(new_tick_lower),
                 i32::as_u32(new_tick_upper)
             );
-
-        router_v3::add_liquidity_single(
-            &wallet_signer,
-            new_position,
-            position.asset,
-            position.pair,
-            balance_after_remove - balance_before_remove + position.remaining_amount,
-            extra_data.slippage_numerator,
-            extra_data.slippage_denominator,
-            extra_data.threshold_numerator,
-            extra_data.threshold_denominator
-        );
-
-        let balance_after_add =
-            primary_fungible_store::balance(wallet_address, position.asset);
-
-        let remaining_balance =
+        if(balance_asset_after_remove - balance_asset_before_remove > 0){
+            router_v3::add_liquidity_single(
+                &wallet_signer,
+                new_position,
+                position.asset,
+                position.pair,
+                balance_asset_after_remove - balance_asset_before_remove,
+                extra_data.slippage_numerator,
+                extra_data.slippage_denominator,
+                extra_data.threshold_numerator,
+                extra_data.threshold_denominator
+            );
+        };
+        if(balance_pair_after_remove - balance_pair_before_remove > 0){
+            router_v3::add_liquidity_single(
+                &wallet_signer,
+                new_position,
+                position.pair,
+                position.asset,
+                balance_pair_after_remove - balance_pair_before_remove,
+                extra_data.slippage_numerator,
+                extra_data.slippage_denominator,
+                extra_data.threshold_numerator,
+                extra_data.threshold_denominator
+            );
+        };
+            
+        let remaining_pair_balance =
             primary_fungible_store::balance(wallet_address, position.pair)
-                - balance_pair_before;
-        if (remaining_balance > 0) {
+                - balance_pair_before_remove;
+        if (remaining_pair_balance > 0) {
             router_v3::exact_input_swap_entry(
                 &wallet_signer,
                 extra_data.fee_tier,
-                remaining_balance,
+                remaining_pair_balance,
                 0,
                 4295048016 + 1, // min
                 position.pair,
@@ -305,7 +320,7 @@ module moneyfi::strategy_hyperion {
         position.interest_amount = position.interest_amount + interest;
         position.remaining_amount =
             primary_fungible_store::balance(wallet_address, position.asset)
-                - balance_after_add;
+                - balance_asset_before_remove;
         let strategy_data = set_position_data(account, extra_data.pool, position);
         wallet_account::set_strategy_data(account, strategy_data);
     }
