@@ -17,8 +17,8 @@ module moneyfi_v2::vault {
     use moneyfi_v2::strategy;
 
     // -- Constants
-    const LP_TOKEN_NAME: vector<u8> = b"moneyfi_v2 LP";
-    const LP_TOKEN_SYMBOL: vector<u8> = b"moneyfi_v2LP";
+    const LP_TOKEN_NAME: vector<u8> = b"MoneyFi LP";
+    const LP_TOKEN_SYMBOL: vector<u8> = b"MoneyFiLP";
     const LP_TOKEN_DECIMALS: u8 = 9;
     const FUNDING_ACCOUNT_SEED: vector<u8> = b"FUNDING_ACCOUNT";
 
