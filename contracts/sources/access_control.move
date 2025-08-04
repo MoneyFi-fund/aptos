@@ -1,4 +1,4 @@
-module moneyfi::access_control {
+module moneyfi_v2::access_control {
     use std::signer;
     use std::vector;
     use std::error;
@@ -80,7 +80,7 @@ module moneyfi::access_control {
     public entry fun unlock_registry(sender: &signer, timeout: u64) acquires Registry {
         must_be_admin(sender);
 
-        let registry = borrow_global_mut<Registry>(@moneyfi);
+        let registry = borrow_global_mut<Registry>(@moneyfi_v2);
         registry.locked_at = now_seconds() + timeout;
     }
 
@@ -88,7 +88,7 @@ module moneyfi::access_control {
         sender: &signer, account: address, roles: vector<u8>
     ) acquires Registry {
         let addr = signer::address_of(sender);
-        let registry = borrow_global_mut<Registry>(@moneyfi);
+        let registry = borrow_global_mut<Registry>(@moneyfi_v2);
         let count = registry.count_role(ROLE_ROLE_MANAGER);
         if (count == 0) {
             // allow admin to add the first role manager
@@ -123,7 +123,7 @@ module moneyfi::access_control {
     public entry fun remove_account(sender: &signer, account: address) acquires Registry {
         must_be_role_manager(sender);
 
-        let registry = borrow_global_mut<Registry>(@moneyfi);
+        let registry = borrow_global_mut<Registry>(@moneyfi_v2);
         ensure_registry_is_unlocked(registry);
         assert!(ordered_map::contains(&registry.accounts, &account));
         ensure_account_is_safe_to_remove(registry, &account);
@@ -137,7 +137,7 @@ module moneyfi::access_control {
 
     #[view]
     public fun get_accounts(): vector<AccountItem> acquires Registry {
-        let registry = borrow_global<Registry>(@moneyfi);
+        let registry = borrow_global<Registry>(@moneyfi_v2);
         let keys = ordered_map::keys(&registry.accounts);
         vector::map_ref(
             &keys,
@@ -151,7 +151,7 @@ module moneyfi::access_control {
     // -- Public
 
     public fun must_be_admin(sender: &signer) acquires Registry {
-        let registry = borrow_global<Registry>(@moneyfi);
+        let registry = borrow_global<Registry>(@moneyfi_v2);
         let addr = signer::address_of(sender);
         assert!(
             registry.has_role(&addr, ROLE_ADMIN),
@@ -160,7 +160,7 @@ module moneyfi::access_control {
     }
 
     public fun must_be_role_manager(sender: &signer) acquires Registry {
-        let registry = borrow_global<Registry>(@moneyfi);
+        let registry = borrow_global<Registry>(@moneyfi_v2);
         let addr = signer::address_of(sender);
         assert!(
             registry.has_role(&addr, ROLE_ROLE_MANAGER),
@@ -169,7 +169,7 @@ module moneyfi::access_control {
     }
 
     public fun must_be_service_account(sender: &signer) acquires Registry {
-        let registry = borrow_global<Registry>(@moneyfi);
+        let registry = borrow_global<Registry>(@moneyfi_v2);
         let addr = signer::address_of(sender);
         assert!(
             registry.has_role(&addr, ROLE_SERVICE_ACCOUNT),
@@ -178,7 +178,7 @@ module moneyfi::access_control {
     }
 
     public fun must_be_fee_manager(sender: &signer) acquires Registry {
-        let registry = borrow_global<Registry>(@moneyfi);
+        let registry = borrow_global<Registry>(@moneyfi_v2);
         let addr = signer::address_of(sender);
         assert!(
             registry.has_role(&addr, ROLE_FEE_MANAGER),

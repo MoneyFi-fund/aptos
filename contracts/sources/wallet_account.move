@@ -1,4 +1,4 @@
-module moneyfi::wallet_account {
+module moneyfi_v2::wallet_account {
     use std::bcs;
     use std::signer;
     use std::vector;
@@ -11,18 +11,18 @@ module moneyfi::wallet_account {
     use aptos_framework::fungible_asset::Metadata;
     use aptos_framework::timestamp;
 
-    use moneyfi::access_control;
-    use moneyfi::storage;
+    use moneyfi_v2::access_control;
+    use moneyfi_v2::storage;
 
-    friend moneyfi::vault;
-    friend moneyfi::strategy;
-    friend moneyfi::strategy_hyperion;
-    friend moneyfi::strategy_thala;
+    friend moneyfi_v2::vault;
+    friend moneyfi_v2::strategy;
+    friend moneyfi_v2::strategy_hyperion;
+    friend moneyfi_v2::strategy_thala;
 
     #[test_only]
-    friend moneyfi::wallet_account_test;
+    friend moneyfi_v2::wallet_account_test;
     #[test_only]
-    friend moneyfi::vault_test;
+    friend moneyfi_v2::vault_test;
 
     // -- Constants
     const WALLET_ACCOUNT_SEED: vector<u8> = b"WALLET_ACCOUNT";

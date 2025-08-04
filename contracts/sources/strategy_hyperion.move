@@ -1,4 +1,4 @@
-module moneyfi::strategy_hyperion {
+module moneyfi_v2::strategy_hyperion {
     use std::signer;
     use std::vector;
     use std::bcs::to_bytes;
@@ -16,8 +16,8 @@ module moneyfi::strategy_hyperion {
     use dex_contract::position_v3::{Self, Info};
     use dex_contract::i32;
 
-    use moneyfi::wallet_account::{Self, WalletAccount};
-    friend moneyfi::strategy;
+    use moneyfi_v2::wallet_account::{Self, WalletAccount};
+    friend moneyfi_v2::strategy;
     // -- Constants
     const DEADLINE_BUFFER: u64 = 31556926; // 1 years
     const USDC_ADDRESS: address = @stablecoin;
@@ -446,7 +446,7 @@ module moneyfi::strategy_hyperion {
     }
 
     fun strategy_stats_deposit(asset: &Object<Metadata>, amount: u64) acquires StrategyStats {
-        let stats = borrow_global_mut<StrategyStats>(@moneyfi);
+        let stats = borrow_global_mut<StrategyStats>(@moneyfi_v2);
         if (ordered_map::contains(&stats.assets, asset)) {
             let asset_stats = ordered_map::borrow_mut(&mut stats.assets, asset);
             asset_stats.total_value_locked =
@@ -466,7 +466,7 @@ module moneyfi::strategy_hyperion {
     fun strategy_stats_withdraw(
         asset: &Object<Metadata>, deposit_amount: u64, withdraw_amount: u64
     ) acquires StrategyStats {
-        let stats = borrow_global_mut<StrategyStats>(@moneyfi);
+        let stats = borrow_global_mut<StrategyStats>(@moneyfi_v2);
         if (ordered_map::contains(&stats.assets, asset)) {
             let asset_stats = ordered_map::borrow_mut(&mut stats.assets, asset);
             asset_stats.total_value_locked =
@@ -601,7 +601,7 @@ module moneyfi::strategy_hyperion {
 
     //Public
     public fun get_strategy_stats(asset: Object<Metadata>): (u128, u128, u128) acquires StrategyStats {
-        let stats = borrow_global<StrategyStats>(@moneyfi);
+        let stats = borrow_global<StrategyStats>(@moneyfi_v2);
         if (ordered_map::contains(&stats.assets, &asset)) {
             let asset_stats = ordered_map::borrow(&stats.assets, &asset);
             (

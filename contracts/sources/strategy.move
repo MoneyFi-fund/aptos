@@ -1,14 +1,14 @@
-module moneyfi::strategy {
+module moneyfi_v2::strategy {
     use std::vector;
     use std::error;
     use aptos_framework::object::Object;
     use aptos_framework::fungible_asset::Metadata;
 
-    use moneyfi::wallet_account::WalletAccount;
-    use moneyfi::strategy_hyperion;
-    use moneyfi::strategy_thala;
+    use moneyfi_v2::wallet_account::WalletAccount;
+    use moneyfi_v2::strategy_hyperion;
+    use moneyfi_v2::strategy_thala;
 
-    friend moneyfi::vault;
+    friend moneyfi_v2::vault;
 
     const STRATEGY_HYPERION: u8 = 1;
     const STRATEGY_ARIES: u8 = 2;

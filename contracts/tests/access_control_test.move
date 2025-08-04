@@ -1,10 +1,10 @@
-module moneyfi::access_control_test {
+module moneyfi_v2::access_control_test {
     use std::signer;
     use std::vector;
     use aptos_framework::account;
     use aptos_framework::timestamp;
 
-    use moneyfi::access_control;
+    use moneyfi_v2::access_control;
 
     const ROLE_ADMIN: u8 = 1;
     const ROLE_ROLE_MANAGER: u8 = 2;
@@ -19,7 +19,7 @@ module moneyfi::access_control_test {
         access_control::init_module_for_testing(deployer);
     }
 
-    #[test(deployer = @moneyfi, user1 = @0x2)]
+    #[test(deployer = @moneyfi_v2, user1 = @0x2)]
     fun test_access_control(deployer: &signer, user1: &signer) {
         timestamp::set_time_has_started_for_testing(
             &account::create_signer_for_test(@0x1)
@@ -41,8 +41,8 @@ module moneyfi::access_control_test {
         access_control::must_be_service_account(user1);
     }
 
-    #[test(deployer = @moneyfi, user = @0x2)]
-    #[expected_failure(abort_code = 0x80001, location = moneyfi::access_control)]
+    #[test(deployer = @moneyfi_v2, user = @0x2)]
+    #[expected_failure(abort_code = 0x80001, location = moneyfi_v2::access_control)]
     fun test_try_to_modify_without_permission(
         deployer: &signer, user: &signer
     ) {
@@ -55,7 +55,7 @@ module moneyfi::access_control_test {
         access_control::remove_account(user, user_addr);
     }
 
-    #[test(deployer = @moneyfi, user1 = @0x2)]
+    #[test(deployer = @moneyfi_v2, user1 = @0x2)]
     fun test_admin_can_add_first_role_manager(
         deployer: &signer, user1: &signer
     ) {
@@ -67,7 +67,7 @@ module moneyfi::access_control_test {
         access_control::must_be_role_manager(user1);
     }
 
-    #[test(deployer = @moneyfi, user1 = @0x2, user2 = @0x3)]
+    #[test(deployer = @moneyfi_v2, user1 = @0x2, user2 = @0x3)]
     fun test_role_manager_can_add_accounts(
         deployer: &signer, user1: &signer, user2: &signer
     ) {
@@ -83,8 +83,8 @@ module moneyfi::access_control_test {
         access_control::must_be_service_account(user2);
     }
 
-    #[test(deployer = @moneyfi, user1 = @0x2)]
-    #[expected_failure(abort_code = 0x50005, location = moneyfi::access_control)]
+    #[test(deployer = @moneyfi_v2, user1 = @0x2)]
+    #[expected_failure(abort_code = 0x50005, location = moneyfi_v2::access_control)]
     fun test_admin_and_role_manager_conflict(
         deployer: &signer, user1: &signer
     ) {
@@ -99,8 +99,8 @@ module moneyfi::access_control_test {
         );
     }
 
-    #[test(deployer = @moneyfi, user1 = @0x2)]
-    #[expected_failure(abort_code = 0x10003, location = moneyfi::access_control)]
+    #[test(deployer = @moneyfi_v2, user1 = @0x2)]
+    #[expected_failure(abort_code = 0x10003, location = moneyfi_v2::access_control)]
     fun test_empty_roles_fails(deployer: &signer, user1: &signer) {
         setup_test_environment(deployer);
         let user1_addr = signer::address_of(user1);
@@ -109,8 +109,8 @@ module moneyfi::access_control_test {
         access_control::upsert_account(deployer, user1_addr, vector[]);
     }
 
-    #[test(deployer = @moneyfi, user1 = @0x2)]
-    #[expected_failure(abort_code = 0x50002, location = moneyfi::access_control)]
+    #[test(deployer = @moneyfi_v2, user1 = @0x2)]
+    #[expected_failure(abort_code = 0x50002, location = moneyfi_v2::access_control)]
     fun test_unauthorized_user_cannot_add_accounts(
         deployer: &signer, user1: &signer
     ) {
@@ -121,7 +121,7 @@ module moneyfi::access_control_test {
         access_control::upsert_account(user1, user1_addr, vector[ROLE_SERVICE_ACCOUNT]);
     }
 
-    #[test(deployer = @moneyfi, user1 = @0x2)]
+    #[test(deployer = @moneyfi_v2, user1 = @0x2)]
     fun test_role_manager_can_remove_service_account(
         deployer: &signer, user1: &signer
     ) {
@@ -136,8 +136,8 @@ module moneyfi::access_control_test {
         access_control::remove_account(user1, @0x4);
     }
 
-    #[test(deployer = @moneyfi, user1 = @0x2)]
-    #[expected_failure(abort_code = 0x50004, location = moneyfi::access_control)]
+    #[test(deployer = @moneyfi_v2, user1 = @0x2)]
+    #[expected_failure(abort_code = 0x50004, location = moneyfi_v2::access_control)]
     fun test_cannot_remove_last_admin(deployer: &signer, user1: &signer) {
         setup_test_environment(deployer);
         let user1_addr = signer::address_of(user1);
@@ -150,8 +150,8 @@ module moneyfi::access_control_test {
         access_control::remove_account(user1, deployer_addr);
     }
 
-    #[test(deployer = @moneyfi, user1 = @0x2, user2 = @0x3)]
-    #[expected_failure(abort_code = 0x50004, location = moneyfi::access_control)]
+    #[test(deployer = @moneyfi_v2, user1 = @0x2, user2 = @0x3)]
+    #[expected_failure(abort_code = 0x50004, location = moneyfi_v2::access_control)]
     fun test_cannot_remove_last_role_manager(
         deployer: &signer, user1: &signer, user2: &signer
     ) {
@@ -170,7 +170,7 @@ module moneyfi::access_control_test {
         access_control::remove_account(user1, user1_addr);
     }
 
-    #[test(deployer = @moneyfi)]
+    #[test(deployer = @moneyfi_v2)]
     fun test_registry_unlock_functionality(deployer: &signer) {
         setup_test_environment(deployer);
 
@@ -178,8 +178,8 @@ module moneyfi::access_control_test {
         access_control::unlock_registry(deployer, 1000);
     }
 
-    #[test(deployer = @moneyfi, user1 = @0x2)]
-    #[expected_failure(abort_code = 0x50002, location = moneyfi::access_control)]
+    #[test(deployer = @moneyfi_v2, user1 = @0x2)]
+    #[expected_failure(abort_code = 0x50002, location = moneyfi_v2::access_control)]
     fun test_non_admin_cannot_unlock_registry(
         deployer: &signer, user1: &signer
     ) {
@@ -193,8 +193,8 @@ module moneyfi::access_control_test {
         access_control::unlock_registry(user1, 1000);
     }
 
-    #[test(deployer = @moneyfi, user1 = @0x2)]
-    #[expected_failure(abort_code = 0x50006, location = moneyfi::access_control)]
+    #[test(deployer = @moneyfi_v2, user1 = @0x2)]
+    #[expected_failure(abort_code = 0x50006, location = moneyfi_v2::access_control)]
     fun test_registry_locked_after_timeout(
         deployer: &signer, user1: &signer
     ) {
@@ -211,7 +211,7 @@ module moneyfi::access_control_test {
         access_control::upsert_account(user1, @0x4, vector[ROLE_SERVICE_ACCOUNT]);
     }
 
-    #[test(deployer = @moneyfi, user1 = @0x2)]
+    #[test(deployer = @moneyfi_v2, user1 = @0x2)]
     fun test_update_existing_account_roles(
         deployer: &signer, user1: &signer
     ) {
@@ -227,7 +227,7 @@ module moneyfi::access_control_test {
         access_control::must_be_service_account(user1);
     }
 
-    #[test(deployer = @moneyfi, user1 = @0x2)]
+    #[test(deployer = @moneyfi_v2, user1 = @0x2)]
     fun test_multiple_roles_assignment(
         deployer: &signer, user1: &signer
     ) {
@@ -244,7 +244,7 @@ module moneyfi::access_control_test {
         access_control::must_be_service_account(user1);
     }
 
-    #[test(deployer = @moneyfi)]
+    #[test(deployer = @moneyfi_v2)]
     fun test_get_accounts_view_function(deployer: &signer) {
         setup_test_environment(deployer);
         // let deployer_addr = signer::address_of(deployer);
@@ -262,8 +262,8 @@ module moneyfi::access_control_test {
         assert!(vector::length(&accounts) == 3, 1);
     }
 
-    #[test(deployer = @moneyfi, user1 = @0x2)]
-    #[expected_failure(abort_code = 0x50002, location = moneyfi::access_control)]
+    #[test(deployer = @moneyfi_v2, user1 = @0x2)]
+    #[expected_failure(abort_code = 0x50002, location = moneyfi_v2::access_control)]
     fun test_service_account_cannot_manage_roles(
         deployer: &signer, user1: &signer
     ) {
@@ -279,7 +279,7 @@ module moneyfi::access_control_test {
         access_control::upsert_account(user1, @0x4, vector[ROLE_SERVICE_ACCOUNT]);
     }
 
-    #[test(deployer = @moneyfi, user1 = @0x2)]
+    #[test(deployer = @moneyfi_v2, user1 = @0x2)]
     #[expected_failure]
     fun test_remove_non_existent_account(
         deployer: &signer, user1: &signer

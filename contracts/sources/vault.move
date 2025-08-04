@@ -1,4 +1,4 @@
-module moneyfi::vault {
+module moneyfi_v2::vault {
     use std::signer;
     use std::error;
     use std::vector;
@@ -11,14 +11,14 @@ module moneyfi::vault {
     use aptos_framework::primary_fungible_store;
     use aptos_framework::timestamp::now_seconds;
 
-    use moneyfi::access_control;
-    use moneyfi::wallet_account::{Self, WalletAccount};
-    use moneyfi::storage;
-    use moneyfi::strategy;
+    use moneyfi_v2::access_control;
+    use moneyfi_v2::wallet_account::{Self, WalletAccount};
+    use moneyfi_v2::storage;
+    use moneyfi_v2::strategy;
 
     // -- Constants
-    const LP_TOKEN_NAME: vector<u8> = b"MoneyFi LP";
-    const LP_TOKEN_SYMBOL: vector<u8> = b"MoneyFiLP";
+    const LP_TOKEN_NAME: vector<u8> = b"moneyfi_v2 LP";
+    const LP_TOKEN_SYMBOL: vector<u8> = b"moneyfi_v2LP";
     const LP_TOKEN_DECIMALS: u8 = 9;
     const FUNDING_ACCOUNT_SEED: vector<u8> = b"FUNDING_ACCOUNT";
 
@@ -201,7 +201,7 @@ module moneyfi::vault {
 
         access_control::must_be_admin(sender);
         access_control::must_be_fee_manager(sender);
-        let config = borrow_global_mut<Config>(@moneyfi);
+        let config = borrow_global_mut<Config>(@moneyfi_v2);
 
         config.enable_deposit = enable_deposit;
         config.enable_withdraw = enable_withdraw;
@@ -230,7 +230,7 @@ module moneyfi::vault {
         lp_exchange_rate: u64
     ) acquires Config {
         access_control::must_be_service_account(sender);
-        let config = borrow_global_mut<Config>(@moneyfi);
+        let config = borrow_global_mut<Config>(@moneyfi_v2);
 
         config.upsert_asset(
             &asset,
@@ -259,7 +259,7 @@ module moneyfi::vault {
     public entry fun deposit(
         sender: &signer, asset: Object<Metadata>, amount: u64
     ) acquires Config, LPToken, FundingAccount {
-        let config = borrow_global<Config>(@moneyfi);
+        let config = borrow_global<Config>(@moneyfi_v2);
         assert!(
             config.can_deposit(&asset, amount),
             error::permission_denied(E_DEPOSIT_NOT_ALLOWED)
@@ -324,7 +324,7 @@ module moneyfi::vault {
             amount = balance;
         };
 
-        let config = borrow_global<Config>(@moneyfi);
+        let config = borrow_global<Config>(@moneyfi_v2);
         assert!(
             config.can_withdraw(&asset, amount),
             error::permission_denied(E_DEPOSIT_NOT_ALLOWED)
@@ -359,7 +359,7 @@ module moneyfi::vault {
     ) acquires Config, FundingAccount {
         access_control::must_be_fee_manager(sender);
 
-        let config = borrow_global<Config>(@moneyfi);
+        let config = borrow_global<Config>(@moneyfi_v2);
         let funding_account_addr = get_funding_account_address();
         let funding_account = borrow_global_mut<FundingAccount>(funding_account_addr);
         let account_signer = funding_account.get_funding_account_signer();
@@ -388,7 +388,7 @@ module moneyfi::vault {
     public entry fun withdraw_all_fee(sender: &signer) acquires FundingAccount, Config {
         access_control::must_be_fee_manager(sender);
 
-        let config = borrow_global<Config>(@moneyfi);
+        let config = borrow_global<Config>(@moneyfi_v2);
         let funding_account_addr = get_funding_account_address();
         let funding_account = borrow_global_mut<FundingAccount>(funding_account_addr);
         let account_signer = funding_account.get_funding_account_signer();
@@ -470,7 +470,7 @@ module moneyfi::vault {
     ) acquires Config, FundingAccount {
         access_control::must_be_service_account(sender);
         let account = wallet_account::get_wallet_account(wallet_id);
-        let config = borrow_global<Config>(@moneyfi);
+        let config = borrow_global<Config>(@moneyfi_v2);
 
         let funding_account_addr = get_funding_account_address();
         let funding_account = borrow_global_mut<FundingAccount>(funding_account_addr);
@@ -578,7 +578,7 @@ module moneyfi::vault {
         access_control::must_be_service_account(sender);
         let account = wallet_account::get_wallet_account(wallet_id);
         let account_addr = wallet_account::get_owner_address(wallet_id);
-        let config = borrow_global<Config>(@moneyfi);
+        let config = borrow_global<Config>(@moneyfi_v2);
 
         let funding_account_addr = get_funding_account_address();
         let funding_account = borrow_global_mut<FundingAccount>(funding_account_addr);
@@ -686,14 +686,14 @@ module moneyfi::vault {
 
     #[view]
     public fun get_supported_assets(): vector<address> acquires Config {
-        let config = borrow_global<Config>(@moneyfi);
+        let config = borrow_global<Config>(@moneyfi_v2);
         ordered_map::keys(&config.supported_assets)
     }
 
     // -- Public
 
     public fun get_lp_token(): Object<Metadata> acquires LPToken {
-        let lptoken = borrow_global<LPToken>(@moneyfi);
+        let lptoken = borrow_global<LPToken>(@moneyfi_v2);
 
         lptoken.token
     }
@@ -718,7 +718,7 @@ module moneyfi::vault {
     }
 
     fun init_lp_token(sender: &signer) {
-        let constructor_ref = &object::create_sticky_object(@moneyfi);
+        let constructor_ref = &object::create_sticky_object(@moneyfi_v2);
         let lp_address = object::address_from_constructor_ref(constructor_ref);
 
         primary_fungible_store::create_primary_store_enabled_fungible_asset(
@@ -802,7 +802,7 @@ module moneyfi::vault {
     }
 
     fun mint_lp(recipient: address, amount: u64) acquires LPToken {
-        let lptoken = borrow_global<LPToken>(@moneyfi);
+        let lptoken = borrow_global<LPToken>(@moneyfi_v2);
 
         let store =
             primary_fungible_store::ensure_primary_store_exists(
@@ -814,7 +814,7 @@ module moneyfi::vault {
     }
 
     fun burn_lp(owner: address, amount: u64) acquires LPToken {
-        let lptoken = borrow_global<LPToken>(@moneyfi);
+        let lptoken = borrow_global<LPToken>(@moneyfi_v2);
         primary_fungible_store::set_frozen_flag(&lptoken.transfer_ref, owner, false);
         primary_fungible_store::burn(&lptoken.burn_ref, owner, amount);
     }

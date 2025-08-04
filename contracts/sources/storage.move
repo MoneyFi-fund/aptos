@@ -1,10 +1,10 @@
-module moneyfi::storage {
+module moneyfi_v2::storage {
     use aptos_framework::object::{Self, Object, ObjectCore, TransferRef, ExtendRef};
 
-    use moneyfi::access_control;
+    use moneyfi_v2::access_control;
 
-    friend moneyfi::wallet_account;
-    friend moneyfi::vault;
+    friend moneyfi_v2::wallet_account;
+    friend moneyfi_v2::vault;
 
     const PHANTOM_OBJECT_SEED: vector<u8> = b"PHANTOM_OBJECT";
 
@@ -15,7 +15,7 @@ module moneyfi::storage {
     }
 
     fun init_module(sender: &signer) {
-        let constructor_ref = &object::create_sticky_object(@moneyfi);
+        let constructor_ref = &object::create_sticky_object(@moneyfi_v2);
 
         let transfer_ref = object::generate_transfer_ref(constructor_ref);
         object::disable_ungated_transfer(&transfer_ref);
@@ -34,7 +34,7 @@ module moneyfi::storage {
     public entry fun transfer(sender: &signer, new_owner: address) acquires Storage {
         access_control::must_be_admin(sender);
 
-        let storage = borrow_global<Storage>(@moneyfi);
+        let storage = borrow_global<Storage>(@moneyfi_v2);
         transfer_ownership(&storage.transfer_ref, new_owner);
 
         // TODO: distpatch event?
@@ -43,7 +43,7 @@ module moneyfi::storage {
     // -- Public
 
     public fun get_address(): address acquires Storage {
-        let storage = borrow_global<Storage>(@moneyfi);
+        let storage = borrow_global<Storage>(@moneyfi_v2);
 
         object::object_address(&storage.object)
     }
@@ -55,7 +55,7 @@ module moneyfi::storage {
     // -- Private
 
     fun get_signer(): signer acquires Storage {
-        let storage = borrow_global<Storage>(@moneyfi);
+        let storage = borrow_global<Storage>(@moneyfi_v2);
 
         object::generate_signer_for_extending(&storage.extend_ref)
     }

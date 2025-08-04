@@ -1,4 +1,4 @@
-module moneyfi::vault_test {
+module moneyfi_v2::vault_test {
     use std::signer;
     use std::debug;
     use aptos_std::table;
@@ -17,11 +17,11 @@ module moneyfi::vault_test {
         TransferRef
     };
 
-    use moneyfi::wallet_account;
-    use moneyfi::vault;
-    use moneyfi::storage;
-    use moneyfi::access_control;
-    use moneyfi::test_helpers;
+    use moneyfi_v2::wallet_account;
+    use moneyfi_v2::vault;
+    use moneyfi_v2::storage;
+    use moneyfi_v2::access_control;
+    use moneyfi_v2::test_helpers;
 
     fun setup(deployer: &signer, wallet1: &signer, wallet2: &signer):
         (Object<Metadata>, MintRef) {
@@ -56,7 +56,7 @@ module moneyfi::vault_test {
         (token, mint_ref)
     }
 
-    #[test(deployer = @moneyfi, wallet1 = @0x111, wallet2 = @0x222)]
+    #[test(deployer = @moneyfi_v2, wallet1 = @0x111, wallet2 = @0x222)]
     fun test_deposit(
         deployer: &signer, wallet1: &signer, wallet2: &signer
     ) {
@@ -95,7 +95,7 @@ module moneyfi::vault_test {
         assert!(balance + 1000 == acc_balance);
     }
 
-    #[test(deployer = @moneyfi, wallet1 = @0x111, wallet2 = @0x222)]
+    #[test(deployer = @moneyfi_v2, wallet1 = @0x111, wallet2 = @0x222)]
     #[expected_failure(abort_code = 0x50008, location = aptos_framework::fungible_asset)]
     fun test_deployer_transfer_wallet_account_asset(
         deployer: &signer, wallet1: &signer, wallet2: &signer
@@ -116,7 +116,7 @@ module moneyfi::vault_test {
         fungible_asset::transfer(deployer, acc_store, wallet2_store, 1000);
     }
 
-    #[test(deployer = @moneyfi, wallet1 = @0x111, wallet2 = @0x222)]
+    #[test(deployer = @moneyfi_v2, wallet1 = @0x111, wallet2 = @0x222)]
     #[expected_failure(abort_code = 0x50003, location = aptos_framework::fungible_asset)]
     fun test_lp_should_not_transferable(
         deployer: &signer, wallet1: &signer, wallet2: &signer
@@ -136,7 +136,7 @@ module moneyfi::vault_test {
         debug::print(&balance);
     }
 
-    #[test(deployer = @moneyfi, wallet1 = @0x111, wallet2 = @0x222)]
+    #[test(deployer = @moneyfi_v2, wallet1 = @0x111, wallet2 = @0x222)]
     fun test_withdraw(
         deployer: &signer, wallet1: &signer, wallet2: &signer
     ) {

@@ -1,4 +1,4 @@
-module moneyfi::strategy_thala {
+module moneyfi_v2::strategy_thala {
     use std::signer;
     use std::vector;
     use std::option;
@@ -17,9 +17,9 @@ module moneyfi::strategy_thala {
     use thala_staked_lpt::staked_lpt;
     use thala_lsd::staking::ThalaAPT;
 
-    use moneyfi::wallet_account::{Self, WalletAccount};
+    use moneyfi_v2::wallet_account::{Self, WalletAccount};
     use dex_contract::router_v3;
-    friend moneyfi::strategy;
+    friend moneyfi_v2::strategy;
 
     // -- Constants
     const DEADLINE_BUFFER: u64 = 31556926; // 1 years
@@ -313,7 +313,7 @@ module moneyfi::strategy_thala {
     }
 
     fun strategy_stats_deposit(asset: &Object<Metadata>, amount: u64) acquires StrategyStats {
-        let stats = borrow_global_mut<StrategyStats>(@moneyfi);
+        let stats = borrow_global_mut<StrategyStats>(@moneyfi_v2);
         if (ordered_map::contains(&stats.assets, asset)) {
             let asset_stats = ordered_map::borrow_mut(&mut stats.assets, asset);
             asset_stats.total_value_locked =
@@ -333,7 +333,7 @@ module moneyfi::strategy_thala {
     fun strategy_stats_withdraw(
         asset: &Object<Metadata>, deposit_amount: u64, interest: u64
     ) acquires StrategyStats {
-        let stats = borrow_global_mut<StrategyStats>(@moneyfi);
+        let stats = borrow_global_mut<StrategyStats>(@moneyfi_v2);
         if (ordered_map::contains(&stats.assets, asset)) {
             let asset_stats = ordered_map::borrow_mut(&mut stats.assets, asset);
             asset_stats.total_value_locked =
@@ -436,7 +436,7 @@ module moneyfi::strategy_thala {
     }
 
     public fun get_strategy_stats(asset: Object<Metadata>): (u128, u128, u128) acquires StrategyStats {
-        let stats = borrow_global<StrategyStats>(@moneyfi);
+        let stats = borrow_global<StrategyStats>(@moneyfi_v2);
         if (ordered_map::contains(&stats.assets, &asset)) {
             let asset_stats = ordered_map::borrow(&stats.assets, &asset);
             (
