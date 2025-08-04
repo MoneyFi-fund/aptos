@@ -1,4 +1,4 @@
-module moneyfi::hyperion_strategy {
+module moneyfi::strategy_hyperion {
     use std::signer;
     use std::vector;
     use std::bcs::to_bytes;
@@ -327,9 +327,8 @@ module moneyfi::hyperion_strategy {
         let wallet_address = signer::address_of(&wallet_signer);
         let balance_in_before =
             primary_fungible_store::balance(wallet_address, *from_asset);
-        let balance_out_before = primary_fungible_store::balance(
-            wallet_address, *to_asset
-        );
+        let balance_out_before =
+            primary_fungible_store::balance(wallet_address, *to_asset);
         let lp_path = vector::singleton<address>(extra_data.pool);
         router_v3::swap_batch(
             &wallet_signer,
@@ -338,11 +337,10 @@ module moneyfi::hyperion_strategy {
             *to_asset,
             amount_in,
             min_amount_out,
-            wallet_address,
+            wallet_address
         );
-        let balance_in_after = primary_fungible_store::balance(
-            wallet_address, *from_asset
-        );
+        let balance_in_after =
+            primary_fungible_store::balance(wallet_address, *from_asset);
         let balance_out_after = primary_fungible_store::balance(
             wallet_address, *to_asset
         );
@@ -524,8 +522,13 @@ module moneyfi::hyperion_strategy {
         strategy_data
     }
 
-    fun get_position_data(account: &Object<WalletAccount>, pool: address): Position {
-        assert!(exists_hyperion_postion(account, pool), error::not_found(E_HYPERION_POSITION_NOT_EXISTS));
+    fun get_position_data(
+        account: &Object<WalletAccount>, pool: address
+    ): Position {
+        assert!(
+            exists_hyperion_postion(account, pool),
+            error::not_found(E_HYPERION_POSITION_NOT_EXISTS)
+        );
         let strategy_data = ensure_hyperion_strategy_data(account);
         let position = ordered_map::borrow(&strategy_data.pools, &pool);
         *position
