@@ -1,4 +1,4 @@
-module moneyfi_v2::test_helpers {
+module moneyfi::test_helpers {
     use std::signer;
     use std::option;
     use std::string;
@@ -14,7 +14,7 @@ module moneyfi_v2::test_helpers {
         TransferRef
     };
 
-    use moneyfi_v2::access_control;
+    use moneyfi::access_control;
 
     public fun create_fake_USDC(sender: &signer): (Object<Metadata>, MintRef, TransferRef) {
         let constructor_ref = &object::create_named_object(sender, b"FAKE_USDC");

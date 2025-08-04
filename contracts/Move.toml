@@ -1,10 +1,10 @@
 [package]
-name = "moneyfi_v2"
+name = "moneyfi"
 version = "1.0.0"
 authors = []
 
 [addresses]
-moneyfi_v2 = "_"
+moneyfi = "_"
 stablecoin = "0xbae207659db88bea0cbead6da0ed00aac12edcdda169e591cd41c94180b46f3b"
 [dev-addresses]
 
@@ -19,6 +19,9 @@ local = "deps/thala-interface/swap"
 
 [dependencies.ThalaLSD]
 local = "deps/thala-interface/thala_lsd"
+
+# [dependencies.Aries]
+# local = "deps/aries"
 
 [dependencies.AptosFramework]
 git = "https://github.com/aptos-labs/aptos-framework.git"

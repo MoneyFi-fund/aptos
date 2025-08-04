@@ -1,4 +1,4 @@
-module moneyfi_v2::wallet_account_test {
+module moneyfi::wallet_account_test {
     use std::signer;
     use std::bcs;
     use aptos_framework::account;
@@ -8,10 +8,10 @@ module moneyfi_v2::wallet_account_test {
     use std::vector;
     use aptos_framework::timestamp::{Self};
 
-    use moneyfi_v2::storage;
-    use moneyfi_v2::access_control;
-    use moneyfi_v2::test_helpers;
-    use moneyfi_v2::wallet_account::{Self, WalletAccount, WalletAccountObject};
+    use moneyfi::storage;
+    use moneyfi::access_control;
+    use moneyfi::test_helpers;
+    use moneyfi::wallet_account::{Self, WalletAccount, WalletAccountObject};
 
     // Test strategy data operations
     struct TestStrategy has store, drop, copy {
@@ -44,7 +44,7 @@ module moneyfi_v2::wallet_account_test {
         token
     }
 
-    #[test(deployer = @moneyfi_v2, wallet1 = @0x111, wallet2 = @0x222)]
+    #[test(deployer = @moneyfi, wallet1 = @0x111, wallet2 = @0x222)]
     fun test_register(
         deployer: &signer, wallet1: &signer, wallet2: &signer
     ) {
@@ -60,7 +60,7 @@ module moneyfi_v2::wallet_account_test {
     }
 
     #[test(
-        deployer = @moneyfi_v2, w1 = @0x111, w2 = @0x222, w3 = @0x333
+        deployer = @moneyfi, w1 = @0x111, w2 = @0x222, w3 = @0x333
     )]
     fun test_get_referrer_addresses(
         deployer: &signer,
@@ -99,7 +99,7 @@ module moneyfi_v2::wallet_account_test {
         );
     }
 
-    #[test(deployer = @moneyfi_v2, w1 = @0x111)]
+    #[test(deployer = @moneyfi, w1 = @0x111)]
     fun test_strategy_data(deployer: &signer, w1: &signer) {
         storage::init_module_for_testing(deployer);
         let a1 = wallet_account::create_wallet_account_for_test(w1, b"w1", 0, vector[]);

@@ -1,4 +1,4 @@
-module moneyfi_v2::vault {
+module moneyfi::vault {
     use std::signer;
     use std::error;
     use std::vector;
@@ -11,16 +11,16 @@ module moneyfi_v2::vault {
     use aptos_framework::primary_fungible_store;
     use aptos_framework::timestamp::now_seconds;
 
-    use moneyfi_v2::access_control;
-    use moneyfi_v2::wallet_account::{Self, WalletAccount};
-    use moneyfi_v2::storage;
-    use moneyfi_v2::strategy;
+    use moneyfi::access_control;
+    use moneyfi::wallet_account::{Self, WalletAccount};
+    use moneyfi::storage;
+    use moneyfi::strategy;
 
     // -- Constants
     const LP_TOKEN_NAME: vector<u8> = b"MoneyFi LP";
     const LP_TOKEN_SYMBOL: vector<u8> = b"MoneyFiLP";
     const LP_TOKEN_DECIMALS: u8 = 9;
-    const FUNDING_ACCOUNT_SEED: vector<u8> = b"FUNDING_ACCOUNT";
+    const VAULT_SEED: vector<u8> = b"vault::VAULT";
 
     // -- Errors
     const E_ALREADY_INITIALIZED: u64 = 1;
@@ -55,12 +55,13 @@ module moneyfi_v2::vault {
         extend_ref: ExtendRef
     }
 
-    struct FundingAccount has key {
+    #[resource_group_member(group = aptos_framework::object::ObjectGroup)]
+    struct Vault has key {
         extend_ref: ExtendRef,
-        assets: OrderedMap<address, FundingAsset>
+        assets: OrderedMap<address, VaultAsset>
     }
 
-    struct FundingAsset has store {
+    struct VaultAsset has store {
         // total current amount of all accounts
         total_amount: u128,
         // total lp supply
@@ -166,7 +167,7 @@ module moneyfi_v2::vault {
             error::already_exists(E_ALREADY_INITIALIZED)
         );
 
-        init_funding_account();
+        init_vault();
 
         let admin_addr =
             if (object::is_object(addr)) {
@@ -201,7 +202,7 @@ module moneyfi_v2::vault {
 
         access_control::must_be_admin(sender);
         access_control::must_be_fee_manager(sender);
-        let config = borrow_global_mut<Config>(@moneyfi_v2);
+        let config = borrow_global_mut<Config>(@moneyfi);
 
         config.enable_deposit = enable_deposit;
         config.enable_withdraw = enable_withdraw;
@@ -230,7 +231,7 @@ module moneyfi_v2::vault {
         lp_exchange_rate: u64
     ) acquires Config {
         access_control::must_be_service_account(sender);
-        let config = borrow_global_mut<Config>(@moneyfi_v2);
+        let config = borrow_global_mut<Config>(@moneyfi);
 
         config.upsert_asset(
             &asset,
@@ -258,8 +259,8 @@ module moneyfi_v2::vault {
 
     public entry fun deposit(
         sender: &signer, asset: Object<Metadata>, amount: u64
-    ) acquires Config, LPToken, FundingAccount {
-        let config = borrow_global<Config>(@moneyfi_v2);
+    ) acquires Config, LPToken, Vault {
+        let config = borrow_global<Config>(@moneyfi);
         assert!(
             config.can_deposit(&asset, amount),
             error::permission_denied(E_DEPOSIT_NOT_ALLOWED)
@@ -268,9 +269,9 @@ module moneyfi_v2::vault {
         let wallet_addr = signer::address_of(sender);
         let account = wallet_account::get_wallet_account_by_address(wallet_addr);
 
-        let funding_account_addr = get_funding_account_address();
-        let funding_account = borrow_global_mut<FundingAccount>(funding_account_addr);
-        let asset_data = funding_account.get_funding_asset_mut(&asset);
+        let vault_addr = get_vault_address();
+        let vault = borrow_global_mut<Vault>(vault_addr);
+        let asset_data = vault.get_vault_asset_mut(&asset);
 
         let asset_config = config.get_asset_config(&asset);
         let lp_amount = asset_config.calc_mint_lp_amount(amount);
@@ -297,15 +298,15 @@ module moneyfi_v2::vault {
 
     public entry fun withdraw(
         sender: &signer, asset: Object<Metadata>, amount: u64
-    ) acquires Config, LPToken, FundingAccount {
+    ) acquires Config, LPToken, Vault {
         let wallet_addr = signer::address_of(sender);
         let account = wallet_account::get_wallet_account_by_address(wallet_addr);
         let account_addr = object::object_address(&account);
 
-        let funding_account_addr = get_funding_account_address();
-        let funding_account = borrow_global_mut<FundingAccount>(funding_account_addr);
-        let account_signer = funding_account.get_funding_account_signer();
-        let asset_data = funding_account.get_funding_asset_mut(&asset);
+        let vault_addr = get_vault_address();
+        let vault = borrow_global_mut<Vault>(vault_addr);
+        let account_signer = vault.get_vault_signer();
+        let asset_data = vault.get_vault_asset_mut(&asset);
 
         // transfer pending referral fee to wallet account first
         let pending_referral_fee = asset_data.get_pending_referral_fee(&account);
@@ -324,7 +325,7 @@ module moneyfi_v2::vault {
             amount = balance;
         };
 
-        let config = borrow_global<Config>(@moneyfi_v2);
+        let config = borrow_global<Config>(@moneyfi);
         assert!(
             config.can_withdraw(&asset, amount),
             error::permission_denied(E_DEPOSIT_NOT_ALLOWED)
@@ -356,15 +357,15 @@ module moneyfi_v2::vault {
 
     public entry fun withdraw_fee(
         sender: &signer, asset: Object<Metadata>, amount: u64
-    ) acquires Config, FundingAccount {
+    ) acquires Config, Vault {
         access_control::must_be_fee_manager(sender);
 
-        let config = borrow_global<Config>(@moneyfi_v2);
-        let funding_account_addr = get_funding_account_address();
-        let funding_account = borrow_global_mut<FundingAccount>(funding_account_addr);
-        let account_signer = funding_account.get_funding_account_signer();
+        let config = borrow_global<Config>(@moneyfi);
+        let vault_addr = get_vault_address();
+        let vault = borrow_global_mut<Vault>(vault_addr);
+        let account_signer = vault.get_vault_signer();
 
-        let asset_data = funding_account.get_funding_asset_mut(&asset);
+        let asset_data = vault.get_vault_asset_mut(&asset);
         assert!(asset_data.pending_fee_amount >= amount);
 
         primary_fungible_store::transfer(
@@ -385,16 +386,16 @@ module moneyfi_v2::vault {
         )
     }
 
-    public entry fun withdraw_all_fee(sender: &signer) acquires FundingAccount, Config {
+    public entry fun withdraw_all_fee(sender: &signer) acquires Vault, Config {
         access_control::must_be_fee_manager(sender);
 
-        let config = borrow_global<Config>(@moneyfi_v2);
-        let funding_account_addr = get_funding_account_address();
-        let funding_account = borrow_global_mut<FundingAccount>(funding_account_addr);
-        let account_signer = funding_account.get_funding_account_signer();
+        let config = borrow_global<Config>(@moneyfi);
+        let vault_addr = get_vault_address();
+        let vault = borrow_global_mut<Vault>(vault_addr);
+        let account_signer = vault.get_vault_signer();
 
         ordered_map::for_each_mut(
-            &mut funding_account.assets,
+            &mut vault.assets,
             |asset_addr, asset_data| {
                 let asset_obj = object::address_to_object<Metadata>(*asset_addr);
                 let fee_amount = asset_data.pending_fee_amount;
@@ -429,7 +430,7 @@ module moneyfi_v2::vault {
         asset: Object<Metadata>,
         amount: u64,
         extra_data: vector<vector<u8>>
-    ) acquires FundingAccount {
+    ) acquires Vault {
         access_control::must_be_service_account(sender);
         let account = wallet_account::get_wallet_account(wallet_id);
         let amount = strategy::deposit(
@@ -441,9 +442,9 @@ module moneyfi_v2::vault {
         );
         wallet_account::distributed_fund(&account, &asset, amount);
 
-        let funding_account_addr = get_funding_account_address();
-        let funding_account = borrow_global_mut<FundingAccount>(funding_account_addr);
-        let asset_data = funding_account.get_funding_asset_mut(&asset);
+        let vault_addr = get_vault_address();
+        let vault = borrow_global_mut<Vault>(vault_addr);
+        let asset_data = vault.get_vault_asset_mut(&asset);
 
         asset_data.total_distributed_amount =
             asset_data.total_distributed_amount + (amount as u128);
@@ -467,14 +468,14 @@ module moneyfi_v2::vault {
         amount: u64,
         gas_fee: u64,
         extra_data: vector<vector<u8>>
-    ) acquires Config, FundingAccount {
+    ) acquires Config, Vault {
         access_control::must_be_service_account(sender);
         let account = wallet_account::get_wallet_account(wallet_id);
-        let config = borrow_global<Config>(@moneyfi_v2);
+        let config = borrow_global<Config>(@moneyfi);
 
-        let funding_account_addr = get_funding_account_address();
-        let funding_account = borrow_global_mut<FundingAccount>(funding_account_addr);
-        let asset_data = funding_account.get_funding_asset_mut(&asset);
+        let vault_addr = get_vault_address();
+        let vault = borrow_global_mut<Vault>(vault_addr);
+        let asset_data = vault.get_vault_asset_mut(&asset);
 
         let (deposited_amount, withdrawn_amount, fee) =
             strategy::withdraw(
@@ -513,10 +514,7 @@ module moneyfi_v2::vault {
         if (total_fee > 0) {
             let account_signer = wallet_account::get_wallet_account_signer(&account);
             primary_fungible_store::transfer(
-                &account_signer,
-                asset,
-                funding_account_addr,
-                total_fee
+                &account_signer, asset, vault_addr, total_fee
             );
         };
 
@@ -574,14 +572,14 @@ module moneyfi_v2::vault {
         from_amount: u64,
         to_amount: u64,
         extra_data: vector<vector<u8>>
-    ) acquires FundingAccount, Config, LPToken {
+    ) acquires Vault, Config, LPToken {
         access_control::must_be_service_account(sender);
         let account = wallet_account::get_wallet_account(wallet_id);
         let account_addr = wallet_account::get_owner_address(wallet_id);
-        let config = borrow_global<Config>(@moneyfi_v2);
+        let config = borrow_global<Config>(@moneyfi);
 
-        let funding_account_addr = get_funding_account_address();
-        let funding_account = borrow_global_mut<FundingAccount>(funding_account_addr);
+        let vault_addr = get_vault_address();
+        let vault = borrow_global_mut<Vault>(vault_addr);
         let asset_config_1 = config.get_asset_config(&to_asset);
 
         let (amount_in, amount_out) =
@@ -615,12 +613,8 @@ module moneyfi_v2::vault {
             mint_lp(account_addr, mint_lp_amount_1);
         };
 
-        funding_account.decrease_asset_amount(
-            &from_asset, amount_in as u128, lp_amount_0 as u128
-        );
-        funding_account.increase_asset_amount(
-            &to_asset, amount_out as u128, lp_amount_1 as u128
-        );
+        vault.decrease_asset_amount(&from_asset, amount_in as u128, lp_amount_0 as u128);
+        vault.increase_asset_amount(&to_asset, amount_out as u128, lp_amount_1 as u128);
 
         event::emit(
             SwapAssetsEvent {
@@ -639,14 +633,14 @@ module moneyfi_v2::vault {
 
     // -- Views
     #[view]
-    public fun get_assets(): (vector<address>, vector<u128>) acquires FundingAccount {
-        let funding_account_addr = get_funding_account_address();
-        let funding_account = borrow_global<FundingAccount>(funding_account_addr);
+    public fun get_assets(): (vector<address>, vector<u128>) acquires Vault {
+        let vault_addr = get_vault_address();
+        let vault = borrow_global<Vault>(vault_addr);
 
         let keys = vector[];
         let values = vector[];
         ordered_map::for_each_ref(
-            &funding_account.assets,
+            &vault.assets,
             |k, v| {
                 vector::push_back(&mut keys, *k);
                 vector::push_back(&mut values, v.total_amount);
@@ -657,13 +651,13 @@ module moneyfi_v2::vault {
     }
 
     #[view]
-    public fun get_asset(asset: Object<Metadata>): (u128, u128, u128) acquires FundingAccount {
-        let funding_account_addr = get_funding_account_address();
-        let funding_account = borrow_global<FundingAccount>(funding_account_addr);
+    public fun get_asset(asset: Object<Metadata>): (u128, u128, u128) acquires Vault {
+        let vault_addr = get_vault_address();
+        let vault = borrow_global<Vault>(vault_addr);
         let asset_addr = object::object_address(&asset);
-        assert!(ordered_map::contains(&funding_account.assets, &asset_addr));
+        assert!(ordered_map::contains(&vault.assets, &asset_addr));
 
-        let asset_dat = ordered_map::borrow(&funding_account.assets, &asset_addr);
+        let asset_dat = ordered_map::borrow(&vault.assets, &asset_addr);
 
         (
             asset_dat.total_amount,
@@ -673,52 +667,49 @@ module moneyfi_v2::vault {
     }
 
     #[view]
-    public fun get_fee(asset: Object<Metadata>): (u64, u64) acquires FundingAccount {
-        let funding_account_addr = get_funding_account_address();
-        let funding_account = borrow_global<FundingAccount>(funding_account_addr);
+    public fun get_fee(asset: Object<Metadata>): (u64, u64) acquires Vault {
+        let vault_addr = get_vault_address();
+        let vault = borrow_global<Vault>(vault_addr);
         let asset_addr = object::object_address(&asset);
-        assert!(ordered_map::contains(&funding_account.assets, &asset_addr));
+        assert!(ordered_map::contains(&vault.assets, &asset_addr));
 
-        let asset_dat = ordered_map::borrow(&funding_account.assets, &asset_addr);
+        let asset_dat = ordered_map::borrow(&vault.assets, &asset_addr);
 
         (asset_dat.total_fee_amount, asset_dat.pending_fee_amount)
     }
 
     #[view]
     public fun get_supported_assets(): vector<address> acquires Config {
-        let config = borrow_global<Config>(@moneyfi_v2);
+        let config = borrow_global<Config>(@moneyfi);
         ordered_map::keys(&config.supported_assets)
     }
 
     // -- Public
 
     public fun get_lp_token(): Object<Metadata> acquires LPToken {
-        let lptoken = borrow_global<LPToken>(@moneyfi_v2);
+        let lptoken = borrow_global<LPToken>(@moneyfi);
 
         lptoken.token
     }
 
-    public fun get_funding_account_address(): address {
-        storage::get_child_object_address(FUNDING_ACCOUNT_SEED)
-    }
-
     // -- Private
 
-    fun init_funding_account() {
-        let account_addr = storage::get_child_object_address(FUNDING_ACCOUNT_SEED);
-        assert!(!exists<FundingAccount>(account_addr));
+    fun get_vault_address(): address {
+        storage::get_child_object_address(VAULT_SEED)
+    }
 
-        let extend_ref =
-            storage::create_child_object_with_phantom_owner(FUNDING_ACCOUNT_SEED);
+    fun init_vault() {
+        let account_addr = storage::get_child_object_address(VAULT_SEED);
+        assert!(!exists<Vault>(account_addr));
+
+        let extend_ref = storage::create_child_object_with_phantom_owner(VAULT_SEED);
 
         let account_signer = object::generate_signer_for_extending(&extend_ref);
-        move_to(
-            &account_signer, FundingAccount { extend_ref, assets: ordered_map::new() }
-        );
+        move_to(&account_signer, Vault { extend_ref, assets: ordered_map::new() });
     }
 
     fun init_lp_token(sender: &signer) {
-        let constructor_ref = &object::create_sticky_object(@moneyfi_v2);
+        let constructor_ref = &object::create_sticky_object(@moneyfi);
         let lp_address = object::address_from_constructor_ref(constructor_ref);
 
         primary_fungible_store::create_primary_store_enabled_fungible_asset(
@@ -802,7 +793,7 @@ module moneyfi_v2::vault {
     }
 
     fun mint_lp(recipient: address, amount: u64) acquires LPToken {
-        let lptoken = borrow_global<LPToken>(@moneyfi_v2);
+        let lptoken = borrow_global<LPToken>(@moneyfi);
 
         let store =
             primary_fungible_store::ensure_primary_store_exists(
@@ -814,7 +805,7 @@ module moneyfi_v2::vault {
     }
 
     fun burn_lp(owner: address, amount: u64) acquires LPToken {
-        let lptoken = borrow_global<LPToken>(@moneyfi_v2);
+        let lptoken = borrow_global<LPToken>(@moneyfi);
         primary_fungible_store::set_frozen_flag(&lptoken.transfer_ref, owner, false);
         primary_fungible_store::burn(&lptoken.burn_ref, owner, amount);
     }
@@ -867,7 +858,7 @@ module moneyfi_v2::vault {
     }
 
     fun add_referral_fees(
-        self: &FundingAsset, data: &OrderedMap<address, u64>
+        self: &VaultAsset, data: &OrderedMap<address, u64>
     ) {
         let pending_referral_fees = self.pending_referral_fees;
         ordered_map::for_each_ref(
@@ -884,7 +875,7 @@ module moneyfi_v2::vault {
     }
 
     fun get_pending_referral_fee(
-        self: &FundingAsset, account: &Object<WalletAccount>
+        self: &VaultAsset, account: &Object<WalletAccount>
     ): u64 {
         let addr = object::object_address(account);
         if (ordered_map::contains(&self.pending_referral_fees, &addr)) {
@@ -892,15 +883,13 @@ module moneyfi_v2::vault {
         } else { 0 }
     }
 
-    fun get_funding_asset_mut(
-        self: &mut FundingAccount, asset: &Object<Metadata>
-    ): &mut FundingAsset {
+    fun get_vault_asset_mut(self: &mut Vault, asset: &Object<Metadata>): &mut VaultAsset {
         let addr = object::object_address(asset);
         if (!ordered_map::contains(&self.assets, &addr)) {
             ordered_map::add(
                 &mut self.assets,
                 addr,
-                FundingAsset {
+                VaultAsset {
                     total_amount: 0,
                     total_lp_amount: 0,
                     total_distributed_amount: 0,
@@ -915,23 +904,23 @@ module moneyfi_v2::vault {
     }
 
     fun increase_asset_amount(
-        self: &mut FundingAccount,
+        self: &mut Vault,
         asset: &Object<Metadata>,
         amount: u128,
         lp_amount: u128
     ) {
-        let asset_data = self.get_funding_asset_mut(asset);
+        let asset_data = self.get_vault_asset_mut(asset);
         asset_data.total_amount = asset_data.total_amount + amount;
         asset_data.total_lp_amount = asset_data.total_lp_amount + lp_amount;
     }
 
     fun decrease_asset_amount(
-        self: &mut FundingAccount,
+        self: &mut Vault,
         asset: &Object<Metadata>,
         amount: u128,
         lp_amount: u128
     ) {
-        let asset_data = self.get_funding_asset_mut(asset);
+        let asset_data = self.get_vault_asset_mut(asset);
         assert!(asset_data.total_amount >= amount);
         assert!(asset_data.total_lp_amount >= lp_amount);
 
@@ -939,7 +928,7 @@ module moneyfi_v2::vault {
         asset_data.total_lp_amount = asset_data.total_lp_amount - lp_amount;
     }
 
-    fun get_funding_account_signer(self: &FundingAccount): signer {
+    fun get_vault_signer(self: &Vault): signer {
         object::generate_signer_for_extending(&self.extend_ref)
     }
 
