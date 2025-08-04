@@ -4,7 +4,7 @@ module moneyfi::wallet_account {
     use std::vector;
     use std::error;
     use std::option::{Self, Option};
-    use aptos_std::math128;
+    use aptos_std::math64;
     use aptos_std::ordered_map::{Self, OrderedMap};
     use aptos_framework::event;
     use aptos_framework::object::{Self, Object, ExtendRef};
@@ -16,8 +16,8 @@ module moneyfi::wallet_account {
 
     friend moneyfi::vault;
     friend moneyfi::strategy;
-    friend moneyfi::hyperion_strategy;
-    friend moneyfi::thala_strategy;
+    friend moneyfi::strategy_hyperion;
+    friend moneyfi::strategy_thala;
 
     #[test_only]
     friend moneyfi::wallet_account_test;
@@ -232,10 +232,7 @@ module moneyfi::wallet_account {
         );
 
         let total = asset_data.current_amount + asset_data.distributed_amount;
-
-        // let lp_amount = ((amount as u128) * (asset_data.lp_amount as u128)
-        //     / (total as u128)) as u64;
-        let lp_amount = math128::mul_div((amount as u128), (asset_data.lp_amount as u128),(total as u128)) as u64;
+        let lp_amount = math64::mul_div(amount, asset_data.lp_amount, total) as u64;
         asset_data.withdrawn_amount = asset_data.withdrawn_amount + amount;
         asset_data.current_amount = asset_data.current_amount - amount;
         asset_data.lp_amount = asset_data.lp_amount - lp_amount;
@@ -262,7 +259,8 @@ module moneyfi::wallet_account {
         );
 
         let total_0 = asset_data_0.current_amount + asset_data_0.distributed_amount;
-        let lp_amount_0 = math128::mul_div((from_amount as u128), (asset_data_0.lp_amount as u128), (total_0 as u128)) as u64;
+        let lp_amount_0 =
+            math64::mul_div(from_amount, asset_data_0.lp_amount, total_0) as u64;
         asset_data_0.swap_out_amount = asset_data_0.swap_out_amount + from_amount;
         asset_data_0.current_amount = asset_data_0.current_amount - from_amount;
         asset_data_0.lp_amount = asset_data_0.lp_amount - lp_amount_0;
@@ -318,10 +316,10 @@ module moneyfi::wallet_account {
         if (!exists<StrategyData<T>>(addr)) {
             let account_signer = get_wallet_account_signer(account);
             move_to(&account_signer, StrategyData { data });
-        };
-
-        let strategy_data = borrow_global_mut<StrategyData<T>>(addr);
-        strategy_data.data = data;
+        } else {
+            let strategy_data = borrow_global_mut<StrategyData<T>>(addr);
+            strategy_data.data = data;
+        }
     }
 
     public(friend) fun get_strategy_data<T: store + copy>(
@@ -346,11 +344,9 @@ module moneyfi::wallet_account {
     }
 
     #[view]
-    public fun has_strategy_data<T: store>(
-        wallet_id: vector<u8>
-    ): bool {
+    public fun has_strategy_data<T: store>(wallet_id: vector<u8>): bool {
         strategy_data_exists<T>(&get_wallet_account(wallet_id))
-    } 
+    }
 
     // Check wallet_id is a valid wallet account
     #[view]

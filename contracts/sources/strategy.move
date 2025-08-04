@@ -5,8 +5,8 @@ module moneyfi::strategy {
     use aptos_framework::fungible_asset::Metadata;
 
     use moneyfi::wallet_account::WalletAccount;
-    use moneyfi::hyperion_strategy;
-    use moneyfi::thala_strategy;
+    use moneyfi::strategy_hyperion;
+    use moneyfi::strategy_thala;
 
     friend moneyfi::vault;
 
@@ -27,10 +27,10 @@ module moneyfi::strategy {
         let stats = vector[];
 
         if (strategy == STRATEGY_HYPERION) {
-            let (v1, v2, v3) = hyperion_strategy::get_strategy_stats(asset);
+            let (v1, v2, v3) = strategy_hyperion::get_strategy_stats(asset);
             vector::append(&mut stats, vector[v1, v2, v3]);
-        }else if(strategy == STRATEGY_THALA){
-            let (v1, v2, v3) = thala_strategy::get_strategy_stats(asset);
+        } else if (strategy == STRATEGY_THALA) {
+            let (v1, v2, v3) = strategy_thala::get_strategy_stats(asset);
             vector::append(&mut stats, vector[v1, v2, v3]);
         };
         stats
@@ -45,12 +45,12 @@ module moneyfi::strategy {
         extra_data: vector<vector<u8>>
     ): u64 {
         if (strategy == STRATEGY_HYPERION) {
-            return hyperion_strategy::deposit_fund_to_hyperion_single(
+            return strategy_hyperion::deposit_fund_to_hyperion_single(
                 account, asset, amount, extra_data
             );
         };
-        if(strategy == STRATEGY_THALA){
-            return thala_strategy::deposit_fund_to_thala_single(
+        if (strategy == STRATEGY_THALA) {
+            return strategy_thala::deposit_fund_to_thala_single(
                 account, asset, amount, extra_data
             );
         };
@@ -72,12 +72,12 @@ module moneyfi::strategy {
         extra_data: vector<vector<u8>>
     ): (u64, u64, u64) {
         if (strategy == STRATEGY_HYPERION) {
-            return hyperion_strategy::withdraw_fund_from_hyperion_single(
+            return strategy_hyperion::withdraw_fund_from_hyperion_single(
                 account, asset, min_amount, extra_data
             );
         };
-        if(strategy == STRATEGY_THALA) {
-            return thala_strategy::withdraw_fund_from_thala_single(
+        if (strategy == STRATEGY_THALA) {
+            return strategy_thala::withdraw_fund_from_thala_single(
                 account, asset, min_amount, extra_data
             );
         };
@@ -89,7 +89,7 @@ module moneyfi::strategy {
         strategy: u8, account: &Object<WalletAccount>, extra_data: vector<vector<u8>>
     ) {
         if (strategy == STRATEGY_HYPERION) {
-            hyperion_strategy::update_tick(account, extra_data);
+            strategy_hyperion::update_tick(account, extra_data);
             return
         };
         abort(error::not_implemented(E_NOT_SUPPORTED_BY_STRATEGY));
@@ -109,7 +109,7 @@ module moneyfi::strategy {
         extra_data: vector<vector<u8>>
     ): (u64, u64) {
         if (strategy == STRATEGY_HYPERION) {
-            return hyperion_strategy::swap(
+            return strategy_hyperion::swap(
                 account,
                 from_asset,
                 to_asset,
@@ -119,7 +119,7 @@ module moneyfi::strategy {
             );
         };
         if (strategy == STRATEGY_THALA) {
-            return thala_strategy::swap(
+            return strategy_thala::swap(
                 account,
                 from_asset,
                 to_asset,

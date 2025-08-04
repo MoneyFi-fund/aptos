@@ -432,7 +432,13 @@ module moneyfi::vault {
     ) acquires FundingAccount {
         access_control::must_be_service_account(sender);
         let account = wallet_account::get_wallet_account(wallet_id);
-        let amount = strategy::deposit(strategy_id, &account, &asset, amount, extra_data);
+        let amount = strategy::deposit(
+            strategy_id,
+            &account,
+            &asset,
+            amount,
+            extra_data
+        );
         wallet_account::distributed_fund(&account, &asset, amount);
 
         let funding_account_addr = get_funding_account_address();
@@ -471,7 +477,13 @@ module moneyfi::vault {
         let asset_data = funding_account.get_funding_asset_mut(&asset);
 
         let (deposited_amount, withdrawn_amount, fee) =
-            strategy::withdraw(strategy_id, &account, &asset, amount, extra_data);
+            strategy::withdraw(
+                strategy_id,
+                &account,
+                &asset,
+                amount,
+                extra_data
+            );
         assert!(fee <= withdrawn_amount);
         assert!(asset_data.total_distributed_amount >= (deposited_amount as u128));
 
@@ -692,20 +704,17 @@ module moneyfi::vault {
 
     // -- Private
 
-    fun init_funding_account(): Object<FundingAccount> {
+    fun init_funding_account() {
         let account_addr = storage::get_child_object_address(FUNDING_ACCOUNT_SEED);
         assert!(!exists<FundingAccount>(account_addr));
 
         let extend_ref =
             storage::create_child_object_with_phantom_owner(FUNDING_ACCOUNT_SEED);
-        let account_addr = object::address_from_extend_ref(&extend_ref);
 
         let account_signer = object::generate_signer_for_extending(&extend_ref);
         move_to(
             &account_signer, FundingAccount { extend_ref, assets: ordered_map::new() }
         );
-
-        object::address_to_object<FundingAccount>(account_addr)
     }
 
     fun init_lp_token(sender: &signer) {
@@ -752,7 +761,9 @@ module moneyfi::vault {
         *ordered_map::borrow(&self.supported_assets, &addr)
     }
 
-    fun can_deposit(self: &Config, asset: &Object<Metadata>, amount: u64): bool {
+    fun can_deposit(
+        self: &Config, asset: &Object<Metadata>, amount: u64
+    ): bool {
         if (amount == 0) return false;
         if (!self.enable_deposit) return false;
 
