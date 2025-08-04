@@ -33,6 +33,7 @@ module moneyfi::strategy {
             let (v1, v2, v3) = strategy_thala::get_strategy_stats(asset);
             vector::append(&mut stats, vector[v1, v2, v3]);
         };
+
         stats
     }
 
@@ -49,6 +50,7 @@ module moneyfi::strategy {
                 account, asset, amount, extra_data
             );
         };
+
         if (strategy == STRATEGY_THALA) {
             return strategy_thala::deposit_fund_to_thala_single(
                 account, asset, amount, extra_data
@@ -76,11 +78,13 @@ module moneyfi::strategy {
                 account, asset, min_amount, extra_data
             );
         };
+
         if (strategy == STRATEGY_THALA) {
             return strategy_thala::withdraw_fund_from_thala_single(
                 account, asset, min_amount, extra_data
             );
         };
+
         abort(error::invalid_argument(E_UNKNOWN_STRATEGY));
         (0, 0, 0)
     }
@@ -118,6 +122,7 @@ module moneyfi::strategy {
                 extra_data
             );
         };
+
         if (strategy == STRATEGY_THALA) {
             return strategy_thala::swap(
                 account,

@@ -26,6 +26,7 @@ module moneyfi::vault {
     const E_ALREADY_INITIALIZED: u64 = 1;
     const E_DEPOSIT_NOT_ALLOWED: u64 = 2;
     const E_WITHDRAW_NOT_ALLOWED: u64 = 3;
+    const E_ASSET_NOT_SUPPORTED: u64 = 4;
 
     // -- Structs
     struct Config has key {
@@ -578,6 +579,9 @@ module moneyfi::vault {
         let account_addr = wallet_account::get_owner_address(wallet_id);
         let config = borrow_global<Config>(@moneyfi);
 
+        config.ensure_asset_is_supported(&from_asset);
+        config.ensure_asset_is_supported(&to_asset);
+
         let vault_addr = get_vault_address();
         let vault = borrow_global_mut<Vault>(vault_addr);
         let asset_config_1 = config.get_asset_config(&to_asset);
@@ -930,6 +934,19 @@ module moneyfi::vault {
 
     fun get_vault_signer(self: &Vault): signer {
         object::generate_signer_for_extending(&self.extend_ref)
+    }
+
+    fun ensure_asset_is_supported(
+        self: &Config, asset: &Object<Metadata>
+    ) {
+        let addr = object::object_address(asset);
+        assert!(
+            ordered_map::contains(&self.supported_assets, &addr),
+            error::permission_denied(E_ASSET_NOT_SUPPORTED)
+        );
+
+        let config = ordered_map::borrow(&self.supported_assets, &addr);
+        assert!(config.enabled, error::permission_denied(E_ASSET_NOT_SUPPORTED));
     }
 
     // -- test only
