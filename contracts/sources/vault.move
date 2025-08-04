@@ -594,11 +594,8 @@ module moneyfi::vault {
                 lp_amount_1
             );
 
-        let burn_lp_amount_0 = 0;
-        let mint_lp_amount_1 = 0;
-
         if (lp_amount_0 > lp_amount_1) {
-            burn_lp_amount_0 = lp_amount_0 - lp_amount_1;
+            let burn_lp_amount_0 = lp_amount_0 - lp_amount_1;
             burn_lp(account_addr, burn_lp_amount_0);
 
         } else if (lp_amount_0 < lp_amount_1) {
@@ -607,10 +604,10 @@ module moneyfi::vault {
         };
 
         funding_account.decrease_asset_amount(
-            &from_asset, amount_in as u128, burn_lp_amount_0 as u128
+            &from_asset, amount_in as u128, lp_amount_0 as u128
         );
         funding_account.increase_asset_amount(
-            &to_asset, amount_out as u128, mint_lp_amount_1 as u128
+            &to_asset, amount_out as u128, lp_amount_1 as u128
         );
 
         event::emit(
