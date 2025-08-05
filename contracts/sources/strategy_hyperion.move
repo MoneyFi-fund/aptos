@@ -686,8 +686,8 @@ module moneyfi::strategy_hyperion {
         let len = ordered_map::length(&strategy_data.pools);
         while (i < len) {
             let pool = *vector::borrow<address>(&pools, i);
-            let position = get_position(&account, pool);
-            total_profit = total_profit + get_pending_rewards_and_fees_usdc(position);
+            let position = get_position_data(&account, pool);
+            total_profit = total_profit + get_pending_rewards_and_fees_usdc(position.position) + position.interest_amount;
             i = i + 1;
         };
 
