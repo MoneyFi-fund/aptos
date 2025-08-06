@@ -1,0 +1,10 @@
+[package]
+name = "Stable"
+version = "1.0.0"
+upgrade_policy = "compatible"
+
+[addresses]
+stable = "0xa611a8ba7261ed1f4d3afe4ac2166fc9f3180103e3296772d593a1e2720c7405"
+
+[dependencies]
+AptosFramework = { git = "https://github.com/aptos-labs/aptos-framework.git", rev = "mainnet", subdir = "aptos-framework" }
