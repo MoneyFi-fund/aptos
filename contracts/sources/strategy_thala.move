@@ -144,7 +144,7 @@ module moneyfi::strategy_thala {
         asset: &Object<Metadata>,
         amount_min: u64,
         extra_data: vector<vector<u8>>
-    ): (u64, u64, u64) {
+    ): (u64, u64, u64) acquires StrategyStats {
         let extra_data = unpack_extra_data(extra_data);
         let position = get_position_data(account, extra_data.pool);
         let pool_obj = object::address_to_object<Pool>(extra_data.pool);
@@ -270,6 +270,9 @@ module moneyfi::strategy_thala {
                 (amount_min, set_position_data(account, extra_data.pool, position))
             };
         wallet_account::set_strategy_data(account, strategy_data);
+        strategy_stats_withdraw(
+            asset, total_deposited_amount, total_withdrawn_amount
+        );
         (total_deposited_amount, total_withdrawn_amount, extra_data.withdraw_fee)
     }
 
