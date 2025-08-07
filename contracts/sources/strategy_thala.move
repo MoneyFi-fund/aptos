@@ -169,10 +169,10 @@ module moneyfi::strategy_thala {
             } else {
                 position.asset
             };
-        let balance_asset_after = primary_fungible_store::balance(
+        let balance_asset_before = primary_fungible_store::balance(
             wallet_address, *asset
         );
-        let balance_pair_after = primary_fungible_store::balance(wallet_address, pair);
+        let balance_pair_before = primary_fungible_store::balance(wallet_address, pair);
         //Claim reward
         let pool_lp_token_metadata = pool::pool_lp_token_metadata(pool_obj);
         let reward_ids = position.reward_ids;
@@ -234,7 +234,7 @@ module moneyfi::strategy_thala {
             amounts
         );
         let remaining =
-            primary_fungible_store::balance(wallet_address, pair) - balance_pair_after;
+            primary_fungible_store::balance(wallet_address, pair) - balance_pair_before;
         if (remaining > 0) {
             let (_, _, amount_out, _, _, _, _, _, _, _) =
                 pool::swap_preview_info(
@@ -255,10 +255,10 @@ module moneyfi::strategy_thala {
                 amount_out
             );
         };
-        let balance_asset_before = primary_fungible_store::balance(
+        let balance_asset_after = primary_fungible_store::balance(
             wallet_address, *asset
         );
-        let total_withdrawn_amount = balance_asset_before - balance_asset_after;
+        let total_withdrawn_amount = balance_asset_after - balance_asset_before;
         let (total_deposited_amount, strategy_data) =
             if (is_full_withdraw) {
                 (position.amount, remove_position(account, extra_data.pool))

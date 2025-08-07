@@ -18,6 +18,7 @@ module moneyfi::wallet_account {
     friend moneyfi::strategy;
     friend moneyfi::strategy_hyperion;
     friend moneyfi::strategy_thala;
+    friend moneyfi::strategy_tapp;
 
     #[test_only]
     friend moneyfi::wallet_account_test;

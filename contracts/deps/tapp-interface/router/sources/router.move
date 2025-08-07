@@ -7,13 +7,6 @@ module tapp::router {
         extend_ref: object::ExtendRef,
     }
 
-    struct Manager has key {
-        vault: account::SignerCapability,
-        pools: vector<address>,
-        paused_hooks: vector<u8>,
-    }
-    
-
      public entry fun swap(arg0: &signer, arg1: vector<u8>) {
         abort 0x1;
     }
