@@ -79,7 +79,7 @@ module moneyfi::strategy_tapp {
 
 
     // returns(actual_amount)
-    public(friend) fun deposit_fund_to_thala_single(
+    public(friend) fun deposit_fund_to_tapp_single(
         account: &Object<WalletAccount>,
         asset: &Object<Metadata>,
         amount_in: u64,
@@ -156,7 +156,7 @@ module moneyfi::strategy_tapp {
     }
 
     //return (total_deposited_amount, total_withdrawn_amount)
-    public(friend) fun withdraw_fund_from_thala_single(
+    public(friend) fun withdraw_fund_from_tapp_single(
         account: &Object<WalletAccount>,
         asset: &Object<Metadata>,
         amount_min: u64,
