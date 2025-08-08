@@ -687,7 +687,14 @@ module moneyfi::strategy_hyperion {
         while (i < len) {
             let pool = *vector::borrow<address>(&pools, i);
             let position = get_position_data(&account, pool);
-            total_profit = total_profit + get_pending_rewards_and_fees_usdc(position.position) + position.interest_amount;
+            let (amount_a, amount_b) = router_v3::get_amount_by_liquidity(position.position);
+            let total_amount = amount_a + amount_b;
+            let interest = if(total_amount + position.remaining_amount > position.amount) {
+                total_amount + position.remaining_amount - position.amount
+            } else {
+                0
+            };
+            total_profit = total_profit + get_pending_rewards_and_fees_usdc(position.position) + interest;
             i = i + 1;
         };
 

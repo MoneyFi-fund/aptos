@@ -470,7 +470,7 @@ module moneyfi::strategy_tapp {
                 );
             let profit =
                 get_pending_rewards_and_fees_usdc(
-                    object::object_address(&account), pool_address, *position
+                    pool_address, *position
                 );
             total_profit = total_profit + profit;
             i = i + 1;
@@ -480,8 +480,47 @@ module moneyfi::strategy_tapp {
     }
 
      fun get_pending_rewards_and_fees_usdc(
-        wallet_address: address, pool: address, position: Position
+        pool: address, position: Position
     ): u64 {
-       0 
+        let stablecoin_metadata = object::address_to_object<Metadata>(USDC_ADDRESS);
+        let (active_rewards, reward_amounts) = get_active_rewards(pool, &position);
+        let assets = hook_factory::pool_meta_assets(
+            &hook_factory::pool_meta(pool)
+        );
+        let amounts = stable_views::calc_ratio_amounts(pool, position.lp_amount as u256);
+        let lp_path: vector<address> = vector[
+            @0x6fc5dbd4c66b9f96644bd3412b8e836a584bd10ddee62c380d54fc2f75369f4a,
+            @0xd3894aca06d5f42b27c89e6f448114b3ed6a1ba07f992a58b2126c71dd83c127
+        ];
+        let total_profit: u64 = 0;
+        let i = 0;
+        let assets_len = vector::length(&assets);
+        while (i < assets_len) {
+            let asset_addr = *vector::borrow(&assets, i);
+            let asset_amount = *vector::borrow(&amounts, i);
+            let asset_metadata = object::address_to_object<Metadata>(asset_addr);
+            if (asset_addr == object::object_address(&stablecoin_metadata)) {
+                total_profit = total_profit + (asset_amount as u64);
+            } else {
+                let path = vector::singleton<address>(*vector::borrow(&lp_path, 1));
+                let amount_out = router_v3::get_batch_amount_out(path, (asset_amount as u64), asset_metadata, stablecoin_metadata);
+                total_profit = total_profit + amount_out;
+            };
+            i = i + 1;
+        };
+        
+        vector::for_each(active_rewards, |reward_token_addr| {
+            let (_, index) = vector::index_of(&active_rewards, &reward_token_addr);
+            let reward_amount = *vector::borrow(&reward_amounts, index);
+            let reward_metadata = object::address_to_object<Metadata>(reward_token_addr);
+            if (reward_token_addr == object::object_address(&stablecoin_metadata)) {
+                let amount_out = router_v3::get_batch_amount_out(lp_path, reward_amount, reward_metadata, stablecoin_metadata);
+                total_profit = total_profit + amount_out;
+            }
+        });
+
+        if (total_profit > position.amount) {
+            total_profit - position.amount
+        } else { 0 }
     }
 }
