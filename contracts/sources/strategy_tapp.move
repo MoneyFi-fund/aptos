@@ -98,7 +98,7 @@ module moneyfi::strategy_tapp {
             0,
             1000,
             0,
-            4295048016 + 1,
+            79226673515401279992447579055 - 1,
             position.asset,
             position.pair,
             signer::address_of(&wallet_signer),
@@ -206,7 +206,6 @@ module moneyfi::strategy_tapp {
         vector::append(&mut payload, to_bytes<vector<u256>>(&min_amounts));
         // Call integration to remove liquidity
         router::remove_liquidity(&wallet_signer, payload);
-
         let pair_amount = primary_fungible_store::balance(
             wallet_address, pair
         ) - balance_pair_before;
