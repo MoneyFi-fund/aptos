@@ -204,7 +204,6 @@ module moneyfi::vault {
         // TODO: validate referrals_percents
 
         access_control::must_be_admin(sender);
-        access_control::must_be_fee_manager(sender);
         let config = borrow_global_mut<Config>(@moneyfi);
 
         config.enable_deposit = enable_deposit;
