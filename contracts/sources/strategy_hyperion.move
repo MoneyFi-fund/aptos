@@ -226,7 +226,7 @@ module moneyfi::strategy_hyperion {
         let (current_tick, _) = pool_v3::current_tick_and_price(extra_data.pool);
         let (token_a, token_b, _) = position_v3::get_pool_info(position.position);
 
-        if (i32::gt(i32::from_u32(current_tick), i32::from_u32(position.tick_lower))
+        if (i32::gte(i32::from_u32(current_tick), i32::from_u32(position.tick_lower))
             && i32::lt(i32::from_u32(current_tick), i32::from_u32(position.tick_upper))) {
             return
         };
