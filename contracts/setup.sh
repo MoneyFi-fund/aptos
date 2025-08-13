@@ -12,6 +12,8 @@ THALASWAP_V1="0x48271d39d0b05bd6efca2278f22277d6fcc375504f9839fd73f74ace240861af
 #Tapp exchange
 TAPP_ADDRESS="0x487e905f899ccb6d46fdaec56ba1e0c4cf119862a16c409904b8c78fab1f5e8a"
 VIEWS_ADDRESS="0xf5840b576a3a6a42464814bc32ae1160c50456fb885c62be389b817e75b2a385"
+#Echelon
+ECHELON_ADDRESS="0xc6bc659f1649553c1a3fa05d9727433dc03843baac29473c817d06d39e7621ba"
 
 set -e
 
@@ -90,3 +92,6 @@ function download_package() {
 #Tapp
 #download_package --account "$TAPP_ADDRESS" --package Tap --output-dir deps/tapp_exchange/router
 #download_package --account "$VIEWS_ADDRESS" --package Views --output-dir deps/tapp_exchange/views
+
+#Echelon
+#download_package --account "$ECHELON_ADDRESS" --package Lending --output-dir deps/echelon

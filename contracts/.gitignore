@@ -6,4 +6,5 @@ tmp/
 !deps/hyperion-interface
 !deps/hydra-interface
 !deps/tapp-interface
+!deps/echelon-interface
 gas-profiling/
