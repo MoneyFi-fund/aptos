@@ -26,7 +26,8 @@ module moneyfi::strategy_tapp {
     // -- Constants
     const DEADLINE_BUFFER: u64 = 31556926; // 1 years
     const USDC_ADDRESS: address = @stablecoin;
-    const ZERO_ADDRESS: address = @0x0000000000000000000000000000000000000000000000000000000000000000;
+    const ZERO_ADDRESS: address =
+        @0x0000000000000000000000000000000000000000000000000000000000000000;
 
     const STRATEGY_ID: u8 = 4;
 
@@ -59,7 +60,7 @@ module moneyfi::strategy_tapp {
         lp_amount: u128, // Liquidity pool amount
         asset: Object<Metadata>,
         pair: Object<Metadata>,
-        amount: u64,
+        amount: u64
     }
 
     struct ExtraData has drop, copy, store {
@@ -77,7 +78,6 @@ module moneyfi::strategy_tapp {
         );
     }
 
-
     // returns(actual_amount)
     public(friend) fun deposit_fund_to_tapp_single(
         account: &Object<WalletAccount>,
@@ -86,13 +86,13 @@ module moneyfi::strategy_tapp {
         extra_data: vector<vector<u8>>
     ): u64 acquires StrategyStats {
         let extra_data = unpack_extra_data(extra_data);
-        let position = create_or_get_exist_position(
-            account, asset, extra_data
-        );
+        let position = create_or_get_exist_position(account, asset, extra_data);
         let wallet_signer = wallet_account::get_wallet_account_signer(account);
         let wallet_address = signer::address_of(&wallet_signer);
-        let balance_asset_before_swap = primary_fungible_store::balance<Metadata>(wallet_address, position.asset);
-        let balance_pair_before_swap = primary_fungible_store::balance<Metadata>(wallet_address, position.pair);
+        let balance_asset_before_swap =
+            primary_fungible_store::balance<Metadata>(wallet_address, position.asset);
+        let balance_pair_before_swap =
+            primary_fungible_store::balance<Metadata>(wallet_address, position.pair);
         router_v3::exact_input_swap_entry(
             &wallet_signer,
             0,
@@ -105,12 +105,17 @@ module moneyfi::strategy_tapp {
             timestamp::now_seconds() + DEADLINE_BUFFER
         );
 
-        let actual_amount_asset_swap = balance_asset_before_swap - primary_fungible_store::balance<Metadata>(wallet_address, position.asset);
-        let actual_amount_pair = primary_fungible_store::balance<Metadata>(wallet_address, position.pair) - balance_pair_before_swap;
-        
-        let assets = hook_factory::pool_meta_assets(
-                    &hook_factory::pool_meta(extra_data.pool)
+        let actual_amount_asset_swap =
+            balance_asset_before_swap
+                - primary_fungible_store::balance<Metadata>(
+                    wallet_address, position.asset
                 );
+        let actual_amount_pair =
+            primary_fungible_store::balance<Metadata>(wallet_address, position.pair)
+                - balance_pair_before_swap;
+
+        let assets =
+            hook_factory::pool_meta_assets(&hook_factory::pool_meta(extra_data.pool));
         let token_a = *vector::borrow(&assets, 0);
         let token_b = *vector::borrow(&assets, 1);
 
@@ -119,12 +124,16 @@ module moneyfi::strategy_tapp {
 
         if (object::object_address(asset) == token_a) {
             // Depositing token A (first token)
-            vector::push_back(&mut amounts, (amount_in - actual_amount_asset_swap) as u256);
+            vector::push_back(
+                &mut amounts, (amount_in - actual_amount_asset_swap) as u256
+            );
             vector::push_back(&mut amounts, actual_amount_pair as u256);
         } else if (object::object_address(asset) == token_b) {
             // Depositing token B (second token)
             vector::push_back(&mut amounts, actual_amount_pair as u256);
-            vector::push_back(&mut amounts, (amount_in - actual_amount_asset_swap) as u256);
+            vector::push_back(
+                &mut amounts, (amount_in - actual_amount_asset_swap) as u256
+            );
         } else {
             // Asset is not part of this pool
             assert!(false, error::invalid_argument(E_INVALID_ASSET));
@@ -132,22 +141,37 @@ module moneyfi::strategy_tapp {
         // serialize data to bytes
         let payload: vector<u8> = vector[];
         vector::append(&mut payload, to_bytes<address>(&extra_data.pool));
-        if(position.position == ZERO_ADDRESS){
-            vector::append(&mut payload, to_bytes<Option<address>>(&option::none<address>()));
-        }else {
-            vector::append(&mut payload, to_bytes<Option<address>>(&option::some(position.position)));
+        if (position.position == ZERO_ADDRESS) {
+            vector::append(
+                &mut payload,
+                to_bytes<Option<address>>(&option::none<address>())
+            );
+        } else {
+            vector::append(
+                &mut payload,
+                to_bytes<Option<address>>(&option::some(position.position))
+            );
         };
-        vector::append(&mut payload, to_bytes<vector<u256>>(&amounts));
+        vector::append(
+            &mut payload,
+            to_bytes<vector<u256>>(&amounts)
+        );
         let minMintAmount: u256 = 0;
         vector::append(&mut payload, to_bytes<u256>(&minMintAmount));
         // Call integration to add liquidity
-        let (position_idx, position_addr) = integration::add_liquidity(&wallet_signer, payload);
+        let (position_idx, position_addr) =
+            integration::add_liquidity(&wallet_signer, payload);
 
-        let actual_amount = balance_asset_before_swap - primary_fungible_store::balance<Metadata>(wallet_address, position.asset);
+        let actual_amount =
+            balance_asset_before_swap
+                - primary_fungible_store::balance<Metadata>(
+                    wallet_address, position.asset
+                );
 
         // Update position data
         position.position = position_addr;
-        position.lp_amount = stable_views::position_shares(extra_data.pool, position_idx) as u128;
+        position.lp_amount =
+            stable_views::position_shares(extra_data.pool, position_idx) as u128;
         position.amount = position.amount + actual_amount;
         strategy_stats_deposit(asset, actual_amount);
         let strategy_data = set_position_data(account, extra_data.pool, position);
@@ -197,18 +221,20 @@ module moneyfi::strategy_tapp {
         let remove_type: u8 = 3;
         vector::append(&mut payload, to_bytes<u8>(&remove_type));
         vector::append(&mut payload, to_bytes<u256>(&liquidity_remove));
-        let remove_amounts = stable_views::calc_ratio_amounts(
-            extra_data.pool, liquidity_remove
-        ); 
-        let min_amounts = vector::map(remove_amounts, |amount| {
-            math128::mul_div(amount as u128, 98, 100) as u256
-        });
-        vector::append(&mut payload, to_bytes<vector<u256>>(&min_amounts));
+        let remove_amounts =
+            stable_views::calc_ratio_amounts(extra_data.pool, liquidity_remove);
+        let min_amounts = vector::map(
+            remove_amounts,
+            |amount| { math128::mul_div(amount as u128, 98, 100) as u256 }
+        );
+        vector::append(
+            &mut payload,
+            to_bytes<vector<u256>>(&min_amounts)
+        );
         // Call integration to remove liquidity
         router::remove_liquidity(&wallet_signer, payload);
-        let pair_amount = primary_fungible_store::balance(
-            wallet_address, pair
-        ) - balance_pair_before;
+        let pair_amount =
+            primary_fungible_store::balance(wallet_address, pair) - balance_pair_before;
         if (pair_amount > 0) {
             router_v3::exact_input_swap_entry(
                 &wallet_signer,
@@ -223,27 +249,32 @@ module moneyfi::strategy_tapp {
             );
         };
 
-        vector::for_each(active_rewards, |reward_token_addr| {
-            if (reward_token_addr != object::object_address(asset)) {
-                let reward_balance = primary_fungible_store::balance(
-                    wallet_address, object::address_to_object<Metadata>(reward_token_addr)
-                );
-                
-                if (reward_balance > 0) {
-                    router_v3::exact_input_swap_entry(
-                        &wallet_signer,
-                        1,
-                        reward_balance,
-                        0,
-                        4295048016 + 1,
-                        object::address_to_object<Metadata>(reward_token_addr),
-                        *asset,
-                        signer::address_of(&wallet_signer),
-                        timestamp::now_seconds() + DEADLINE_BUFFER
-                    );
+        vector::for_each(
+            active_rewards,
+            |reward_token_addr| {
+                if (reward_token_addr != object::object_address(asset)) {
+                    let reward_balance =
+                        primary_fungible_store::balance(
+                            wallet_address,
+                            object::address_to_object<Metadata>(reward_token_addr)
+                        );
+
+                    if (reward_balance > 0) {
+                        router_v3::exact_input_swap_entry(
+                            &wallet_signer,
+                            1,
+                            reward_balance,
+                            0,
+                            4295048016 + 1,
+                            object::address_to_object<Metadata>(reward_token_addr),
+                            *asset,
+                            signer::address_of(&wallet_signer),
+                            timestamp::now_seconds() + DEADLINE_BUFFER
+                        );
+                    };
                 };
-            };
-        });
+            }
+        );
 
         let balance_asset_after = primary_fungible_store::balance(
             wallet_address, *asset
@@ -258,9 +289,7 @@ module moneyfi::strategy_tapp {
                 (amount_min, set_position_data(account, extra_data.pool, position))
             };
         wallet_account::set_strategy_data(account, strategy_data);
-        strategy_stats_withdraw(
-            asset, total_deposited_amount, total_withdrawn_amount
-        );
+        strategy_stats_withdraw(asset, total_deposited_amount, total_withdrawn_amount);
         (total_deposited_amount, total_withdrawn_amount, extra_data.withdraw_fee)
     }
 
@@ -269,21 +298,30 @@ module moneyfi::strategy_tapp {
         let active_reward = vector::empty<address>();
         let active_reward_amount = vector::empty<u64>();
 
-        let rewards = stable::calculate_pending_rewards(pool, position::position_idx(&position::position_meta(position.position)));
-        vector::for_each_ref(&rewards, |reward| {
-            let token_addr = stable::campaign_reward_token(reward);
-            let amount = stable::campaign_reward_amount(reward);
-            if (amount > 0) {
-                let (found, index) = vector::index_of(&active_reward, &token_addr);
-                if (found) {
-                    let existing_amount = vector::borrow_mut(&mut active_reward_amount, index);
-                    *existing_amount = *existing_amount + amount;
-                } else {
-                    vector::push_back(&mut active_reward, token_addr);
-                    vector::push_back(&mut active_reward_amount, amount);
+        let rewards =
+            stable::calculate_pending_rewards(
+                pool,
+                position::position_idx(&position::position_meta(position.position))
+            );
+        vector::for_each_ref(
+            &rewards,
+            |reward| {
+                let token_addr = stable::campaign_reward_token(reward);
+                let amount = stable::campaign_reward_amount(reward);
+                if (amount > 0) {
+                    let (found, index) = vector::index_of(&active_reward, &token_addr);
+                    if (found) {
+                        let existing_amount = vector::borrow_mut(
+                            &mut active_reward_amount, index
+                        );
+                        *existing_amount = *existing_amount + amount;
+                    } else {
+                        vector::push_back(&mut active_reward, token_addr);
+                        vector::push_back(&mut active_reward_amount, amount);
+                    };
                 };
-            };
-        });
+            }
+        );
         (active_reward, active_reward_amount)
     }
 
@@ -366,16 +404,18 @@ module moneyfi::strategy_tapp {
                 );
                 *position
             } else {
-                let assets = hook_factory::pool_meta_assets(
-                    &hook_factory::pool_meta(extra_data.pool)
-                );
+                let assets =
+                    hook_factory::pool_meta_assets(
+                        &hook_factory::pool_meta(extra_data.pool)
+                    );
                 let token_a = *vector::borrow(&assets, 0);
                 let token_b = *vector::borrow(&assets, 1);
-                let pair = if (token_a == object::object_address(asset)) {
-                    token_b
-                } else {
-                    token_a
-                };
+                let pair =
+                    if (token_a == object::object_address(asset)) {
+                        token_b
+                    } else {
+                        token_a
+                    };
                 let new_position = Position {
                     position: ZERO_ADDRESS,
                     lp_amount: 0,
@@ -439,10 +479,7 @@ module moneyfi::strategy_tapp {
     }
 
     #[view]
-    public fun pack_extra_data(
-        pool: address,
-        withdraw_fee: u64
-    ): vector<vector<u8>> {
+    public fun pack_extra_data(pool: address, withdraw_fee: u64): vector<vector<u8>> {
         let extra_data = vector::singleton<vector<u8>>(to_bytes<address>(&pool));
         vector::push_back(&mut extra_data, to_bytes<u64>(&withdraw_fee));
         extra_data
@@ -454,8 +491,7 @@ module moneyfi::strategy_tapp {
         if (!exists_tapp_strategy_data(&account)) {
             return 0
         };
-        let strategy_data =
-            wallet_account::get_strategy_data<TappStrategyData>(&account);
+        let strategy_data = wallet_account::get_strategy_data<TappStrategyData>(&account);
         let total_profit: u64 = 0;
         let pools = ordered_map::keys<address, Position>(&strategy_data.pools);
         let i = 0;
@@ -467,10 +503,7 @@ module moneyfi::strategy_tapp {
                 ordered_map::borrow<address, Position>(
                     &strategy_data.pools, &pool_address
                 );
-            let profit =
-                get_pending_rewards_and_fees_usdc(
-                    pool_address, *position
-                );
+            let profit = get_pending_rewards_and_fees_usdc(pool_address, *position);
             total_profit = total_profit + profit;
             i = i + 1;
         };
@@ -478,17 +511,17 @@ module moneyfi::strategy_tapp {
         total_profit
     }
 
-     fun get_pending_rewards_and_fees_usdc(
+    fun get_pending_rewards_and_fees_usdc(
         pool: address, position: Position
     ): u64 {
+        if (position.lp_amount == 0) {
+            return 0
+        };
         let stablecoin_metadata = object::address_to_object<Metadata>(USDC_ADDRESS);
         let (active_rewards, reward_amounts) = get_active_rewards(pool, &position);
-        let assets = hook_factory::pool_meta_assets(
-            &hook_factory::pool_meta(pool)
-        );
+        let assets = hook_factory::pool_meta_assets(&hook_factory::pool_meta(pool));
         let amounts = stable_views::calc_ratio_amounts(pool, position.lp_amount as u256);
         let lp_path: vector<address> = vector[
-            @0x6fc5dbd4c66b9f96644bd3412b8e836a584bd10ddee62c380d54fc2f75369f4a,
             @0xd3894aca06d5f42b27c89e6f448114b3ed6a1ba07f992a58b2126c71dd83c127
         ];
         let total_profit: u64 = 0;
@@ -501,23 +534,44 @@ module moneyfi::strategy_tapp {
             if (asset_addr == object::object_address(&stablecoin_metadata)) {
                 total_profit = total_profit + (asset_amount as u64);
             } else {
-                let path = vector::singleton<address>(*vector::borrow(&lp_path, 1));
-                let amount_out = router_v3::get_batch_amount_out(path, (asset_amount as u64), asset_metadata, stablecoin_metadata);
-                total_profit = total_profit + amount_out;
+                if (asset_amount > 0) {
+                    let amount_out =
+                        router_v3::get_batch_amount_out(
+                            lp_path,
+                            (asset_amount as u64),
+                            asset_metadata,
+                            stablecoin_metadata
+                        );
+                    total_profit = total_profit + amount_out;
+                };
             };
             i = i + 1;
         };
-        
-        vector::for_each(active_rewards, |reward_token_addr| {
-            let (_, index) = vector::index_of(&active_rewards, &reward_token_addr);
-            let reward_amount = *vector::borrow(&reward_amounts, index);
+        let reward_path: vector<address> = vector[
+            @0x925660b8618394809f89f8002e2926600c775221f43bf1919782b297a79400d8
+        ];
+        let reward_len = vector::length(&active_rewards);
+        let j = 0;
+        while (j < reward_len) {
+            let reward_token_addr = *vector::borrow(&active_rewards, j);
+            let reward_amount = *vector::borrow(&reward_amounts, j);
             let reward_metadata = object::address_to_object<Metadata>(reward_token_addr);
-            if (reward_token_addr == object::object_address(&stablecoin_metadata)) {
-                let amount_out = router_v3::get_batch_amount_out(lp_path, reward_amount, reward_metadata, stablecoin_metadata);
-                total_profit = total_profit + amount_out;
-            }
-        });
-
+            if (reward_token_addr != object::object_address(&stablecoin_metadata)) {
+                if (reward_amount > 0) {
+                    let amount_out =
+                        router_v3::get_batch_amount_out(
+                            reward_path,
+                            reward_amount,
+                            reward_metadata,
+                            stablecoin_metadata
+                        );
+                    total_profit = total_profit + amount_out;
+                };
+            } else {
+                total_profit = total_profit + (reward_amount as u64);
+            };
+            j = j + 1;
+        };
         if (total_profit > position.amount) {
             total_profit - position.amount
         } else { 0 }

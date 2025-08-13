@@ -61,6 +61,7 @@ module moneyfi::strategy {
                 account, asset, amount, extra_data
             );
         };
+
         if (strategy == STRATEGY_TAPP) {
             return strategy_tapp::deposit_fund_to_tapp_single(
                 account, asset, amount, extra_data
@@ -94,6 +95,7 @@ module moneyfi::strategy {
                 account, asset, min_amount, extra_data
             );
         };
+
         if (strategy == STRATEGY_TAPP) {
             return strategy_tapp::withdraw_fund_from_tapp_single(
                 account, asset, min_amount, extra_data
@@ -111,6 +113,7 @@ module moneyfi::strategy {
             strategy_hyperion::update_tick(account, extra_data);
             return
         };
+
         abort(error::not_implemented(E_NOT_SUPPORTED_BY_STRATEGY));
     }
 
