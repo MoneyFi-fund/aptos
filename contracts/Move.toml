@@ -1,6 +1,6 @@
 [package]
 name = "moneyfi"
-version = "1.0.0"
+version = "1.1.0"
 authors = []
 
 [addresses]
@@ -19,6 +19,15 @@ local = "deps/thala-interface/swap"
 
 [dependencies.ThalaLSD]
 local = "deps/thala-interface/thala_lsd"
+
+[dependencies.Tap]
+local = "deps/tapp-interface/router"
+
+[dependencies.Stable]
+local = "deps/tapp-interface/stable"
+
+[dependencies.Views]
+local = "deps/tapp-interface/views"
 
 # [dependencies.Aries]
 # local = "deps/aries"

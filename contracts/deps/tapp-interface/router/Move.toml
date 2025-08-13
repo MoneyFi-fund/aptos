@@ -1,0 +1,14 @@
+[package]
+name = "Tap"
+version = "1.0.0"
+upgrade_policy = "compatible"
+
+[addresses]
+tapp = "0x487e905f899ccb6d46fdaec56ba1e0c4cf119862a16c409904b8c78fab1f5e8a"
+
+[dev-addresses]
+tapp = "0xaaaaa"
+
+[dependencies]
+AptosTokenObjects = { git = "https://github.com/aptos-labs/aptos-framework.git", rev = "mainnet", subdir = "aptos-token-objects" }
+
