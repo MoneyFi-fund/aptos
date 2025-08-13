@@ -232,8 +232,8 @@ module moneyfi::strategy_hyperion {
         };
 
         let tick_spacing = pool_v3::get_tick_spacing(position.fee_tier);
-        let new_tick_lower =
-            i32::wrapping_sub(i32::from_u32(current_tick), i32::from_u32(tick_spacing));
+        let new_tick_lower = i32::from_u32(current_tick);
+        // i32::wrapping_sub(i32::from_u32(current_tick), i32::from_u32(tick_spacing));
         let new_tick_upper =
             i32::wrapping_add(i32::from_u32(current_tick), i32::from_u32(tick_spacing));
 
