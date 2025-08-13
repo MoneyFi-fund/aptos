@@ -242,7 +242,8 @@ module moneyfi::strategy_hyperion {
         if (liquidity == 0) { return };
 
         let balance_asset_before_remove =
-            primary_fungible_store::balance(wallet_address, position.asset) - position.remaining_amount;
+            primary_fungible_store::balance(wallet_address, position.asset)
+                - position.remaining_amount;
         let balance_pair_before_remove =
             primary_fungible_store::balance(wallet_address, position.pair);
 
@@ -269,7 +270,7 @@ module moneyfi::strategy_hyperion {
                 i32::as_u32(new_tick_lower),
                 i32::as_u32(new_tick_upper)
             );
-        if(balance_asset_after_remove - balance_asset_before_remove > 0){
+        if (balance_asset_after_remove - balance_asset_before_remove > 0) {
             router_v3::add_liquidity_single(
                 &wallet_signer,
                 new_position,
@@ -282,7 +283,7 @@ module moneyfi::strategy_hyperion {
                 extra_data.threshold_denominator
             );
         };
-        if(balance_pair_after_remove - balance_pair_before_remove > 0){
+        if (balance_pair_after_remove - balance_pair_before_remove > 0) {
             router_v3::add_liquidity_single(
                 &wallet_signer,
                 new_position,
@@ -295,7 +296,7 @@ module moneyfi::strategy_hyperion {
                 extra_data.threshold_denominator
             );
         };
-            
+
         let remaining_pair_balance =
             primary_fungible_store::balance(wallet_address, position.pair)
                 - balance_pair_before_remove;
@@ -687,14 +688,16 @@ module moneyfi::strategy_hyperion {
         while (i < len) {
             let pool = *vector::borrow<address>(&pools, i);
             let position = get_position_data(&account, pool);
-            let (amount_a, amount_b) = router_v3::get_amount_by_liquidity(position.position);
+            let (amount_a, amount_b) =
+                router_v3::get_amount_by_liquidity(position.position);
             let total_amount = amount_a + amount_b;
-            let interest = if(total_amount + position.remaining_amount > position.amount) {
-                total_amount + position.remaining_amount - position.amount
-            } else {
-                0
-            };
-            total_profit = total_profit + get_pending_rewards_and_fees_usdc(position.position) + interest;
+            let interest =
+                if (total_amount + position.remaining_amount > position.amount) {
+                    total_amount + position.remaining_amount - position.amount
+                } else { 0 };
+            total_profit =
+                total_profit + get_pending_rewards_and_fees_usdc(position.position)
+                    + interest;
             i = i + 1;
         };
 

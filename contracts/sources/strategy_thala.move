@@ -270,9 +270,7 @@ module moneyfi::strategy_thala {
                 (amount_min, set_position_data(account, extra_data.pool, position))
             };
         wallet_account::set_strategy_data(account, strategy_data);
-        strategy_stats_withdraw(
-            asset, total_deposited_amount, total_withdrawn_amount
-        );
+        strategy_stats_withdraw(asset, total_deposited_amount, total_withdrawn_amount);
         (total_deposited_amount, total_withdrawn_amount, extra_data.withdraw_fee)
     }
 
