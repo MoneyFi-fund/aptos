@@ -164,18 +164,12 @@ module moneyfi::strategy_hyperion {
         let position = get_position_data(account, extra_data.pool);
         let (liquidity_remove, is_full_withdraw) =
             if (amount_min
-                < (position.amount - position.remaining_amount
-                    + position.interest_amount)) {
+                < position.amount ) {
                 let liquidity =
                     math128::mul_div(
                         position.lp_amount,
                         (amount_min as u128),
-                        (
-                            (
-                                position.amount - position.remaining_amount
-                                    + position.interest_amount
-                            ) as u128
-                        )
+                        (position.amount as u128)
                     );
                 (liquidity, false)
             } else {
@@ -569,10 +563,10 @@ module moneyfi::strategy_hyperion {
                 let token_b = vector::borrow(&assets, 1);
                 let (current_tick, _) = pool_v3::current_tick_and_price(pool);
                 let tick_spacing = pool_v3::get_tick_spacing(fee_tier);
-                let tick_lower =
-                    i32::wrapping_sub(
-                        i32::from_u32(current_tick), i32::from_u32(tick_spacing)
-                    );
+                let tick_lower = i32::from_u32(current_tick);
+                    // i32::wrapping_sub(
+                    //     i32::from_u32(current_tick), i32::from_u32(tick_spacing)
+                    // );
                 let tick_upper =
                     i32::wrapping_add(
                         i32::from_u32(current_tick), i32::from_u32(tick_spacing)
