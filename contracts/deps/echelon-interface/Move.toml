@@ -1,0 +1,16 @@
+[package]
+name = 'Lending'
+version = '1.0.0'
+
+[addresses]
+lending = "0xc6bc659f1649553c1a3fa05d9727433dc03843baac29473c817d06d39e7621ba"
+
+[dependencies.AptosFramework]
+git = "https://github.com/aptos-labs/aptos-framework.git"
+rev = "mainnet"
+subdir = "aptos-framework"
+
+[dependencies.FixedPoint64]
+git = "https://github.com/ThalaLabs/fixed_point64.git"
+rev = "main"
+
