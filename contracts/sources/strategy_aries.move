@@ -257,7 +257,6 @@ module moneyfi::strategy_aries {
         let account_data = get_account_data_for_vault(account, vault_addr);
         let vault_asset = account_data.borrow_mut(&vault_addr);
 
-        // drop vault after check
         {
             let vault = strategy.get_vault_mut(vault_name);
             assert!(!vault.paused);
@@ -291,10 +290,16 @@ module moneyfi::strategy_aries {
             let (amount, shares) =
                 strategy.withdraw_from_aries(vault_name, withdraw_amount);
             vault_asset.available_amount = vault_asset.available_amount + amount;
-            deposited_amount = math64::mul_div(
-                vault_asset.deposited_amount, shares, vault_asset.shares
-            );
+            let dep_amount =
+                math64::mul_div(
+                    vault_asset.deposited_amount, shares, vault_asset.shares
+                );
+            vault_asset.deposited_amount =
+                if (vault_asset.deposited_amount > dep_amount) {
+                    vault_asset.deposited_amount - dep_amount
+                } else { 0 };
             vault_asset.shares = vault_asset.shares - shares;
+            deposited_amount = deposited_amount + dep_amount;
         };
         assert!(vault_asset.available_amount >= amount);
 

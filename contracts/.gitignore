@@ -1,6 +1,4 @@
 .aptos/
-/build/
-# deps/*
+build/
 tmp/
 gas-profiling/
-*.mv.move
