@@ -29,6 +29,9 @@ local = "deps/tapp-interface/stable"
 [dependencies.Views]
 local = "deps/tapp-interface/views"
 
+[dependencies.Lending]
+local = "deps/echelon-interface"
+
 # [dependencies.Aries]
 # local = "deps/aries"
 

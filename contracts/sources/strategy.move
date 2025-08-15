@@ -8,6 +8,7 @@ module moneyfi::strategy {
     use moneyfi::strategy_hyperion;
     use moneyfi::strategy_thala;
     use moneyfi::strategy_tapp;
+    use moneyfi::strategy_echelon;
 
     friend moneyfi::vault;
 
