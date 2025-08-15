@@ -682,9 +682,7 @@ module moneyfi::strategy_hyperion {
         while (i < len) {
             let pool = *vector::borrow<address>(&pools, i);
             let position = get_position_data(&account, pool);
-            let (amount_a, amount_b) =
-                router_v3::get_amount_by_liquidity(position.position);
-            let total_amount = amount_a + amount_b;
+            let total_amount = get_total_added_amount(position);
             let interest =
                 if (total_amount + position.remaining_amount > position.amount) {
                     total_amount + position.remaining_amount - position.amount
@@ -696,6 +694,38 @@ module moneyfi::strategy_hyperion {
         };
 
         total_profit
+    }
+
+    fun get_total_added_amount(
+        position: Position
+    ): u64 {
+        let (amount_a, amount_b) =
+            router_v3::get_amount_by_liquidity(position.position);
+        let (token_a, token_b, _) =
+            position_v3::get_pool_info(position.position);
+        let total_amount = 0;
+        if (object::object_address<Metadata>(&token_a) == object::object_address<Metadata>(&position.asset)) {
+            let (amount_out, _) = if (amount_b > 0) {
+                pool_v3::get_amount_out(
+                    pool_v3::liquidity_pool(token_b, position.asset, position.fee_tier),
+                    token_b, amount_b
+                )
+            } else {
+                (0, 0)
+            };
+            total_amount = total_amount + amount_a + amount_out;
+        }else {
+            let (amount_out, _) = if (amount_a > 0) {
+                pool_v3::get_amount_out(
+                    pool_v3::liquidity_pool(token_a, position.asset, position.fee_tier),
+                    token_a, amount_a
+                )
+            } else {
+                (0, 0)
+            };
+            total_amount = total_amount + amount_b + amount_out;
+        };
+        total_amount
     }
 
     fun get_pending_rewards_and_fees_usdc(position: Object<Info>): u64 {
