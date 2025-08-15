@@ -4,9 +4,14 @@ version = "1.1.0"
 authors = []
 
 [addresses]
-moneyfi = "_"
+moneyfi = "0x97c9ffc7143c5585090f9ade67d19ac95f3b3e7008ed86c73c947637e2862f56"
 stablecoin = "0xbae207659db88bea0cbead6da0ed00aac12edcdda169e591cd41c94180b46f3b"
+usdc = "0xbae207659db88bea0cbead6da0ed00aac12edcdda169e591cd41c94180b46f3b"
+usdt = "0x357b0b74bc833e95a115ad22604854d6b0fca151cecd94111770e5d6ffc9dc2b"
+hyperion = "0x8b4a2c4bb53857c718a04c020b98f8c2e1f99a68b0f57389a8bf5434cd22e05c"
+
 [dev-addresses]
+
 
 [dependencies.dex]
 local = "deps/hyperion-interface"
@@ -29,8 +34,8 @@ local = "deps/tapp-interface/stable"
 [dependencies.Views]
 local = "deps/tapp-interface/views"
 
-# [dependencies.Aries]
-# local = "deps/aries"
+[dependencies.Aries]
+local = "deps/aries"
 
 [dependencies.AptosFramework]
 git = "https://github.com/aptos-labs/aptos-framework.git"

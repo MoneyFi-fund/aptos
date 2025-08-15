@@ -1,9 +1,6 @@
 .aptos/
-build/
-deps/*
+/build/
+# deps/*
 tmp/
-!deps/thala-interface
-!deps/hyperion-interface
-!deps/hydra-interface
-!deps/tapp-interface
 gas-profiling/
+*.mv.move
