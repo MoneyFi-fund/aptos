@@ -1,17 +1,14 @@
 module moneyfi::strategy_aries {
-    use std::bcs;
     use std::option::{Self, Option};
     use std::error;
-    use std::signer;
-    use std::vector;
-    use std::string::{Self, String};
+    use std::string::String;
     use aptos_std::math64;
     use aptos_std::from_bcs;
     use aptos_std::type_info::{Self, TypeInfo};
     use aptos_framework::ordered_map::{Self, OrderedMap};
-    use aptos_framework::object::{Self, Object, ObjectCore, ExtendRef};
+    use aptos_framework::object::{Self, Object, ExtendRef};
     use aptos_framework::event;
-    use aptos_framework::fungible_asset::{Self, Metadata, MintRef, TransferRef, BurnRef};
+    use aptos_framework::fungible_asset::Metadata;
     use aptos_framework::primary_fungible_store;
     use aptos_framework::aptos_coin::AptosCoin;
     use aptos_framework::coin;
@@ -24,7 +21,6 @@ module moneyfi::strategy_aries {
     friend moneyfi::strategy;
 
     const STRATEGY_ACCOUNT_SEED: vector<u8> = b"strategy_aries::STRATEGY_ACCOUNT";
-    const SHARE_DECIMALS: u64 = 18;
     const APT_FA_ADDRESS: address = @0xa;
     const U64_MAX: u64 = 18446744073709551615;
 
@@ -331,7 +327,7 @@ module moneyfi::strategy_aries {
         let total_deposited = 0;
         let total_withdrawn = 0;
         let current_tvl = 0;
-        strategy.vaults.for_each_ref(|k, v| {
+        strategy.vaults.for_each_ref(|_, v| {
             if (&v.asset == asset) {
                 total_deposited = total_deposited + v.total_deposited_amount;
                 total_withdrawn = total_withdrawn + v.total_withdrawn_amount;

@@ -74,7 +74,7 @@ function download_package() {
 # download_package --account "$ARIES_ADDRESS" --package WrappedCoins --output-dir deps/aries/wrapped_coins
 # download_package --account "$ARIES_ADDRESS" --package AriesWrapper --output-dir deps/aries/wrapped_controller
 # download_package --account "$ARIES_ADDRESS" --package UtilTypes --output-dir deps/aries/util-types
-# sed -i '/^amnis/s/^/# /' deps/oracle/Move.toml
+# download_package --account "$ARIES_ADDRESS" --package Oracle --output-dir deps/aries/oracle
 
 # download_package --account "$AMNIS_ADDRESS" --package amnis --output-dir deps/amnis
 
