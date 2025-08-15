@@ -1,10 +1,4 @@
 .aptos/
 build/
-deps/*
 tmp/
-!deps/thala-interface
-!deps/hyperion-interface
-!deps/hydra-interface
-!deps/tapp-interface
-!deps/echelon-interface
 gas-profiling/

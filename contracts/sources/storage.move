@@ -5,6 +5,7 @@ module moneyfi::storage {
 
     friend moneyfi::wallet_account;
     friend moneyfi::vault;
+    friend moneyfi::strategy_aries;
 
     const PHANTOM_OBJECT_SEED: vector<u8> = b"storage::PHANTOM_OBJECT";
 
