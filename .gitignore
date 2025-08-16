@@ -3,4 +3,4 @@
 /target
 /tmp
 tmp_test.rs
-build/
+build
