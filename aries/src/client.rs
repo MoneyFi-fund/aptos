@@ -494,7 +494,7 @@ impl Client {
         Ok(balance)
     }
 
-    pub async fn get_reseve_detail(&self, token: &String) -> Result<ReserveDetail> {
+    pub async fn get_reserve_detail(&self, token: &String) -> Result<ReserveDetail> {
         let resp = self
             .rest_client
             .view(
