@@ -624,6 +624,36 @@ module moneyfi::strategy_hyperion {
         }
     }
 
+    #[view]
+    public fun get_user_asset_allocation(
+        wallet_id: vector<u8>,
+    ): (vector<address>, vector<u64>) {
+        let account = &wallet_account::get_wallet_account(wallet_id);
+        if( !exists_hyperion_strategy_data(account) ) {
+            return (vector::empty<address>(), vector::empty<u64>());
+        };
+        let strategy_data = ensure_hyperion_strategy_data(account);
+        let pools = ordered_map::keys<address, Position>(&strategy_data.pools);
+        let asset_addresses = vector::empty<address>();
+        let asset_amounts = vector::empty<u64>();
+        let i = 0;
+        let len = ordered_map::length(&strategy_data.pools);
+        while (i < len) {
+            let pool = *vector::borrow<address>(&pools, i);
+            let position = get_position_data(account, pool);
+            let (token_a, token_b, _) =
+                position_v3::get_pool_info(position.position);
+            let (amount_a, amount_b) =
+                router_v3::get_amount_by_liquidity(position.position);
+            vector::push_back(&mut asset_addresses, object::object_address(&token_a));
+            vector::push_back(&mut asset_addresses, object::object_address(&token_b));
+            vector::push_back(&mut asset_amounts, amount_a);
+            vector::push_back(&mut asset_amounts, amount_b);
+            i += 1;
+        };
+        (asset_addresses, asset_amounts)
+    }
+
     //-- Views
     #[view]
     public fun get_user_strategy_data(wallet_id: vector<u8>): HyperionStrategyData {
