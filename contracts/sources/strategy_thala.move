@@ -450,6 +450,54 @@ module moneyfi::strategy_thala {
         }
     }
 
+    #[view]
+    public fun get_user_asset_allocation(
+        wallet_id: vector<u8>
+    ): (vector<address>, vector<u64>) {
+        let account = &wallet_account::get_wallet_account(wallet_id);
+        if (!exists_thala_strategy_data(account)) {
+            return (vector::empty<address>(), vector::empty<u64>());
+        };
+        
+        let strategy_data = ensure_thala_strategy_data(account);
+        let pools = ordered_map::keys<address, Position>(&strategy_data.pools);
+        let assets = vector::empty<address>();
+        let amounts = vector::empty<u64>();
+        let i = 0;
+        let len = vector::length(&pools);
+        
+        while (i < len) {
+            let pool_address = *vector::borrow(&pools, i);
+            let pool = object::address_to_object<Pool>(pool_address);
+            let position =
+                ordered_map::borrow<address, Position>(
+                    &strategy_data.pools, &pool_address
+                );
+            
+            let pool_lp_token_metadata = pool::pool_lp_token_metadata(pool);
+            let pool_assets_metadata = pool::pool_assets_metadata(pool);
+            let pool_amounts =
+                pool::remove_liquidity_preview_info(
+                    pool::preview_remove_liquidity(
+                        pool, pool_lp_token_metadata, position.lp_amount as u64
+                    )
+                );
+            
+            let assets_len = vector::length(&pool_assets_metadata);
+            let j = 0;
+            while (j < assets_len) {
+                vector::push_back(
+                    &mut assets, 
+                    object::object_address(vector::borrow(&pool_assets_metadata, j))
+                );
+                vector::push_back(&mut amounts, *vector::borrow(&pool_amounts, j));
+                j = j + 1;
+            };
+            i = i + 1;
+        };
+        (assets, amounts)
+    }
+
     fun unpack_extra_data(extra_data: vector<vector<u8>>): ExtraData {
         let extra_data = ExtraData {
             pool: from_bcs::to_address(*vector::borrow(&extra_data, 0)),
