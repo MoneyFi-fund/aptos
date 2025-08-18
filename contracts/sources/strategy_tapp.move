@@ -460,6 +460,48 @@ module moneyfi::strategy_tapp {
         }
     }
 
+    #[view]
+    public fun get_user_asset_allocation(
+        wallet_id: vector<u8>
+    ): (vector<address>, vector<u64>) {
+        let account = &wallet_account::get_wallet_account(wallet_id);
+        if (!exists_tapp_strategy_data(account)) {
+            return (vector::empty<address>(), vector::empty<u64>());
+        };
+        let strategy_data = ensure_tapp_strategy_data(account);
+        let pools = ordered_map::keys<address, Position>(&strategy_data.pools);
+        let assets = vector::empty<address>();
+        let amounts = vector::empty<u64>();
+        let i = 0;
+        let len = vector::length(&pools);
+        while (i < len) {
+            let pool_address = *vector::borrow(&pools, i);
+            let position =
+                ordered_map::borrow<address, Position>(
+                    &strategy_data.pools, &pool_address
+                );
+            let pool_assets = hook_factory::pool_meta_assets(&hook_factory::pool_meta(pool_address));
+            let pool_amounts_u256 = stable_views::calc_ratio_amounts(pool_address, position.lp_amount as u256);
+            
+            // Convert u256 amounts to u64 and append to result vectors
+            let j = 0;
+            let asset_len = vector::length(&pool_amounts_u256);
+            while (j < asset_len) {
+                let amount_u256 = *vector::borrow(&pool_amounts_u256, j);
+                let amount_u64 = (amount_u256 as u64); // Cast u256 to u64
+                let asset = *vector::borrow(&pool_assets, j);
+                
+                vector::push_back(&mut assets, asset);
+                vector::push_back(&mut amounts, amount_u64);
+                j = j + 1;
+            };
+            
+            i = i + 1;
+        };
+        
+        (assets, amounts)
+    }
+
     fun unpack_extra_data(extra_data: vector<vector<u8>>): ExtraData {
         let extra_data = ExtraData {
             pool: from_bcs::to_address(*vector::borrow(&extra_data, 0)),
