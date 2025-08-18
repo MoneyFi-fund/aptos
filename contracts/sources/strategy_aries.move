@@ -11,7 +11,6 @@ module moneyfi::strategy_aries {
     use aptos_framework::fungible_asset::Metadata;
     use aptos_framework::primary_fungible_store;
     use aptos_framework::aptos_coin::AptosCoin;
-    use aptos_framework::coin;
     use aptos_framework::timestamp;
 
     use moneyfi::access_control;
@@ -45,6 +44,7 @@ module moneyfi::strategy_aries {
         // unused amount
         available_amount: u64,
         reward_amount: u64,
+        rewards: OrderedMap<address, u64>,
         loans: vector<Loan>,
         paused: bool
     }
@@ -71,7 +71,7 @@ module moneyfi::strategy_aries {
         timestamp: u64
     }
 
-    fun init_module(sender: &signer) {
+    fun init_module(_sender: &signer) {
         init_strategy_account();
     }
 
@@ -109,6 +109,7 @@ module moneyfi::strategy_aries {
                 total_deposited_amount: 0,
                 total_withdrawn_amount: 0,
                 reward_amount: 0,
+                rewards: ordered_map::new(),
                 loans: vector[],
                 paused: false
             }
@@ -171,6 +172,19 @@ module moneyfi::strategy_aries {
     //     strategy.withdraw_from_aries(vault_name, amount);
     // }
 
+    public entry fun compound_rewards(sender: &signer, vault_name: String) acquires Strategy {
+        access_control::must_be_service_account(sender);
+
+        let strategy_addr = get_strategy_address();
+        let strategy = borrow_global_mut<Strategy>(strategy_addr);
+        let strategy_signer = strategy.get_account_signer();
+        let vault = strategy.get_vault_mut(vault_name);
+
+        vault.compound_vault_rewards(&strategy_signer);
+
+        // TODO: emit event
+    }
+
     // -- Views
 
     #[view]
@@ -201,9 +215,11 @@ module moneyfi::strategy_aries {
 
         let strategy_addr = get_strategy_address();
         let strategy = borrow_global_mut<Strategy>(strategy_addr);
+        let strategy_signer = &strategy.get_account_signer();
         let vault = strategy.get_vault_mut(vault_name);
         assert!(!vault.paused);
         assert!(&vault.asset == asset);
+        assert!(amount > 0);
 
         let (_, asset_amount) = vault.get_deposited_amount();
         assert!(
@@ -226,11 +242,11 @@ module moneyfi::strategy_aries {
         let vault_asset = account_data.borrow_mut(&vault_addr);
 
         vault_asset.available_amount = vault_asset.available_amount + amount;
-
-        let shares = strategy.deposit_to_aries(vault_name, amount);
+        // deposit all available amount to Aries
+        let shares = vault.deposit_to_aries(strategy_signer, vault_asset.available_amount);
         vault_asset.shares = vault_asset.shares + shares;
         vault_asset.deposited_amount = vault_asset.deposited_amount + amount;
-        vault_asset.available_amount = vault_asset.available_amount - amount;
+        vault_asset.available_amount = 0;
 
         wallet_account::set_strategy_data(account, account_data);
 
@@ -251,25 +267,19 @@ module moneyfi::strategy_aries {
 
         let strategy_addr = get_strategy_address();
         let strategy = borrow_global_mut<Strategy>(strategy_addr);
-        let strategy_signer = strategy.get_account_signer();
+        let strategy_signer = &strategy.get_account_signer();
 
         let vault_addr = get_vault_address(vault_name);
         let account_data = get_account_data_for_vault(account, vault_addr);
         let vault_asset = account_data.borrow_mut(&vault_addr);
 
-        {
-            let vault = strategy.get_vault_mut(vault_name);
-            assert!(!vault.paused);
-            assert!(&vault.asset == asset);
-        };
+        let vault = strategy.get_vault_mut(vault_name);
+        assert!(!vault.paused);
+        assert!(&vault.asset == asset);
 
         let deposited_amount = amount;
         if (amount > vault_asset.available_amount) {
-            // TODO: claim reward
-            // {
-            //     let vault = strategy.get_vault_mut(vault_name);
-            //     vault.claim_swap_reward(&strategy_signer);
-            // };
+            // vault.compound_vault_rewards(strategy_signer);
 
             let reserve_type = get_reserve_type_info(asset);
             let withdraw_amount =
@@ -288,7 +298,7 @@ module moneyfi::strategy_aries {
                     withdraw_amount
                 };
             let (amount, shares) =
-                strategy.withdraw_from_aries(vault_name, withdraw_amount);
+                vault.withdraw_from_aries(strategy_signer, withdraw_amount);
             vault_asset.available_amount = vault_asset.available_amount + amount;
             let dep_amount =
                 math64::mul_div(
@@ -306,7 +316,7 @@ module moneyfi::strategy_aries {
         let vault = strategy.get_vault_mut(vault_name);
         let account_addr = object::object_address(account);
         primary_fungible_store::transfer(
-            &strategy_signer,
+            strategy_signer,
             vault.asset,
             account_addr,
             amount
@@ -411,36 +421,31 @@ module moneyfi::strategy_aries {
     /// Deposit asset from vault to Aries
     /// Return shares
     fun deposit_to_aries(
-        self: &mut Strategy, vault_name: String, amount: u64
+        self: &mut Vault, strategy_signer: &signer, amount: u64
     ): u64 {
-        let strategy_signer = self.get_account_signer();
-        let strategy_addr = get_strategy_address();
-        let vault = self.get_vault_mut(vault_name);
-        let asset_addr = object::object_address(&vault.asset);
-        assert!(!vault.paused);
+        let asset_addr = object::object_address(&self.asset);
         assert!(
             asset_addr == @usdc || asset_addr == @usdt,
             error::permission_denied(E_UNSUPPORTED_ASSET)
         );
-        assert!(amount > 0 && amount <= vault.available_amount);
 
-        let profile = *vault_name.bytes();
-        let (shares_before, _) = vault.get_deposited_amount();
+        let profile = *self.name.bytes();
+        let (shares_before, _) = self.get_deposited_amount();
         if (asset_addr == @usdc) {
             aries::controller::deposit_fa<aries::wrapped_coins::WrappedUSDC>(
-                &strategy_signer, profile, amount
+                strategy_signer, profile, amount
             );
         } else if (asset_addr == @usdt) {
             aries::controller::deposit_fa<aries::fa_to_coin_wrapper::WrappedUSDT>(
-                &strategy_signer, profile, amount
+                strategy_signer, profile, amount
             );
         };
-        let (shares_after, _) = vault.get_deposited_amount();
+        let (shares_after, _) = self.get_deposited_amount();
         assert!(shares_after > shares_before);
 
         let shares = shares_after - shares_before;
 
-        vault.available_amount = vault.available_amount - amount;
+        self.available_amount = self.available_amount - amount;
 
         shares
     }
@@ -448,58 +453,53 @@ module moneyfi::strategy_aries {
     /// Withdraw asset from Aries back to vault
     /// Return received amount and burned shares
     fun withdraw_from_aries(
-        self: &mut Strategy, vault_name: String, amount: u64
+        self: &mut Vault, strategy_signer: &signer, amount: u64
     ): (u64, u64) {
-        let strategy_signer = self.get_account_signer();
-        let vault = self.get_vault_mut(vault_name);
-        let asset_addr = object::object_address(&vault.asset);
-        assert!(amount > 0);
-        assert!(!vault.paused);
+        let asset_addr = object::object_address(&self.asset);
         assert!(
             asset_addr == @usdc || asset_addr == @usdt,
             error::permission_denied(E_UNSUPPORTED_ASSET)
         );
 
         let strategy_addr = get_strategy_address();
-        let balance_before = primary_fungible_store::balance(strategy_addr, vault.asset);
-        let (shares_before, _) = vault.get_deposited_amount();
+        let balance_before = primary_fungible_store::balance(strategy_addr, self.asset);
+        let (shares_before, _) = self.get_deposited_amount();
 
-        let profile = *vault_name.bytes();
+        let profile = *self.name.bytes();
         if (asset_addr == @usdc) {
             aries::controller::withdraw_fa<aries::wrapped_coins::WrappedUSDC>(
-                &strategy_signer, profile, amount, false
+                strategy_signer, profile, amount, false
             );
         } else if (asset_addr == @usdt) {
             aries::controller::withdraw_fa<aries::fa_to_coin_wrapper::WrappedUSDT>(
-                &strategy_signer, profile, amount, false
+                strategy_signer, profile, amount, false
             );
         };
 
-        let balance_after = primary_fungible_store::balance(strategy_addr, vault.asset);
-        let (shares_after, _) = vault.get_deposited_amount();
+        let balance_after = primary_fungible_store::balance(strategy_addr, self.asset);
+        let (shares_after, _) = self.get_deposited_amount();
         assert!(balance_after >= balance_before);
         assert!(shares_before >= shares_after);
 
         let amount = balance_after - balance_before;
         let shares = shares_before - shares_after;
-        vault.available_amount = vault.available_amount + amount;
+        self.available_amount = self.available_amount + amount;
 
         (amount, shares)
     }
 
-    fun claim_swap_reward(self: &mut Vault, strategy_signer: &signer) {
-        // TODO: check claimable amount
-        let reward_amount =
-            claim_deposit_reward(strategy_signer, *self.name.bytes(), &self.asset);
+    fun get_reward(self: &mut Vault, reward: address): u64 {
+        if (self.rewards.contains(&reward)) {
+            *self.rewards.borrow(&reward)
+        } else { 0 }
+    }
 
-        let asset_amount =
-            if (reward_amount > 100_000_000) { // 1 APT
-                swap_reward(strategy_signer, &self.asset, reward_amount)
-            } else { 0 };
+    fun get_reward_mut(self: &mut Vault, reward: address): &mut u64 {
+        if (!self.rewards.contains(&reward)) {
+            self.rewards.add(reward, 0);
+        };
 
-        // self.available_amount = self.available_amount + asset_amount;
-        self.reward_amount = self.reward_amount + asset_amount;
-
+        self.rewards.borrow_mut(&reward)
     }
 
     /// Returns shares and current asset amount
@@ -515,50 +515,48 @@ module moneyfi::strategy_aries {
         (shares, asset_amount)
     }
 
-    fun claim_deposit_reward(
-        strategy_signer: &signer, profile: vector<u8>, asset: &Object<Metadata>
+    fun compound_vault_rewards(
+        self: &mut Vault, strategy_signer: &signer
     ): u64 {
-        claim_reward(
-            strategy_signer,
-            profile,
-            asset,
-            type_info::type_of<aries::reserve_config::DepositFarming>()
-        )
-    }
+        let asset = self.asset;
+        self.claim_rewards(strategy_signer);
 
-    fun claim_borrow_reward(
-        strategy_signer: &signer, profile: vector<u8>, asset: &Object<Metadata>
-    ): u64 {
-        claim_reward(
-            strategy_signer,
-            profile,
-            asset,
-            type_info::type_of<aries::reserve_config::BorrowFarming>()
-        )
-    }
+        let apt_amount = self.get_reward_mut(APT_FA_ADDRESS);
+        if (*apt_amount < 100_000_000) { // 1APT
+            return 0;
+        };
 
-    /// Claim APT reward
-    fun claim_reward(
-        strategy_signer: &signer,
-        profile: vector<u8>,
-        asset: &Object<Metadata>,
-        farming: TypeInfo
-    ): u64 {
-        let strategy_addr = get_strategy_address();
-        let reserve_type = get_reserve_type_info(asset);
-
-        let balance_before = coin::balance<AptosCoin>(strategy_addr);
-        aries::controller::claim_reward_ti<AptosCoin>(
-            strategy_signer,
-            profile,
-            reserve_type,
-            farming
+        let asset_amount = swap_reward_with_hyperion(
+            strategy_signer, &asset, *apt_amount
         );
-        let balance_after = coin::balance<AptosCoin>(strategy_addr);
+        *apt_amount = 0;
 
-        if (balance_after > balance_before) {
-            balance_after - balance_before
-        } else { 0 }
+        if (asset_amount > 0) {
+            let shares = self.deposit_to_aries(strategy_signer, asset_amount);
+            // TODO: distribute shares
+        };
+
+        asset_amount
+    }
+
+    fun claim_rewards(self: &mut Vault, strategy_signer: &signer) {
+        let strategy_addr = get_strategy_address();
+
+        // TODO: handle other rewards
+        let reward = object::address_to_object<Metadata>(APT_FA_ADDRESS);
+        let balance_before = primary_fungible_store::balance(strategy_addr, reward);
+        aries::wrapped_controller::claim_rewards<AptosCoin>(strategy_signer, self.name);
+        let balance_after = primary_fungible_store::balance(strategy_addr, reward);
+
+        let amount =
+            if (balance_after > balance_before) {
+                balance_after - balance_before
+            } else { 0 };
+
+        if (amount > 0) {
+            let reward_amount = self.get_reward_mut(APT_FA_ADDRESS);
+            *reward_amount = *reward_amount + amount;
+        }
     }
 
     fun get_reserve_type_info(asset: &Object<Metadata>): TypeInfo {
@@ -575,8 +573,8 @@ module moneyfi::strategy_aries {
 
     /// Swap APT reward to USDT/USDC using Hyperion
     /// Returns the amount of USDT/USDC received
-    fun swap_reward(
-        strategy_signer: &signer, to: &Object<Metadata>, amount: u64
+    fun swap_reward_with_hyperion(
+        caller: &signer, to: &Object<Metadata>, amount: u64
     ): u64 {
         let strategy_addr = get_strategy_address();
 
@@ -602,7 +600,7 @@ module moneyfi::strategy_aries {
 
         let balance_before = primary_fungible_store::balance(strategy_addr, *to);
         hyperion::router_v3::exact_input_swap_entry(
-            strategy_signer,
+            caller,
             fee_tier,
             amount,
             amount_out,
