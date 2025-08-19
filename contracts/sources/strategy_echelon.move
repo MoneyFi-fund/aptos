@@ -17,9 +17,10 @@ module moneyfi::strategy_echelon {
     use lending::lending::{Self, Market};
     use thala_lsd::staking::ThalaAPT;
 
-    use moneyfi::wallet_account::{Self, WalletAccount};
+    use moneyfi::access_control;
     use moneyfi::storage;
-    use dex_contract::router_v3;
+    use moneyfi::wallet_account::{Self, WalletAccount};
+
     friend moneyfi::strategy;
 
     const STRATEGY_ACCOUNT_SEED: vector<u8> = b"strategy_echelon::STRATEGY_ACCOUNT";
@@ -78,6 +79,8 @@ module moneyfi::strategy_echelon {
     fun init_module(_sender: &signer) {
         init_strategy_account();
     }
+
+    
 
     fun init_strategy_account() {
         let account_addr = storage::get_child_object_address(STRATEGY_ACCOUNT_SEED);

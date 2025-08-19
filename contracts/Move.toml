@@ -38,7 +38,10 @@ local = "deps/tapp-interface/views"
 local = "deps/aries"
 
 [dependencies.Lending]
-local = "deps/echelon-interface"
+local = "deps/echelon-interface/lending"
+
+[dependencies.Leverage]
+local = "deps/echelon-interface/leverage"
 
 [dependencies.AptosFramework]
 git = "https://github.com/aptos-labs/aptos-framework.git"
