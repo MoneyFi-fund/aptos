@@ -572,7 +572,7 @@ impl Client {
                 next.clone(),
             ).await?;
 
-            let reserve = self.get_reseve_detail(&next.decode()).await?;
+            let reserve = self.get_reserve_detail(&next.decode()).await?;
             let mut ltv = reserve.reserve_config.loan_to_value;
             let emode = profile.emode.clone();
             if emode.eq(&reserve.emode) {
@@ -624,7 +624,7 @@ impl Client {
                 next.clone(),
             ).await?;
 
-            let reserve = self.get_reseve_detail(&next.decode()).await?;
+            let reserve = self.get_reserve_detail(&next.decode()).await?;
             let price = self.get_price(&reserve.token_address).await?;
 
             let item = resp.inner();
