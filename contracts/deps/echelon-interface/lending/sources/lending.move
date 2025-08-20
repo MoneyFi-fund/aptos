@@ -173,4 +173,12 @@ module lending::lending {
         let v0 = arg0;
         borrow_global<Market>(object::object_address<Market>(&v0)).asset_type == 301
     }
+
+    public entry fun user_enter_efficiency_mode(arg0: &signer, arg1: u8) {
+        abort(0);
+    }
+    
+    public entry fun user_quit_efficiency_mode(arg0: &signer) {
+        abort(0);
+    }
 }
