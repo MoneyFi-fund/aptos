@@ -237,6 +237,27 @@ module moneyfi::strategy_aries {
     //     // TODO: emit an event if needed
     // }
 
+    public entry fun borrow_and_deposit(
+        sender: &signer,
+        vault_name: String,
+        borrow_asset: Object<Metadata>,
+        amount: u64,
+        swap_slippage: u64
+    ) {
+        access_control::must_be_service_account(sender);
+
+        let strategy_addr = get_strategy_address();
+        let strategy = borrow_global_mut<Strategy>(strategy_addr);
+        let strategy_signer = &strategy.get_account_signer();
+        let vault = strategy.get_vault_mut(vault_name);
+
+        vault.borrow_and_deposit_impl(
+            strategy_signer, &borrow_asset, amount, swap_slippage
+        );
+
+        // TODO: emit an event if needed
+    }
+
     public entry fun compound_rewards(sender: &signer, vault_name: String) acquires Strategy {
         access_control::must_be_service_account(sender);
 
@@ -677,7 +698,7 @@ module moneyfi::strategy_aries {
         (amount, shares, loan_amount)
     }
 
-    fun borrow_and_deposit(
+    fun borrow_and_deposit_impl(
         self: &mut Vault,
         strategy_signer: &signer,
         asset: &Object<Metadata>,
