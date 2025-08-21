@@ -233,7 +233,7 @@ module moneyfi::strategy_aries {
         borrow_asset: Object<Metadata>,
         amount: u64,
         swap_slippage: u64
-    ) {
+    ) acquires Strategy {
         access_control::must_be_service_account(sender);
 
         let strategy_addr = get_strategy_address();
@@ -637,10 +637,8 @@ module moneyfi::strategy_aries {
     }
 
     fun estimate_withdraw_amount_to_repay_all(self: &Vault): u64 {
-        let (deposit_shares, deposited_amount) = self.get_deposited_amount();
-        let (borrow_asset_opt, borrow_shares, loan_amount) = self.get_loan();
-
         let amount_to_repay = 0;
+        let (borrow_asset_opt, borrow_shares, loan_amount) = self.get_loan();
         while (borrow_shares > 0) {
             let borrow_asset =
                 object::address_to_object<Metadata>(borrow_asset_opt.extract());
@@ -660,7 +658,6 @@ module moneyfi::strategy_aries {
             (_, borrow_shares, _) = self.get_loan();
         };
 
-        let total_pending_amount = self.get_total_pending_amount();
         let avail_amount = self.get_avail_amount_without_pending_amount();
 
         if (amount_to_repay > avail_amount) {
