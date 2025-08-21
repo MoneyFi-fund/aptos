@@ -161,17 +161,12 @@ module moneyfi::strategy_aries {
         let strategy_signer = &strategy.get_account_signer();
         let vault = strategy.get_vault_mut(vault_name);
 
-        vault.compound_vault_rewards(strategy_signer);
-        let total_pending_amount = 0;
-        vault.pending_amount.for_each_ref(|_, v| {
-            total_pending_amount = total_pending_amount + *v;
-        });
-        if (amount > total_pending_amount) {
-            let (deposited_amount, _) =
-                vault.deposit_to_aries(strategy_signer, amount - total_pending_amount);
-            amount = math64::min(total_pending_amount, amount - deposited_amount);
-        };
-        let (total_shares, _) = vault.get_deposited_amount();
+        let total_pending_amount = vault.get_total_pending_amount();
+        assert!(amount <= total_pending_amount);
+
+        vault.compound_vault_impl(strategy_signer);
+
+        let total_shares = vault.calc_total_shares_without_borrowed_assets();
         let (deposited_amount, shares) = vault.deposit_to_aries(strategy_signer, amount);
 
         let vault_shares =
@@ -182,15 +177,11 @@ module moneyfi::strategy_aries {
                     * vault.total_shares / (total_shares as u128)
             };
 
-        let will_removes = vector[];
         vault.pending_amount.for_each_mut(|k, v| {
             let acc_deposited_amount = *v * deposited_amount / total_pending_amount;
             let acc_vault_shares = (*v as u128) * vault_shares
                 / (total_pending_amount as u128);
             *v = *v - acc_deposited_amount;
-            if (*v == 0) {
-                will_removes.push_back(*k);
-            };
 
             let vault_addr = get_vault_address(vault_name);
             let account = object::address_to_object<WalletAccount>(*k);
@@ -201,12 +192,11 @@ module moneyfi::strategy_aries {
             vault_asset.available_amount =
                 vault_asset.available_amount - acc_deposited_amount;
             vault_asset.vault_shares = vault_asset.vault_shares + acc_vault_shares;
-
         });
 
-        will_removes.for_each_ref(|k| {
-            vault.pending_amount.remove(k);
-        });
+        if (deposited_amount == total_pending_amount) {
+            vault.pending_amount = ordered_map::new();
+        };
 
         // TODO: emit an event if needed
     }
@@ -243,7 +233,7 @@ module moneyfi::strategy_aries {
         borrow_asset: Object<Metadata>,
         amount: u64,
         swap_slippage: u64
-    ) {
+    ) acquires Strategy {
         access_control::must_be_service_account(sender);
 
         let strategy_addr = get_strategy_address();
@@ -258,15 +248,15 @@ module moneyfi::strategy_aries {
         // TODO: emit an event if needed
     }
 
-    public entry fun compound_rewards(sender: &signer, vault_name: String) acquires Strategy {
+    public entry fun compound_vault(sender: &signer, vault_name: String) acquires Strategy {
         access_control::must_be_service_account(sender);
 
         let strategy_addr = get_strategy_address();
         let strategy = borrow_global_mut<Strategy>(strategy_addr);
-        let strategy_signer = strategy.get_account_signer();
+        let strategy_signer = &strategy.get_account_signer();
         let vault = strategy.get_vault_mut(vault_name);
 
-        vault.compound_vault_rewards(&strategy_signer);
+        vault.compound_vault_impl(strategy_signer);
 
         // TODO: emit an event if needed
     }
@@ -381,7 +371,7 @@ module moneyfi::strategy_aries {
 
         let deposited_amount = amount;
         if (amount > vault_asset.available_amount) {
-            vault.compound_vault_rewards(strategy_signer);
+            vault.compound_vault_impl(strategy_signer);
 
             let reserve_type = get_reserve_type_info(asset);
             let acc_deposit_shares =
@@ -625,6 +615,67 @@ module moneyfi::strategy_aries {
         self.available_amount = self.available_amount + amount;
 
         (amount, shares)
+    }
+
+    fun compound_vault_impl(self: &mut Vault, strategy_signer: &signer) {
+        self.compound_rewards(strategy_signer);
+
+        let avail_amount = self.get_avail_amount_without_pending_amount();
+        self.deposit_to_aries(strategy_signer, avail_amount);
+    }
+
+    fun calc_total_shares_without_borrowed_assets(self: &Vault): u64 {
+        let (total_shares, _) = self.get_deposited_amount();
+        let withdraw_amount_to_repay = self.estimate_withdraw_amount_to_repay_all();
+        let withdraw_shares =
+            aries::reserve::get_lp_amount_from_underlying_amount(
+                get_reserve_type_info(&self.asset), withdraw_amount_to_repay
+            );
+        assert!(total_shares >= withdraw_shares);
+
+        total_shares - withdraw_shares
+    }
+
+    fun estimate_withdraw_amount_to_repay_all(self: &Vault): u64 {
+        let amount_to_repay = 0;
+        let (borrow_asset_opt, borrow_shares, loan_amount) = self.get_loan();
+        while (borrow_shares > 0) {
+            let borrow_asset =
+                object::address_to_object<Metadata>(borrow_asset_opt.extract());
+            let avail_amount = self.get_borrow_asset(&borrow_asset);
+            let loan_amount =
+                aries::decimal::ceil_u64(aries::decimal::from_scaled_val(loan_amount));
+            if (avail_amount < loan_amount) {
+                let amount =
+                    estimate_swap_amount_to_repay(
+                        &self.asset,
+                        &borrow_asset,
+                        avail_amount - loan_amount,
+                        10 // TODO: determine slippage
+                    );
+                amount_to_repay = amount_to_repay + amount;
+            };
+            (_, borrow_shares, _) = self.get_loan();
+        };
+
+        let avail_amount = self.get_avail_amount_without_pending_amount();
+
+        if (amount_to_repay > avail_amount) {
+            amount_to_repay - avail_amount
+        } else { 0 }
+    }
+
+    fun get_total_pending_amount(self: &Vault): u64 {
+        let amount = 0;
+        self.pending_amount.for_each_ref(|_, v| {
+            amount = amount + *v;
+        });
+
+        amount
+    }
+
+    fun get_avail_amount_without_pending_amount(self: &Vault): u64 {
+        self.available_amount - self.get_total_pending_amount()
     }
 
     fun get_available_withdraw_amount(self: &Vault): u64 {
@@ -944,9 +995,7 @@ module moneyfi::strategy_aries {
         (option::none(), 0, 0)
     }
 
-    fun compound_vault_rewards(
-        self: &mut Vault, strategy_signer: &signer
-    ): u64 {
+    fun compound_rewards(self: &mut Vault, strategy_signer: &signer): u64 {
         let asset = self.asset;
         self.claim_rewards(strategy_signer);
 
@@ -967,11 +1016,7 @@ module moneyfi::strategy_aries {
                 false
             );
         *apt_amount = *apt_amount - in_amount;
-
-        if (out_amount > 0) {
-            self.available_amount = self.available_amount + out_amount;
-            self.deposit_to_aries(strategy_signer, out_amount);
-        };
+        self.available_amount = self.available_amount + out_amount;
 
         out_amount
     }
