@@ -190,7 +190,7 @@ module moneyfi::strategy_hyperion {
         let balance_after = primary_fungible_store::balance(wallet_address, *asset);
         let (strategy_data, total_deposited_amount) =
             if (!is_full_withdraw) {
-                let total = balance_after - balance_before + position.remaining_amount;
+                let total = amount_min + position.remaining_amount;
                 position.amount = position.amount - total;
                 position.interest_amount = 0;
                 position.remaining_amount = 0;
