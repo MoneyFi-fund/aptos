@@ -2,9 +2,6 @@ module moneyfi::strategy_echelon {
     use std::option::{Self, Option};
     use std::signer;
     use std::vector;
-    use std::option;
-    use std::string::String;
-    use std::bcs::to_bytes;
     use aptos_std::from_bcs;
     use aptos_std::math128;
     use aptos_std::ordered_map::{Self, OrderedMap};
@@ -13,7 +10,7 @@ module moneyfi::strategy_echelon {
     use aptos_framework::object::{Self, Object, ExtendRef};
     use aptos_framework::primary_fungible_store;
     use aptos_framework::fungible_asset::Metadata;
-    use aptos_framework::code;
+    use aptos_framework::coin;
 
     use lending::farming;
     use lending::scripts;
@@ -45,7 +42,7 @@ module moneyfi::strategy_echelon {
         asset: Object<Metadata>,
         deposit_cap: u64,
         // shares minted by vault for wallet account
-        total_shares: u64,
+        total_shares: u128,
         // unused amount
         available_amount: u64,
         // accumulated deposited amount
@@ -55,7 +52,7 @@ module moneyfi::strategy_echelon {
         rewards: OrderedMap<address, u64>,
         // amount deposited from wallet account but not yet deposited to Echelon
         pending_amount: OrderedMap<address, u64>,
-        borrow_asset: OrderedMap<address, BorrowAsset>,
+        borrow_assets: OrderedMap<address, BorrowAsset>,
         paused: bool
     }
 
@@ -131,7 +128,7 @@ module moneyfi::strategy_echelon {
                 total_deposited_amount: 0,
                 total_withdrawn_amount: 0,
                 rewards,
-                borrow_asset: ordered_map::new(),
+                borrow_assets: ordered_map::new(),
                 pending_amount: ordered_map::new(),
                 paused: false
             }
@@ -161,12 +158,10 @@ module moneyfi::strategy_echelon {
         vault.paused = paused;
 
         if (option::is_some(&emode)) {
-            let emode = option::borrow(&emode);
-            if (emode.is_empty()) {
-                lending::user_quit_efficiency_mode(&strategy_signer);
-            } else {
-                lending::user_enter_efficiency_mode(&strategy_signer, *emode);
-            }
+            let emode = option::borrow(&emode);    
+            lending::user_enter_efficiency_mode(&strategy_signer, *emode);
+        }else{
+            lending::user_quit_efficiency_mode(&strategy_signer);
         };
         if(!rewards.is_empty()){
             vector::for_each(rewards, |reward| {
@@ -201,7 +196,8 @@ module moneyfi::strategy_echelon {
         let account_addr = object::object_address(account);
         let strategy_addr = get_strategy_address();
         let strategy = borrow_global_mut<Strategy>(strategy_addr);
-        let vault = strategy.get_vault_mut(vault_name);
+        let asset_addr = object::object_address(asset);
+        let vault = strategy.get_vault_mut_by_asset(asset_addr);
         assert!(!vault.paused);
         assert!(&vault.asset == asset);
         assert!(amount > 0);
@@ -227,9 +223,8 @@ module moneyfi::strategy_echelon {
         let pending_amount = vault.pending_amount.borrow_mut(&account_addr);
         *pending_amount = *pending_amount + amount;
 
-        let vault_addr = get_vault_address(vault_name);
-        let account_data = get_account_data_for_vault(account, vault_addr);
-        let vault_asset = account_data.borrow_mut(&vault_addr);
+        let account_data = get_account_data_for_vault(account, asset_addr);
+        let vault_asset = account_data.borrow_mut(&asset_addr);
 
         vault_asset.available_amount = vault_asset.available_amount + amount;
         wallet_account::set_strategy_data(account, account_data);
@@ -256,11 +251,11 @@ module moneyfi::strategy_echelon {
         let strategy = borrow_global_mut<Strategy>(strategy_addr);
         let strategy_signer = &strategy.get_account_signer();
 
-        let vault_addr = get_vault_address(vault_name);
-        let account_data = get_account_data_for_vault(account, vault_addr);
-        let vault_asset = account_data.borrow_mut(&vault_addr);
+        let asset_addr = object::object_address(asset);
+        let account_data = get_account_data_for_vault(account, asset_addr);
+        let vault_asset = account_data.borrow_mut(&asset_addr);
 
-        let vault = strategy.get_vault_mut(vault_name);
+        let vault = strategy.get_vault_mut_by_asset(asset_addr);
         assert!(!vault.paused);
         assert!(&vault.asset == asset);
 
@@ -307,7 +302,7 @@ module moneyfi::strategy_echelon {
         };
         assert!(vault_asset.available_amount >= amount);
 
-        let vault = strategy.get_vault_mut(vault_name);
+        let vault = strategy.get_vault_mut_by_asset(asset_addr);
         let account_addr = object::object_address(account);
         primary_fungible_store::transfer(
             strategy_signer,
@@ -455,7 +450,7 @@ module moneyfi::strategy_echelon {
                 scripts::claim_reward_fa(
                     strategy_signer, reward_metadata, farming::farming_identifier(object::object_address(&self.market), from_bcs::to_u64(*extra_data.borrow(1)))
                 );
-                if(!self.borrow_asset.is_empty()){
+                if(!self.borrow_assets.is_empty()){
                     scripts::claim_reward_fa(
                     strategy_signer, reward_metadata, farming::farming_identifier(object::object_address(&self.market), from_bcs::to_u64(*extra_data.borrow(2)))
                 );
@@ -464,7 +459,7 @@ module moneyfi::strategy_echelon {
                 scripts::claim_reward<ThalaAPT>(
                     strategy_signer, farming::farming_identifier(object::object_address(&self.market), from_bcs::to_u64(*extra_data.borrow(1)))
                 );
-                if(!self.borrow_asset.is_empty()){
+                if(!self.borrow_assets.is_empty()){
                     scripts::claim_reward<ThalaAPT>(
                     strategy_signer, farming::farming_identifier(object::object_address(&self.market), from_bcs::to_u64(*extra_data.borrow(2)))
                 );
@@ -482,11 +477,38 @@ module moneyfi::strategy_echelon {
         });
     }
 
+    fun get_reward(self: &Vault, reward: address): u64 {
+        if (self.rewards.contains(&reward)) {
+            *self.rewards.borrow(&reward)
+        } else { 0 }
+    }
+
     fun get_reward_mut(self: &mut Vault, reward: address): &mut u64 {
         if (!self.rewards.contains(&reward)) {
             self.rewards.add(reward, 0);
         };
 
         self.rewards.borrow_mut(&reward)
+    }
+
+    fun get_deposit_shares_from_vault_shares(
+        self: &Vault, vault_shares: u128
+    ): u64 {
+        let (deposit_shares, _) = self.get_deposited_amount();
+
+        if (self.total_shares == 0) {
+            deposit_shares
+        } else {
+            (vault_shares * (deposit_shares as u128) / self.total_shares) as u64
+        }
+    }
+
+    /// Returns shares and current asset amount
+    fun get_deposited_amount(self: &Vault): (u64, u64) {
+        let strategy_addr = get_strategy_address();
+
+        let asset_amount= lending::account_coins(strategy_addr, self.market);
+        let shares = lending::account_shares(strategy_addr, self.market);
+        (shares, asset_amount)
     }
 }
