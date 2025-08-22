@@ -188,6 +188,8 @@ module moneyfi::strategy_hyperion {
             extra_data.slippage_denominator
         );
         let balance_after = primary_fungible_store::balance(wallet_address, *asset);
+        let total_withdrawn_amount =
+            balance_after - balance_before + position.remaining_amount + interest;
         let (strategy_data, total_deposited_amount) =
             if (!is_full_withdraw) {
                 let total = amount_min + position.remaining_amount;
@@ -200,8 +202,6 @@ module moneyfi::strategy_hyperion {
                 (remove_position(account, extra_data.pool), position.amount)
             };
         wallet_account::set_strategy_data(account, strategy_data);
-        let total_withdrawn_amount =
-            balance_after - balance_before + position.remaining_amount + interest;
         strategy_stats_withdraw(asset, total_deposited_amount, total_withdrawn_amount);
         (total_deposited_amount, total_withdrawn_amount, extra_data.withdraw_fee)
     }
