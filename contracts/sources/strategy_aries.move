@@ -62,8 +62,6 @@ module moneyfi::strategy_aries {
     struct VaultAsset has copy, store, drop {
         // amount deposited to aries
         deposited_amount: u64,
-        // unused amount
-        available_amount: u64,
         vault_shares: u128
     }
 
@@ -162,6 +160,7 @@ module moneyfi::strategy_aries {
     }
 
     /// Deposits fund from vault to Aries
+    /// Pass amount = U64_MAX to deposit all pending amount
     public entry fun vault_deposit(
         sender: &signer, vault_name: String, amount: u64
     ) acquires Strategy {
@@ -174,7 +173,9 @@ module moneyfi::strategy_aries {
         assert!(!vault.paused);
 
         let total_pending_amount = vault.get_total_pending_amount();
-        assert!(amount <= total_pending_amount);
+        if (amount > total_pending_amount) {
+            amount = total_pending_amount;
+        };
 
         vault.compound_vault_impl(strategy_signer);
 
@@ -197,8 +198,6 @@ module moneyfi::strategy_aries {
                     get_account_data_for_vault(&mut account_data, vault_addr);
                 account_vault_data.deposited_amount =
                     account_vault_data.deposited_amount + acc_deposited_amount;
-                account_vault_data.available_amount =
-                    account_vault_data.available_amount - acc_deposited_amount;
                 account_vault_data.vault_shares =
                     account_vault_data.vault_shares + acc_vault_shares;
 
@@ -314,7 +313,6 @@ module moneyfi::strategy_aries {
         assert!(extra_data.length() > 0);
 
         let vault_name = from_bcs::to_string(*extra_data.borrow(0));
-        let account_addr = object::object_address(account);
         let strategy_addr = get_strategy_address();
         let strategy = borrow_global_mut<Strategy>(strategy_addr);
         let vault = strategy.get_vault_mut(vault_name);
@@ -337,21 +335,7 @@ module moneyfi::strategy_aries {
         );
         vault.total_deposited_amount = vault.total_deposited_amount + (amount as u128);
         vault.available_amount = vault.available_amount + amount;
-        if (!vault.pending_amount.contains(&account_addr)) {
-            vault.pending_amount.add(account_addr, 0);
-        };
-        let pending_amount = vault.pending_amount.borrow_mut(&account_addr);
-        *pending_amount = *pending_amount + amount;
-
-        let vault_addr = get_vault_address(vault_name);
-        let account_data = get_account_data(account);
-        let account_vault_data = get_account_data_for_vault(
-            &mut account_data, vault_addr
-        );
-
-        account_vault_data.available_amount = account_vault_data.available_amount
-            + amount;
-        wallet_account::set_strategy_data(account, account_data);
+        vault.update_pending_amount(account, amount, 0);
 
         amount
     }
@@ -388,10 +372,12 @@ module moneyfi::strategy_aries {
         assert!(&vault.asset == asset);
 
         let deposited_amount = amount;
-        if (amount > account_vault_data.available_amount) {
+        let pending_amount = vault.get_pending_amount(account);
+        if (amount > pending_amount) {
             vault.compound_vault_impl(strategy_signer);
 
-            let withdraw_amount = amount - account_vault_data.available_amount;
+            let withdraw_amount = amount - pending_amount;
+            amount = pending_amount;
             let (total_deposit_shares, _) = vault.get_deposited_amount();
             let acc_deposit_shares =
                 vault.get_deposit_shares_from_vault_shares(
@@ -408,9 +394,7 @@ module moneyfi::strategy_aries {
 
             let (withdrawn_amount, burned_shares) =
                 vault.withdraw_from_aries(strategy_signer, withdraw_amount, swap_slippage);
-            account_vault_data.available_amount =
-                account_vault_data.available_amount + withdrawn_amount;
-            amount = account_vault_data.available_amount;
+
             let dep_amount =
                 math64::mul_div(
                     account_vault_data.deposited_amount,
@@ -428,10 +412,22 @@ module moneyfi::strategy_aries {
                     account_vault_data.vault_shares - burned_vault_shares
                 } else { 0 };
 
+            let (_, owned_deposited_amount) =
+                vault.get_owned_deposited_amount(total_deposit_shares);
+            let total_loan_amount = vault.estimate_amount_to_repay();
+            if (total_loan_amount > owned_deposited_amount) {
+                let deduct_amount =
+                    (total_loan_amount - owned_deposited_amount) * burned_shares
+                        / total_deposit_shares;
+                withdrawn_amount =
+                    withdrawn_amount
+                        - math64::min(withdraw_amount, deduct_amount as u64);
+            };
+
             deposited_amount = deposited_amount + dep_amount;
             amount = amount + withdrawn_amount;
+            vault.update_pending_amount(account, withdrawn_amount, 0);
         };
-        assert!(account_vault_data.available_amount >= amount);
 
         let account_addr = object::object_address(account);
         primary_fungible_store::transfer(
@@ -440,8 +436,7 @@ module moneyfi::strategy_aries {
             account_addr,
             amount
         );
-        account_vault_data.available_amount = account_vault_data.available_amount
-            - amount;
+        vault.update_pending_amount(account, 0, amount);
         vault.available_amount = vault.available_amount - amount;
         vault.total_withdrawn_amount = vault.total_withdrawn_amount + (amount as u128);
 
@@ -525,12 +520,47 @@ module moneyfi::strategy_aries {
     ): &mut VaultAsset {
         if (!account_data.contains(&vault_addr)) {
             account_data.add(
-                vault_addr,
-                VaultAsset { deposited_amount: 0, available_amount: 0, vault_shares: 0 }
+                vault_addr, VaultAsset { deposited_amount: 0, vault_shares: 0 }
             )
         };
 
         account_data.borrow_mut(&vault_addr)
+    }
+
+    fun get_pending_amount(
+        self: &Vault, account: &Object<WalletAccount>
+    ): u64 {
+        let account_addr = object::object_address(account);
+
+        if (self.pending_amount.contains(&account_addr)) {
+            *self.pending_amount.borrow(&account_addr)
+        } else { 0 }
+    }
+
+    fun update_pending_amount(
+        self: &mut Vault,
+        account: &Object<WalletAccount>,
+        add_amount: u64,
+        remove_amount: u64
+    ): u64 {
+        let account_addr = object::object_address(account);
+        if (!self.pending_amount.contains(&account_addr)) {
+            self.pending_amount.add(account_addr, 0);
+        };
+        let pending_amount = self.pending_amount.borrow_mut(&account_addr);
+        if (add_amount > 0) {
+            *pending_amount = *pending_amount + add_amount;
+        };
+        if (remove_amount > 0) {
+            *pending_amount = *pending_amount
+                - math64::min(*pending_amount, remove_amount);
+        };
+
+        if (*pending_amount == 0) {
+            self.pending_amount.remove(&account_addr);
+        };
+
+        *pending_amount
     }
 
     /// Deposit asset from vault to Aries
@@ -683,7 +713,7 @@ module moneyfi::strategy_aries {
 
         self.compound_borrow_asset(strategy_signer);
 
-        // avail_amount contains interest amount after compound borrow assets
+        // deposit all avail amount to aries
         let avail_amount = self.get_avail_amount_without_pending_amount();
         if (avail_amount > 0) {
             self.deposit_to_aries(strategy_signer, avail_amount);
@@ -696,17 +726,18 @@ module moneyfi::strategy_aries {
         self: &mut Vault, strategy_signer: &signer
     ): u64 {
         let slippage = 10; // TODO: determine slippage
+
         if (self.available_borrow_amount > 0) {
             let amount = self.available_borrow_amount;
             self.repay_aries(strategy_signer, amount, slippage);
         };
 
-        let avail_amount = 0;
+        let amount = 0;
         if (self.available_borrow_amount > 0) {
-            let amount = self.available_borrow_amount;
+            let avail_amount = self.available_borrow_amount;
             let (_, amount_out) =
-                self.swap_from_borrow_asset(strategy_signer, amount, slippage);
-            avail_amount = avail_amount + amount_out;
+                self.swap_from_borrow_asset(strategy_signer, avail_amount, slippage);
+            amount = amount + amount_out;
         };
 
         // compound borrowing rewards
@@ -714,30 +745,40 @@ module moneyfi::strategy_aries {
             compound_rewards<aries::reserve_config::BorrowFarming>(
                 self, strategy_signer
             );
-        avail_amount = avail_amount + reward_amount;
+        amount = amount + reward_amount;
 
         let (total_shares, _) = self.get_deposited_amount();
         let (_, deposited_amount) = self.get_owned_deposited_amount(total_shares);
         let total_loan_amount = self.estimate_amount_to_repay();
 
-        let interest_amount = 0;
+        let vault_amount = 0;
         if (deposited_amount < total_loan_amount) {
-            if (total_loan_amount - deposited_amount < avail_amount) {
-                avail_amount = avail_amount - (total_loan_amount - deposited_amount);
-            }
+            vault_amount =
+                if (total_loan_amount - deposited_amount < amount) {
+                    amount - (total_loan_amount - deposited_amount)
+                } else { amount };
         } else {
-            // TODO: withdraw (deposited_amount - total_loan_amount) as interest
-            interest_amount = avail_amount;
-            avail_amount = 0;
+            let interest = deposited_amount - total_loan_amount;
+            amount = amount + interest;
+            // burn owned_shares to distribute interest to accounts
+            let shares =
+                aries::reserve::get_lp_amount_from_underlying_amount(
+                    get_reserve_type_info(&self.asset), interest
+                );
+            let vault_shares = self.burn_vault_shares(shares, total_shares);
+            self.owned_shares =
+                if (self.owned_shares > vault_shares) {
+                    self.owned_shares - vault_shares
+                } else { 0 };
         };
 
-        if (avail_amount > 0) {
-            let (shares, _) = self.deposit_to_aries(strategy_signer, avail_amount);
+        if (vault_amount > 0) {
+            let (shares, _) = self.deposit_to_aries(strategy_signer, vault_amount);
             self.owned_shares =
                 self.owned_shares + self.mint_vault_shares(shares, total_shares);
         };
 
-        interest_amount
+        amount
     }
 
     fun estimate_amount_to_repay(self: &Vault): u64 {
@@ -861,13 +902,13 @@ module moneyfi::strategy_aries {
     }
 
     /// Repays borrowed asset to Aries. Requires sufficient available amount.
-    /// Returns actual amount, remaining borrow shares and loan amount
+    /// Returns repaid amount and swapped asset amount
     fun repay_aries(
         self: &mut Vault,
         strategy_signer: &signer,
         amount: u64,
         swap_slippage: u64
-    ): (u64, u128, u128) {
+    ): (u64, u64) {
         let (shares, loan_amount) = self.get_loan_amount();
         let amount =
             if (aries::decimal::raw(aries::decimal::from_u64(amount)) <= loan_amount) {
@@ -881,9 +922,10 @@ module moneyfi::strategy_aries {
                 )
             };
         if (amount == 0) {
-            return (0, 0, 0);
+            return (0, 0);
         };
 
+        let asset_amount = 0;
         if (amount > self.available_borrow_amount) {
             let amount_in =
                 self.estimate_swap_amount_to_repay(
@@ -891,12 +933,12 @@ module moneyfi::strategy_aries {
                 );
             if (amount_in > 0) {
                 assert!(amount_in <= self.available_amount);
-                self.swap_to_borrow_asset(strategy_signer, amount_in, swap_slippage);
+                (asset_amount, _) = self.swap_to_borrow_asset(
+                    strategy_signer, amount_in, swap_slippage
+                );
             }
         };
 
-        let (shares_before, _) = self.get_loan_amount();
-        assert!(shares_before > 0);
         let amount =
             deposit_to_aries_impl(
                 strategy_signer,
@@ -904,10 +946,9 @@ module moneyfi::strategy_aries {
                 &self.asset,
                 amount
             );
-        let (shares_after, loan_amount_after) = self.get_loan_amount();
         self.available_borrow_amount = self.available_borrow_amount - amount;
 
-        (amount, shares_after, loan_amount_after)
+        (amount, asset_amount)
     }
 
     /// Returns amaount of swapped vault asset and received borrow asset
