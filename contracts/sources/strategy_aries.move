@@ -212,32 +212,6 @@ module moneyfi::strategy_aries {
         // TODO: emit an event if needed
     }
 
-    /// Withdraw fund from Aries back to vault
-    // public entry fun vault_withdraw(
-    //     sender: &signer,
-    //     vault_name: String,
-    //     amount: u64,
-    //     swap_slippage: u64
-    // ) acquires Strategy {
-    //     access_control::must_be_service_account(sender);
-
-    //     let strategy_addr = get_strategy_address();
-    //     let strategy = borrow_global_mut<Strategy>(strategy_addr);
-    //     let strategy_signer = strategy.get_account_signer();
-    //     let vault = strategy.get_vault_mut(vault_name);
-
-    //     let (_, total_amount) = vault.get_deposited_amount();
-    //     amount =
-    //         if (amount <= total_amount) { amount }
-    //         else {
-    //             total_amount
-    //         };
-
-    //     vault.withdraw_from_aries(&strategy_signer, amount, swap_slippage);
-
-    //     // TODO: emit an event if needed
-    // }
-
     public entry fun borrow_and_deposit(
         sender: &signer,
         vault_name: String,
@@ -556,11 +530,12 @@ module moneyfi::strategy_aries {
                 - math64::min(*pending_amount, remove_amount);
         };
 
-        if (*pending_amount == 0) {
+        let pending_amount = *pending_amount;
+        if (pending_amount == 0) {
             self.pending_amount.remove(&account_addr);
         };
 
-        *pending_amount
+        pending_amount
     }
 
     /// Deposit asset from vault to Aries
