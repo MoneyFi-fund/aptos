@@ -1,4 +1,4 @@
-module aries::reserve_config {
+module aries_config::reserve_config {
     struct BorrowFarming {
         dummy_field: bool
     }

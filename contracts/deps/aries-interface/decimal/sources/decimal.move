@@ -1,4 +1,4 @@
-module aries::decimal {
+module decimal::decimal {
     struct Decimal has copy, drop, store {
         val: u128
     }

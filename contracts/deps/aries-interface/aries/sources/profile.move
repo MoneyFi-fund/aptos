@@ -3,7 +3,7 @@ module aries::profile {
     use std::string;
     use aptos_std::type_info;
 
-    use aries::decimal;
+    use decimal::decimal;
 
     // NOTE: Functions are 'native' for simplicity. They may or may not be native in actuality.
     #[native_interface]

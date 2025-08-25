@@ -1,6 +1,6 @@
-module aries::oracle {
+module oracle::oracle {
     use aptos_std::type_info;
-    use aries::decimal;
+    use decimal::decimal;
 
     struct SwitchboardConfig has copy, drop, store {
         sb_addr: address,
