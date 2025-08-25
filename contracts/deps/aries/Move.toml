@@ -16,22 +16,12 @@ Oracle = { local = "./oracle" }
 UtilTypes = { local = "./util-types" }
 # HippoAggregator = {local = "./HippoAggregator"}
 
-# [dependencies.MoveStdlib]
-# git = "https://github.com/aptos-labs/aptos-core.git"
-# subdir = "aptos-move/framework/move-stdlib"
-# rev = "aptos-node-v1.18.0"
-
 [dependencies.AptosFramework]
 git = "https://github.com/aptos-labs/aptos-framework.git"
 rev = "mainnet"
 subdir = "aptos-framework"
 
-# [dependencies.AptosStdlib]
-# git = "https://github.com/aptos-labs/aptos-core.git"
-# subdir = "aptos-move/framework/aptos-stdlib"
-# rev = "aptos-node-v1.18.0"
-
-# [dependencies.HippoAggregator]
-# git = "https://github.com/Aries-Markets/hippo-agg-interface.git"
-# subdir = "."
-# rev = "main"
+AriesConfig = { local = "./aries-config" }
+WrappedCoins = { local = "./wrapped-coins" }
+Decimal = { local = "./decimal" }
+Oracle = { local = "./oracle" }
