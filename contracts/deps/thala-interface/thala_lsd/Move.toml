@@ -6,7 +6,7 @@ version = '1.0.0'
 thala_lsd = "faf4e633ae9eb31366c9ca24214231760926576c7b625313b3688b5e900731f6"
 thala_lsd_deployer = "28b98af2e2b8a6387ee392773135e0bf4b1f05e4c0c79ff51ab84a73e2454be8"
 
-[dependencies.AptosFramework]
-git = "https://github.com/aptos-labs/aptos-framework.git"
-rev = "mainnet"
-subdir = "aptos-framework"
+# [dependencies.AptosFramework]
+# git = "https://github.com/aptos-labs/aptos-framework.git"
+# rev = "mainnet"
+# subdir = "aptos-framework"

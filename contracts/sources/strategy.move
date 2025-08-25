@@ -6,6 +6,7 @@ module moneyfi::strategy {
 
     use moneyfi::wallet_account::WalletAccount;
     use moneyfi::strategy_hyperion;
+    use moneyfi::strategy_aries;
     use moneyfi::strategy_thala;
     use moneyfi::strategy_tapp;
 
@@ -31,6 +32,9 @@ module moneyfi::strategy {
         if (strategy == STRATEGY_HYPERION) {
             let (v1, v2, v3) = strategy_hyperion::get_strategy_stats(asset);
             vector::append(&mut stats, vector[v1, v2, v3]);
+        } else if (strategy == STRATEGY_ARIES) {
+            let (v1, v2, v3) = strategy_aries::get_stats(&asset);
+            vector::append(&mut stats, vector[v1, v2, v3]);
         } else if (strategy == STRATEGY_THALA) {
             let (v1, v2, v3) = strategy_thala::get_strategy_stats(asset);
             vector::append(&mut stats, vector[v1, v2, v3]);
@@ -54,6 +58,10 @@ module moneyfi::strategy {
             return strategy_hyperion::deposit_fund_to_hyperion_single(
                 account, asset, amount, extra_data
             );
+        };
+
+        if (strategy == STRATEGY_ARIES) {
+            return strategy_aries::deposit_to_vault(account, asset, amount, extra_data);
         };
 
         if (strategy == STRATEGY_THALA) {
@@ -86,6 +94,12 @@ module moneyfi::strategy {
     ): (u64, u64, u64) {
         if (strategy == STRATEGY_HYPERION) {
             return strategy_hyperion::withdraw_fund_from_hyperion_single(
+                account, asset, min_amount, extra_data
+            );
+        };
+
+        if (strategy == STRATEGY_ARIES) {
+            return strategy_aries::withdraw_from_vault(
                 account, asset, min_amount, extra_data
             );
         };

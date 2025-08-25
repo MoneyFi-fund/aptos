@@ -1,0 +1,14 @@
+[package]
+name = "Oracle"
+version = "0.0.0"
+
+[addresses]
+oracle = "0x9770fa9c725cbd97eb50b2be5f7416efdfd1f1554beb0750d4dae4c64e860da3"
+
+[dependencies]
+Decimal = { local = "../decimal" }
+
+[dependencies.AptosFramework]
+git = "https://github.com/aptos-labs/aptos-framework.git"
+rev = "mainnet"
+subdir = "aptos-framework"
