@@ -10,18 +10,11 @@ aries = "0xeef200f2a06957a1548685c0feec9f1a04db27598fadab7f6daf30428fd064d3"
 
 [dependencies]
 AriesConfig = { local = "./aries-config" }
-WrappedCoins = { local = "./wrapped_coins" }
+WrappedCoins = { local = "./wrapped-coins" }
 Decimal = { local = "./decimal" }
 Oracle = { local = "./oracle" }
-UtilTypes = { local = "./util-types" }
-# HippoAggregator = {local = "./HippoAggregator"}
 
 [dependencies.AptosFramework]
 git = "https://github.com/aptos-labs/aptos-framework.git"
 rev = "mainnet"
 subdir = "aptos-framework"
-
-AriesConfig = { local = "./aries-config" }
-WrappedCoins = { local = "./wrapped-coins" }
-Decimal = { local = "./decimal" }
-Oracle = { local = "./oracle" }
