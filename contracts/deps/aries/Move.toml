@@ -15,5 +15,7 @@ git = "https://github.com/aptos-labs/aptos-framework.git"
 rev = "mainnet"
 subdir = "aptos-framework"
 
-[dependencies.Decimal]
-local = "../decimal"
+AriesConfig = { local = "./aries-config" }
+WrappedCoins = { local = "./wrapped-coins" }
+Decimal = { local = "./decimal" }
+Oracle = { local = "./oracle" }

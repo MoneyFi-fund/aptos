@@ -35,11 +35,7 @@ local = "deps/tapp-interface/stable"
 local = "deps/tapp-interface/views"
 
 [dependencies]
-Aries = { local = "deps/aries-interface/aries" }
-AriesConfig = { local = "deps/aries-interface/aries-config" }
-WrappedCoins = { local = "deps/aries-interface/wrapped-coins" }
-Decimal = { local = "deps/aries-interface/decimal" }
-Oracle = { local = "deps/aries-interface/oracle" }
+Aries = { local = "deps/aries" }
 
 [dependencies.AptosFramework]
 git = "https://github.com/aptos-labs/aptos-framework.git"
