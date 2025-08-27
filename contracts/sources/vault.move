@@ -859,6 +859,7 @@ module moneyfi::vault {
     public fun deposit_to_strategy_vault<T>(
         sender: &signer,
         wallet_id: vector<u8>,
+        strategy_id: u8,
         asset: Object<Metadata>,
         amount: u64
     ) acquires Vault, StrategyRegistry {
@@ -881,7 +882,7 @@ module moneyfi::vault {
             DepositToStrategyEvent {
                 wallet_id,
                 asset,
-                strategy: 0,
+                strategy: strategy_id,
                 amount,
                 timestamp: now_seconds()
             }
@@ -891,6 +892,7 @@ module moneyfi::vault {
     public fun withdrawn_from_strategy<T>(
         sender: &signer,
         wallet_id: vector<u8>,
+        strategy_id: u8,
         asset: Object<Metadata>,
         deposited_amount: u64,
         withdrawn_amount: u64,
@@ -965,7 +967,7 @@ module moneyfi::vault {
             WithdrawFromStrategyEvent {
                 wallet_id,
                 asset,
-                strategy: 0,
+                strategy: strategy_id,
                 amount: collected_amount,
                 interest_amount,
                 system_fee,

@@ -23,6 +23,7 @@ module moneyfi::strategy_aries {
     const APT_FA_ADDRESS: address = @0xa;
     const U64_MAX: u64 = 18446744073709551615;
     const SHARE_DECIMALS: u64 = 8;
+    const STRATEGY_ID: u8 = 2;
 
     const E_VAULT_EXISTS: u64 = 1;
     const E_EXCEED_CAPACITY: u64 = 2;
@@ -269,7 +270,7 @@ module moneyfi::strategy_aries {
             error::permission_denied(E_EXCEED_CAPACITY)
         );
         moneyfi_vault::deposit_to_strategy_vault<Strategy>(
-            &strategy_signer, wallet_id, asset, amount
+            &strategy_signer, wallet_id, STRATEGY_ID, asset, amount
         );
 
         vault.total_deposited_amount = vault.total_deposited_amount + (amount as u128);
@@ -383,6 +384,7 @@ module moneyfi::strategy_aries {
         moneyfi_vault::withdrawn_from_strategy<Strategy>(
             strategy_signer,
             wallet_id,
+            STRATEGY_ID,
             asset,
             deposited_amount,
             amount,
