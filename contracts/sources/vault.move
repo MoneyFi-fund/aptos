@@ -4,6 +4,7 @@ module moneyfi::vault {
     use std::vector;
     use std::string;
     use std::option;
+    use aptos_std::type_info::{Self, TypeInfo};
     use aptos_framework::ordered_map::{Self, OrderedMap};
     use aptos_framework::object::{Self, Object, ObjectCore, ExtendRef};
     use aptos_framework::event;
@@ -27,6 +28,7 @@ module moneyfi::vault {
     const E_DEPOSIT_NOT_ALLOWED: u64 = 2;
     const E_WITHDRAW_NOT_ALLOWED: u64 = 3;
     const E_ASSET_NOT_SUPPORTED: u64 = 4;
+    const E_DEPRECATED: u64 = 5;
 
     // -- Structs
     struct Config has key {
@@ -60,6 +62,12 @@ module moneyfi::vault {
     struct Vault has key {
         extend_ref: ExtendRef,
         assets: OrderedMap<address, VaultAsset>
+    }
+
+    #[resource_group_member(group = aptos_framework::object::ObjectGroup)]
+    struct StrategyRegistry has key {
+        // type => deposit address
+        strategies: OrderedMap<TypeInfo, address>
     }
 
     struct VaultAsset has store {
@@ -124,6 +132,7 @@ module moneyfi::vault {
     struct DepositToStrategyEvent has drop, store {
         wallet_id: vector<u8>,
         asset: Object<Metadata>,
+        /// Deprecated, retained for upgrade compatibility, always set to 0
         strategy: u8,
         amount: u64,
         timestamp: u64
@@ -133,6 +142,7 @@ module moneyfi::vault {
     struct WithdrawFromStrategyEvent has drop, store {
         wallet_id: vector<u8>,
         asset: Object<Metadata>,
+        /// Deprecated, retained for upgrade compatibility, always set to 0
         strategy: u8,
         amount: u64,
         interest_amount: u64,
@@ -440,6 +450,7 @@ module moneyfi::vault {
         );
     }
 
+    /// Deprecated by deposit_to_strategy_vault
     public entry fun deposit_to_strategy(
         sender: &signer,
         wallet_id: vector<u8>,
@@ -477,6 +488,7 @@ module moneyfi::vault {
         );
     }
 
+    /// Deprecated by withdrawn_from_strategy
     public entry fun withdraw_from_strategy(
         sender: &signer,
         wallet_id: vector<u8>,
@@ -662,14 +674,17 @@ module moneyfi::vault {
     }
 
     public entry fun update_tick(
-        sender: &signer,
-        wallet_id: vector<u8>,
-        strategy_id: u8,
-        extra_data: vector<vector<u8>>
+        _sender: &signer,
+        _wallet_id: vector<u8>,
+        _strategy_id: u8,
+        _extra_data: vector<vector<u8>>
     ) {
-        access_control::must_be_service_account(sender);
-        let account = wallet_account::get_wallet_account(wallet_id);
-        strategy::update_tick(strategy_id, &account, extra_data);
+        // Deprecated, function retained for upgrade compatibility
+        abort(E_DEPRECATED);
+
+        // access_control::must_be_service_account(sender);
+        // let account = wallet_account::get_wallet_account(wallet_id);
+        // strategy::update_tick(strategy_id, &account, extra_data);
     }
 
     public entry fun swap_assets(
@@ -743,6 +758,28 @@ module moneyfi::vault {
         );
     }
 
+    public entry fun register_strategy<T>(
+        sender: &signer, deposit_addr: address
+    ) acquires Vault, StrategyRegistry {
+        access_control::must_be_admin(sender);
+
+        let vault_addr = get_vault_address();
+        let vault = borrow_global<Vault>(vault_addr);
+
+        if (!exists<StrategyRegistry>(vault_addr)) {
+            move_to(
+                &vault.get_vault_signer(),
+                StrategyRegistry { strategies: ordered_map::new() }
+            );
+        };
+
+        let registry = borrow_global_mut<StrategyRegistry>(vault_addr);
+        let vault_type = type_info::type_of<T>();
+        assert!(!registry.strategies.contains(&vault_type));
+
+        registry.strategies.add(vault_type, deposit_addr);
+    }
+
     // -- Views
     #[view]
     public fun get_assets(): (vector<address>, vector<u128>) acquires Vault {
@@ -796,12 +833,147 @@ module moneyfi::vault {
         ordered_map::keys(&config.supported_assets)
     }
 
+    #[view]
+    public fun get_strategy_registry(): OrderedMap<TypeInfo, address> acquires StrategyRegistry {
+        let vault_addr = get_vault_address();
+        let registry = borrow_global<StrategyRegistry>(vault_addr);
+
+        registry.strategies
+    }
+
     // -- Public
 
     public fun get_lp_token(): Object<Metadata> acquires LPToken {
         let lptoken = borrow_global<LPToken>(@moneyfi);
 
         lptoken.token
+    }
+
+    public fun deposit_to_strategy_vault<T>(
+        sender: &signer,
+        wallet_id: vector<u8>,
+        asset: Object<Metadata>,
+        amount: u64
+    ) acquires Vault, StrategyRegistry {
+        let account = &wallet_account::get_wallet_account(wallet_id);
+        let account_signer = &wallet_account::get_wallet_account_signer(account);
+        let strategy_addr = get_strategy_address<T>();
+        assert!(signer::address_of(sender) == strategy_addr);
+
+        primary_fungible_store::transfer(account_signer, asset, strategy_addr, amount);
+        wallet_account::distributed_fund(account, &asset, amount);
+
+        let vault_addr = get_vault_address();
+        let vault = borrow_global_mut<Vault>(vault_addr);
+        let asset_data = vault.get_vault_asset_mut(&asset);
+
+        asset_data.total_distributed_amount =
+            asset_data.total_distributed_amount + (amount as u128);
+
+        event::emit(
+            DepositToStrategyEvent {
+                wallet_id,
+                asset,
+                strategy: 0,
+                amount,
+                timestamp: now_seconds()
+            }
+        );
+    }
+
+    public fun withdrawn_from_strategy<T>(
+        sender: &signer,
+        wallet_id: vector<u8>,
+        asset: Object<Metadata>,
+        deposited_amount: u64,
+        withdrawn_amount: u64,
+        withdraw_fee: u64,
+        gas_fee: u64
+    ) acquires Config, Vault, StrategyRegistry {
+        let strategy_addr = get_strategy_address<T>();
+        assert!(signer::address_of(sender) == strategy_addr);
+
+        let account = wallet_account::get_wallet_account(wallet_id);
+        let config = borrow_global<Config>(@moneyfi);
+
+        let vault_addr = get_vault_address();
+        let vault = borrow_global_mut<Vault>(vault_addr);
+        let asset_data = vault.get_vault_asset_mut(&asset);
+
+        assert!(withdraw_fee <= withdrawn_amount);
+        assert!(asset_data.total_distributed_amount >= (deposited_amount as u128));
+
+        let collected_amount = withdrawn_amount - withdraw_fee;
+        let interest_amount = 0;
+        let loss_amount = 0;
+        if (deposited_amount > collected_amount) {
+            loss_amount = deposited_amount - collected_amount;
+        } else {
+            interest_amount = collected_amount - deposited_amount;
+        };
+        interest_amount =
+            if (interest_amount > gas_fee) {
+                interest_amount - gas_fee
+            } else { 0 };
+
+        asset_data.total_distributed_amount =
+            asset_data.total_distributed_amount - (deposited_amount as u128);
+        asset_data.total_amount = asset_data.total_amount + (interest_amount as u128);
+        asset_data.total_amount =
+            if (asset_data.total_amount > (loss_amount as u128)) {
+                asset_data.total_amount - (loss_amount as u128)
+            } else { 0 };
+
+        let system_fee = config.calc_system_fee(&account, interest_amount);
+        let total_fee = withdraw_fee + system_fee + gas_fee;
+        if (total_fee > 0) {
+            let account_signer = wallet_account::get_wallet_account_signer(&account);
+            primary_fungible_store::transfer(
+                &account_signer, asset, vault_addr, total_fee
+            );
+        };
+
+        collected_amount = collected_amount - system_fee;
+        if (system_fee > 0) {
+            collected_amount = collected_amount - gas_fee;
+
+            let (remaining_fee, referral_fees) =
+                config.calc_referral_shares(&account, system_fee);
+            asset_data.total_fee_amount = asset_data.total_fee_amount + remaining_fee;
+            asset_data.pending_fee_amount = asset_data.pending_fee_amount
+                + remaining_fee;
+            asset_data.add_referral_fees(&referral_fees);
+        };
+
+        wallet_account::collected_fund(
+            &account,
+            &asset,
+            deposited_amount,
+            collected_amount,
+            interest_amount,
+            system_fee
+        );
+
+        event::emit(
+            WithdrawFromStrategyEvent {
+                wallet_id,
+                asset,
+                strategy: 0,
+                amount: collected_amount,
+                interest_amount,
+                system_fee,
+                timestamp: now_seconds()
+            }
+        );
+    }
+
+    public fun get_strategy_address<T>(): address acquires StrategyRegistry {
+        let vault_addr = get_vault_address();
+        let registry = borrow_global<StrategyRegistry>(vault_addr);
+        let vault_type = type_info::type_of<T>();
+        assert!(registry.strategies.contains(&vault_type));
+
+        *registry.strategies.borrow(&vault_type)
     }
 
     // -- Private

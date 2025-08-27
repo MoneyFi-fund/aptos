@@ -10,14 +10,18 @@ module moneyfi::strategy_hyperion {
     use aptos_framework::primary_fungible_store;
     use aptos_framework::timestamp;
     use aptos_framework::fungible_asset::Metadata;
-    use dex_contract::router_v3;
-    use dex_contract::pool_v3::{Self, LiquidityPoolV3};
-    use dex_contract::rewarder;
-    use dex_contract::position_v3::{Self, Info};
-    use dex_contract::i32;
+    use hyperion::router_v3;
+    use hyperion::pool_v3::{Self, LiquidityPoolV3};
+    use hyperion::rewarder;
+    use hyperion::position_v3::{Self, Info};
+    use hyperion::i32;
 
+    use moneyfi::access_control;
+    use moneyfi::vault;
     use moneyfi::wallet_account::{Self, WalletAccount};
+
     friend moneyfi::strategy;
+
     // -- Constants
     const DEADLINE_BUFFER: u64 = 31556926; // 1 years
     const USDC_ADDRESS: address = @stablecoin;
@@ -163,8 +167,7 @@ module moneyfi::strategy_hyperion {
         let extra_data = unpack_extra_data(extra_data);
         let position = get_position_data(account, extra_data.pool);
         let (liquidity_remove, is_full_withdraw) =
-            if (amount_min
-                < position.amount ) {
+            if (amount_min < position.amount) {
                 let liquidity =
                     math128::mul_div(
                         position.lp_amount,
@@ -564,9 +567,9 @@ module moneyfi::strategy_hyperion {
                 let (current_tick, _) = pool_v3::current_tick_and_price(pool);
                 let tick_spacing = pool_v3::get_tick_spacing(fee_tier);
                 let tick_lower = i32::from_u32(current_tick);
-                    // i32::wrapping_sub(
-                    //     i32::from_u32(current_tick), i32::from_u32(tick_spacing)
-                    // );
+                // i32::wrapping_sub(
+                //     i32::from_u32(current_tick), i32::from_u32(tick_spacing)
+                // );
                 let tick_upper =
                     i32::wrapping_add(
                         i32::from_u32(current_tick), i32::from_u32(tick_spacing)
@@ -625,11 +628,10 @@ module moneyfi::strategy_hyperion {
     }
 
     #[view]
-    public fun get_user_asset_allocation(
-        wallet_id: vector<u8>,
-    ): (vector<address>, vector<u64>) {
+    public fun get_user_asset_allocation(wallet_id: vector<u8>):
+        (vector<address>, vector<u64>) {
         let account = &wallet_account::get_wallet_account(wallet_id);
-        if( !exists_hyperion_strategy_data(account) ) {
+        if (!exists_hyperion_strategy_data(account)) {
             return (vector::empty<address>(), vector::empty<u64>());
         };
         let strategy_data = ensure_hyperion_strategy_data(account);
@@ -641,8 +643,7 @@ module moneyfi::strategy_hyperion {
         while (i < len) {
             let pool = *vector::borrow<address>(&pools, i);
             let position = get_position_data(account, pool);
-            let (token_a, token_b, _) =
-                position_v3::get_pool_info(position.position);
+            let (token_a, token_b, _) = position_v3::get_pool_info(position.position);
             let (amount_a, amount_b) =
                 router_v3::get_amount_by_liquidity(position.position);
             vector::push_back(&mut asset_addresses, object::object_address(&token_a));
@@ -726,33 +727,34 @@ module moneyfi::strategy_hyperion {
         total_profit
     }
 
-    fun get_total_added_amount(
-        position: Position
-    ): u64 {
-        let (amount_a, amount_b) =
-            router_v3::get_amount_by_liquidity(position.position);
-        let (token_a, token_b, _) =
-            position_v3::get_pool_info(position.position);
+    fun get_total_added_amount(position: Position): u64 {
+        let (amount_a, amount_b) = router_v3::get_amount_by_liquidity(position.position);
+        let (token_a, token_b, _) = position_v3::get_pool_info(position.position);
         let total_amount = 0;
-        if (object::object_address<Metadata>(&token_a) == object::object_address<Metadata>(&position.asset)) {
-            let (amount_out, _) = if (amount_b > 0) {
-                pool_v3::get_amount_out(
-                    pool_v3::liquidity_pool(token_b, position.asset, position.fee_tier),
-                    token_b, amount_b
-                )
-            } else {
-                (0, 0)
-            };
+        if (object::object_address<Metadata>(&token_a)
+            == object::object_address<Metadata>(&position.asset)) {
+            let (amount_out, _) =
+                if (amount_b > 0) {
+                    pool_v3::get_amount_out(
+                        pool_v3::liquidity_pool(
+                            token_b, position.asset, position.fee_tier
+                        ),
+                        token_b,
+                        amount_b
+                    )
+                } else { (0, 0) };
             total_amount = total_amount + amount_a + amount_out;
-        }else {
-            let (amount_out, _) = if (amount_a > 0) {
-                pool_v3::get_amount_out(
-                    pool_v3::liquidity_pool(token_a, position.asset, position.fee_tier),
-                    token_a, amount_a
-                )
-            } else {
-                (0, 0)
-            };
+        } else {
+            let (amount_out, _) =
+                if (amount_a > 0) {
+                    pool_v3::get_amount_out(
+                        pool_v3::liquidity_pool(
+                            token_a, position.asset, position.fee_tier
+                        ),
+                        token_a,
+                        amount_a
+                    )
+                } else { (0, 0) };
             total_amount = total_amount + amount_b + amount_out;
         };
         total_amount
