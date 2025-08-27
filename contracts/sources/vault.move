@@ -761,7 +761,14 @@ module moneyfi::vault {
     public entry fun register_strategy<T>(
         sender: &signer, deposit_addr: address
     ) acquires Vault, StrategyRegistry {
-        access_control::must_be_admin(sender);
+        let sender_addr = signer::address_of(sender);
+        if (object::is_object(sender_addr)) {
+            let owner =
+                object::root_owner(object::address_to_object<ObjectCore>(sender_addr));
+            assert!(access_control::is_admin(owner));
+        } else {
+            access_control::must_be_admin(sender);
+        };
 
         let vault_addr = get_vault_address();
         let vault = borrow_global<Vault>(vault_addr);
