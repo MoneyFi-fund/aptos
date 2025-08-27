@@ -132,7 +132,7 @@ module moneyfi::vault {
     struct DepositToStrategyEvent has drop, store {
         wallet_id: vector<u8>,
         asset: Object<Metadata>,
-        /// Deprecated,  keep for upgrade compatibility, always set to 0
+        /// Deprecated, retained for upgrade compatibility, always set to 0
         strategy: u8,
         amount: u64,
         timestamp: u64
@@ -142,6 +142,7 @@ module moneyfi::vault {
     struct WithdrawFromStrategyEvent has drop, store {
         wallet_id: vector<u8>,
         asset: Object<Metadata>,
+        /// Deprecated, retained for upgrade compatibility, always set to 0
         strategy: u8,
         amount: u64,
         interest_amount: u64,
