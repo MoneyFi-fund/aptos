@@ -5,6 +5,7 @@ module moneyfi::wallet_account {
     use std::error;
     use std::option::{Self, Option};
     use aptos_std::math64;
+    use aptos_std::type_info;
     use aptos_std::ordered_map::{Self, OrderedMap};
     use aptos_framework::event;
     use aptos_framework::object::{Self, Object, ExtendRef};
@@ -15,11 +16,6 @@ module moneyfi::wallet_account {
     use moneyfi::storage;
 
     friend moneyfi::vault;
-    friend moneyfi::strategy;
-    friend moneyfi::strategy_hyperion;
-    friend moneyfi::strategy_thala;
-    friend moneyfi::strategy_tapp;
-    friend moneyfi::strategy_aries;
 
     #[test_only]
     friend moneyfi::wallet_account_test;
@@ -311,9 +307,12 @@ module moneyfi::wallet_account {
             asset_data.interest_share_amount + interest_share_amount;
     }
 
-    public(friend) fun set_strategy_data<T: store + drop + copy>(
+    public fun set_strategy_data<T: store + drop + copy>(
         account: &Object<WalletAccount>, data: T
     ) acquires StrategyData, WalletAccount {
+        let data_type = type_info::type_of<T>();
+        assert!(data_type.account_address() == @moneyfi);
+
         let addr = object::object_address(account);
         if (!exists<StrategyData<T>>(addr)) {
             let account_signer = get_wallet_account_signer(account);
@@ -324,7 +323,7 @@ module moneyfi::wallet_account {
         }
     }
 
-    public(friend) fun get_strategy_data<T: store + copy>(
+    public fun get_strategy_data<T: store + copy>(
         account: &Object<WalletAccount>
     ): T acquires StrategyData {
         let addr = object::object_address(account);
@@ -441,7 +440,7 @@ module moneyfi::wallet_account {
         object::generate_signer_for_extending(&wallet_account.extend_ref)
     }
 
-    public(friend) fun get_referrer_addresses(
+    public fun get_referrer_addresses(
         account: &Object<WalletAccount>, max: u8
     ): vector<address> acquires WalletAccount {
         let referrers = vector[];

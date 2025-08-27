@@ -5,7 +5,6 @@ module moneyfi::strategy_aries {
     use std::string::String;
     use aptos_std::math64;
     use aptos_std::math128;
-    use aptos_std::from_bcs;
     use aptos_std::type_info::{Self, TypeInfo};
     use aptos_framework::ordered_map::{Self, OrderedMap};
     use aptos_framework::object::{Self, Object, ExtendRef};
@@ -17,9 +16,8 @@ module moneyfi::strategy_aries {
 
     use moneyfi::access_control;
     use moneyfi::storage;
+    use moneyfi::vault as moneyfi_vault;
     use moneyfi::wallet_account::{Self, WalletAccount};
-
-    friend moneyfi::strategy;
 
     const STRATEGY_ACCOUNT_SEED: vector<u8> = b"strategy_aries::STRATEGY_ACCOUNT";
     const APT_FA_ADDRESS: address = @0xa;
@@ -31,6 +29,7 @@ module moneyfi::strategy_aries {
     const E_UNSUPPORTED_ASSET: u64 = 3;
     const E_POOL_NOT_EXIST: u64 = 4;
 
+    #[resource_group_member(group = aptos_framework::object::ObjectGroup)]
     struct Strategy has key {
         extend_ref: ExtendRef,
         vaults: OrderedMap<address, Vault>
@@ -73,8 +72,9 @@ module moneyfi::strategy_aries {
         timestamp: u64
     }
 
-    fun init_module(_sender: &signer) {
-        init_strategy_account();
+    fun init_module(sender: &signer) {
+        let addr = init_strategy_account();
+        moneyfi_vault::register_strategy<Strategy>(sender, addr);
     }
 
     // -- Entries
@@ -99,7 +99,7 @@ module moneyfi::strategy_aries {
         );
 
         let strategy = borrow_global_mut<Strategy>(strategy_addr);
-        let strategy_signer = strategy.get_account_signer();
+        let strategy_signer = strategy.get_strategy_signer();
 
         if (!aries::profile::is_registered(strategy_addr)) {
             aries::profile::init_with_referrer(&strategy_signer, strategy_addr);
@@ -143,7 +143,7 @@ module moneyfi::strategy_aries {
 
         let strategy_addr = get_strategy_address();
         let strategy = borrow_global_mut<Strategy>(strategy_addr);
-        let strategy_signer = strategy.get_account_signer();
+        let strategy_signer = strategy.get_strategy_signer();
         let vault = strategy.get_vault_mut(name);
 
         vault.deposit_cap = deposit_cap;
@@ -168,7 +168,7 @@ module moneyfi::strategy_aries {
 
         let strategy_addr = get_strategy_address();
         let strategy = borrow_global_mut<Strategy>(strategy_addr);
-        let strategy_signer = &strategy.get_account_signer();
+        let strategy_signer = &strategy.get_strategy_signer();
         let vault = strategy.get_vault_mut(vault_name);
         assert!(!vault.paused);
 
@@ -222,7 +222,7 @@ module moneyfi::strategy_aries {
 
         let strategy_addr = get_strategy_address();
         let strategy = borrow_global_mut<Strategy>(strategy_addr);
-        let strategy_signer = &strategy.get_account_signer();
+        let strategy_signer = &strategy.get_strategy_signer();
         let vault = strategy.get_vault_mut(vault_name);
         assert!(!vault.paused);
 
@@ -236,7 +236,7 @@ module moneyfi::strategy_aries {
 
         let strategy_addr = get_strategy_address();
         let strategy = borrow_global_mut<Strategy>(strategy_addr);
-        let strategy_signer = &strategy.get_account_signer();
+        let strategy_signer = &strategy.get_strategy_signer();
         let vault = strategy.get_vault_mut(vault_name);
         assert!(!vault.paused);
 
@@ -245,105 +245,69 @@ module moneyfi::strategy_aries {
         // TODO: emit an event if needed
     }
 
-    // -- Views
-
-    #[view]
-    fun get_strategy_address(): address {
-        storage::get_child_object_address(STRATEGY_ACCOUNT_SEED)
-    }
-
-    #[view]
-    public fun get_vault(name: String): (address, Vault) acquires Strategy {
-        let strategy_addr = get_strategy_address();
-        let strategy = borrow_global_mut<Strategy>(strategy_addr);
-        let vault_addr = get_vault_address(name);
-        assert!(
-            ordered_map::contains(&strategy.vaults, &vault_addr),
-            error::not_found(E_VAULT_EXISTS)
-        );
-
-        (vault_addr, *ordered_map::borrow(&strategy.vaults, &vault_addr))
-    }
-
-    #[view]
-    public fun get_max_borrow_amount(vault_name: String): u64 acquires Strategy {
-        let strategy_addr = get_strategy_address();
-        let strategy = borrow_global<Strategy>(strategy_addr);
-        let vault = strategy.vaults.borrow(&get_vault_address(vault_name));
-
-        vault.max_borrow_amount()
-    }
-
-    // -- Public
-
     /// deposit fund from wallet account to strategy vault
-    public(friend) fun deposit_to_vault(
-        account: &Object<WalletAccount>,
-        asset: &Object<Metadata>,
-        amount: u64,
-        extra_data: vector<vector<u8>>
-    ): u64 acquires Strategy {
+    public entry fun deposit(
+        sender: &signer,
+        vault_name: String,
+        wallet_id: vector<u8>,
+        asset: Object<Metadata>,
+        amount: u64
+    ) acquires Strategy {
         assert!(amount > 0);
-        assert!(extra_data.length() > 0);
+        access_control::must_be_service_account(sender);
 
-        let vault_name = from_bcs::to_string(*extra_data.borrow(0));
         let strategy_addr = get_strategy_address();
         let strategy = borrow_global_mut<Strategy>(strategy_addr);
+        let strategy_signer = strategy.get_strategy_signer();
         let vault = strategy.get_vault_mut(vault_name);
         assert!(!vault.paused);
-        assert!(&vault.asset == asset);
-        assert!(amount > 0);
+        assert!(&vault.asset == &asset);
 
-        let (_, asset_amount) = vault.get_deposited_amount();
+        let account = wallet_account::get_wallet_account(wallet_id);
         assert!(
-            asset_amount + vault.available_amount + amount <= vault.deposit_cap,
+            amount + vault.available_amount + amount <= vault.deposit_cap,
             error::permission_denied(E_EXCEED_CAPACITY)
         );
-
-        let account_signer = wallet_account::get_wallet_account_signer(account);
-        primary_fungible_store::transfer(
-            &account_signer,
-            vault.asset,
-            strategy_addr,
-            amount
+        moneyfi_vault::deposit_to_strategy_vault<Strategy>(
+            &strategy_signer, wallet_id, asset, amount
         );
+
         vault.total_deposited_amount = vault.total_deposited_amount + (amount as u128);
         vault.available_amount = vault.available_amount + amount;
-        vault.update_pending_amount(account, amount, 0);
-
-        amount
+        vault.update_pending_amount(&account, amount, 0);
     }
 
     /// Withdraw fund from strategy vault to wallet account
     /// Pass amount = U64_MAX to withdraw all
-    public(friend) fun withdraw_from_vault(
-        account: &Object<WalletAccount>,
-        asset: &Object<Metadata>,
+    public(friend) fun withdraw(
+        sender: &signer,
+        vault_name: String,
+        wallet_id: vector<u8>,
+        asset: Object<Metadata>,
         amount: u64,
-        extra_data: vector<vector<u8>>
-    ): (u64, u64, u64) acquires Strategy {
+        gas_fee: u64,
+        swap_slippage: u64
+    ) acquires Strategy {
         assert!(amount > 0);
-        assert!(extra_data.length() > 1);
+        assert!(swap_slippage < 10000);
+        access_control::must_be_service_account(sender);
 
         // TODO: check rate limit
 
-        let vault_name = from_bcs::to_string(*extra_data.borrow(0));
-        let swap_slippage = from_bcs::to_u64(*extra_data.borrow(1));
-        assert!(swap_slippage < 10000);
-
         let strategy_addr = get_strategy_address();
         let strategy = borrow_global_mut<Strategy>(strategy_addr);
-        let strategy_signer = &strategy.get_account_signer();
+        let strategy_signer = &strategy.get_strategy_signer();
 
         let vault_addr = get_vault_address(vault_name);
+        let vault = strategy.get_vault_mut(vault_name);
+        assert!(!vault.paused);
+        assert!(&vault.asset == &asset);
+
+        let account = &wallet_account::get_wallet_account(wallet_id);
         let account_data = get_account_data(account);
         let account_vault_data = get_account_data_for_vault(
             &mut account_data, vault_addr
         );
-
-        let vault = strategy.get_vault_mut(vault_name);
-        assert!(!vault.paused);
-        assert!(&vault.asset == asset);
 
         let deposited_amount = amount;
         let pending_amount = vault.get_pending_amount(account);
@@ -416,8 +380,47 @@ module moneyfi::strategy_aries {
 
         wallet_account::set_strategy_data(account, account_data);
 
-        (deposited_amount, amount, 0)
+        moneyfi_vault::withdrawn_from_strategy<Strategy>(
+            strategy_signer,
+            wallet_id,
+            asset,
+            deposited_amount,
+            amount,
+            0,
+            gas_fee
+        );
     }
+
+    // -- Views
+
+    #[view]
+    fun get_strategy_address(): address {
+        storage::get_child_object_address(STRATEGY_ACCOUNT_SEED)
+    }
+
+    #[view]
+    public fun get_vault(name: String): (address, Vault) acquires Strategy {
+        let strategy_addr = get_strategy_address();
+        let strategy = borrow_global_mut<Strategy>(strategy_addr);
+        let vault_addr = get_vault_address(name);
+        assert!(
+            ordered_map::contains(&strategy.vaults, &vault_addr),
+            error::not_found(E_VAULT_EXISTS)
+        );
+
+        (vault_addr, *ordered_map::borrow(&strategy.vaults, &vault_addr))
+    }
+
+    #[view]
+    public fun get_max_borrow_amount(vault_name: String): u64 acquires Strategy {
+        let strategy_addr = get_strategy_address();
+        let strategy = borrow_global<Strategy>(strategy_addr);
+        let vault = strategy.vaults.borrow(&get_vault_address(vault_name));
+
+        vault.max_borrow_amount()
+    }
+
+    // -- Public
 
     public fun get_stats(asset: &Object<Metadata>): (u128, u128, u128) acquires Strategy {
         let strategy_addr = get_strategy_address();
@@ -441,8 +444,8 @@ module moneyfi::strategy_aries {
 
     //  -- Private
 
-    fun init_strategy_account() {
-        let account_addr = storage::get_child_object_address(STRATEGY_ACCOUNT_SEED);
+    fun init_strategy_account(): address {
+        let account_addr = get_strategy_address();
         assert!(!exists<Strategy>(account_addr));
 
         let extend_ref =
@@ -452,9 +455,11 @@ module moneyfi::strategy_aries {
             &account_signer,
             Strategy { extend_ref, vaults: ordered_map::new() }
         );
+
+        account_addr
     }
 
-    fun get_account_signer(self: &Strategy): signer {
+    fun get_strategy_signer(self: &Strategy): signer {
         object::generate_signer_for_extending(&self.extend_ref)
     }
 
