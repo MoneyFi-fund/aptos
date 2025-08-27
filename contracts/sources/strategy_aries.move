@@ -279,7 +279,7 @@ module moneyfi::strategy_aries {
 
     /// Withdraw fund from strategy vault to wallet account
     /// Pass amount = U64_MAX to withdraw all
-    public(friend) fun withdraw(
+    public entry fun withdraw(
         sender: &signer,
         vault_name: String,
         wallet_id: vector<u8>,
