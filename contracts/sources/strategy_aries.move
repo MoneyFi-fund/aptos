@@ -58,6 +58,11 @@ module moneyfi::strategy_aries {
         paused: bool
     }
 
+    struct AccountData has store, copy, drop {
+        // vault_address => VaultAsset
+        vaults: OrderedMap<address, VaultAsset>
+    }
+
     /// Track asset of an account in vault
     struct VaultAsset has copy, store, drop {
         // amount deposited to aries
@@ -185,26 +190,23 @@ module moneyfi::strategy_aries {
             vault.deposit_to_aries(strategy_signer, amount);
         let vault_shares = vault.mint_vault_shares(deposited_shares, total_deposit_shares);
 
-        vault.pending_amount.for_each_mut(
-            |k, v| {
-                let acc_deposited_amount = *v * deposited_amount / total_pending_amount;
-                let acc_vault_shares =
-                    (*v as u128) * vault_shares / (total_pending_amount as u128);
-                *v = *v - acc_deposited_amount;
+        vault.pending_amount.for_each_mut(|k, v| {
+            let acc_deposited_amount = *v * deposited_amount / total_pending_amount;
+            let acc_vault_shares = (*v as u128) * vault_shares
+                / (total_pending_amount as u128);
+            *v = *v - acc_deposited_amount;
 
-                let vault_addr = get_vault_address(vault_name);
-                let account = &object::address_to_object<WalletAccount>(*k);
-                let account_data = get_account_data(account);
-                let account_vault_data =
-                    get_account_data_for_vault(&mut account_data, vault_addr);
-                account_vault_data.deposited_amount =
-                    account_vault_data.deposited_amount + acc_deposited_amount;
-                account_vault_data.vault_shares =
-                    account_vault_data.vault_shares + acc_vault_shares;
+            let vault_addr = get_vault_address(vault_name);
+            let account = &object::address_to_object<WalletAccount>(*k);
+            let account_data = get_account_data(account);
+            let account_vault_data = account_data.get_account_data_for_vault(vault_addr);
+            account_vault_data.deposited_amount =
+                account_vault_data.deposited_amount + acc_deposited_amount;
+            account_vault_data.vault_shares =
+                account_vault_data.vault_shares + acc_vault_shares;
 
-                wallet_account::set_strategy_data(account, account_data);
-            }
-        );
+            wallet_account::set_strategy_data(account, account_data);
+        });
 
         if (deposited_amount == total_pending_amount) {
             vault.pending_amount = ordered_map::new();
@@ -306,9 +308,7 @@ module moneyfi::strategy_aries {
 
         let account = &wallet_account::get_wallet_account(wallet_id);
         let account_data = get_account_data(account);
-        let account_vault_data = get_account_data_for_vault(
-            &mut account_data, vault_addr
-        );
+        let account_vault_data = account_data.get_account_data_for_vault(vault_addr);
 
         let deposited_amount = amount;
         let pending_amount = vault.get_pending_amount(account);
@@ -396,8 +396,19 @@ module moneyfi::strategy_aries {
     // -- Views
 
     #[view]
-    fun get_strategy_address(): address {
+    public fun get_strategy_address(): address {
         storage::get_child_object_address(STRATEGY_ACCOUNT_SEED)
+    }
+
+    #[view]
+    public fun get_vaults(): (vector<address>, vector<String>) acquires Strategy {
+        let strategy_addr = get_strategy_address();
+        let strategy = borrow_global<Strategy>(strategy_addr);
+        let addresses = vector[];
+        let names = vector[];
+        strategy.vaults.for_each_ref(|_, v| {});
+
+        (addresses, names)
     }
 
     #[view]
@@ -435,9 +446,7 @@ module moneyfi::strategy_aries {
         let pending_amount = vault.get_pending_amount(&account);
 
         let account_data = get_account_data(&account);
-        let account_vault_data = get_account_data_for_vault(
-            &mut account_data, vault_addr
-        );
+        let account_vault_data = account_data.get_account_data_for_vault(vault_addr);
         let deposited_amount = account_vault_data.deposited_amount;
 
         let (total_shares, _) = vault.get_deposited_amount();
@@ -515,31 +524,27 @@ module moneyfi::strategy_aries {
         self.get_vault_mut_by_address(get_vault_address(name))
     }
 
-    fun get_account_data(account: &Object<WalletAccount>): OrderedMap<address, VaultAsset> {
+    fun get_account_data(account: &Object<WalletAccount>): AccountData {
         let account_data =
-            if (wallet_account::strategy_data_exists<OrderedMap<address, VaultAsset>>(
-                account
-            )) {
-                wallet_account::get_strategy_data<OrderedMap<address, VaultAsset>>(
-                    account
-                )
+            if (wallet_account::strategy_data_exists<AccountData>(account)) {
+                wallet_account::get_strategy_data<AccountData>(account)
             } else {
-                ordered_map::new()
+                AccountData { vaults: ordered_map::new() }
             };
 
         account_data
     }
 
     fun get_account_data_for_vault(
-        account_data: &mut OrderedMap<address, VaultAsset>, vault_addr: address
+        self: &mut AccountData, vault_addr: address
     ): &mut VaultAsset {
-        if (!account_data.contains(&vault_addr)) {
-            account_data.add(
+        if (!self.vaults.contains(&vault_addr)) {
+            self.vaults.add(
                 vault_addr, VaultAsset { deposited_amount: 0, vault_shares: 0 }
             )
         };
 
-        account_data.borrow_mut(&vault_addr)
+        self.vaults.borrow_mut(&vault_addr)
     }
 
     fun get_pending_amount(
@@ -1142,7 +1147,7 @@ module moneyfi::strategy_aries {
         } else { (0, 0) }
     }
 
-    /// Claims all rewards abd swap to vault asset
+    /// Claims all rewards and swap to vault asset
     fun compound_rewards<T>(self: &mut Vault, strategy_signer: &signer): u64 {
         let asset = self.asset;
         // TODO: claim other rewards

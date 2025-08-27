@@ -128,22 +128,42 @@ module moneyfi::vault {
         timestamp: u64
     }
 
+    /// Deprecated by DepositedToStrategyEvent
     #[event]
     struct DepositToStrategyEvent has drop, store {
         wallet_id: vector<u8>,
         asset: Object<Metadata>,
-        /// Deprecated, retained for upgrade compatibility, always set to 0
         strategy: u8,
         amount: u64,
         timestamp: u64
     }
 
     #[event]
+    struct DepositedToStrategyEvent has drop, store {
+        wallet_id: vector<u8>,
+        asset: Object<Metadata>,
+        strategy: TypeInfo,
+        amount: u64,
+        timestamp: u64
+    }
+
+    /// Deprecated by WithdrawnFromStrategyEvent
+    #[event]
     struct WithdrawFromStrategyEvent has drop, store {
         wallet_id: vector<u8>,
         asset: Object<Metadata>,
-        /// Deprecated, retained for upgrade compatibility, always set to 0
         strategy: u8,
+        amount: u64,
+        interest_amount: u64,
+        system_fee: u64,
+        timestamp: u64
+    }
+
+    #[event]
+    struct WithdrawnFromStrategyEvent has drop, store {
+        wallet_id: vector<u8>,
+        asset: Object<Metadata>,
+        strategy: TypeInfo,
         amount: u64,
         interest_amount: u64,
         system_fee: u64,
@@ -859,7 +879,6 @@ module moneyfi::vault {
     public fun deposit_to_strategy_vault<T>(
         sender: &signer,
         wallet_id: vector<u8>,
-        strategy_id: u8,
         asset: Object<Metadata>,
         amount: u64
     ) acquires Vault, StrategyRegistry {
@@ -879,10 +898,10 @@ module moneyfi::vault {
             asset_data.total_distributed_amount + (amount as u128);
 
         event::emit(
-            DepositToStrategyEvent {
+            DepositedToStrategyEvent {
                 wallet_id,
                 asset,
-                strategy: strategy_id,
+                strategy: type_info::type_of<T>(),
                 amount,
                 timestamp: now_seconds()
             }
@@ -892,7 +911,6 @@ module moneyfi::vault {
     public fun withdrawn_from_strategy<T>(
         sender: &signer,
         wallet_id: vector<u8>,
-        strategy_id: u8,
         asset: Object<Metadata>,
         deposited_amount: u64,
         withdrawn_amount: u64,
@@ -964,10 +982,10 @@ module moneyfi::vault {
         );
 
         event::emit(
-            WithdrawFromStrategyEvent {
+            WithdrawnFromStrategyEvent {
                 wallet_id,
                 asset,
-                strategy: strategy_id,
+                strategy: type_info::type_of<T>(),
                 amount: collected_amount,
                 interest_amount,
                 system_fee,
