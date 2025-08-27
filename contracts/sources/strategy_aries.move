@@ -279,7 +279,7 @@ module moneyfi::strategy_aries {
 
     /// Withdraw fund from strategy vault to wallet account
     /// Pass amount = U64_MAX to withdraw all
-    public(friend) fun withdraw(
+    public entry fun withdraw(
         sender: &signer,
         vault_name: String,
         wallet_id: vector<u8>,
@@ -420,9 +420,41 @@ module moneyfi::strategy_aries {
         vault.max_borrow_amount()
     }
 
-    // -- Public
+    /// Returns (pending_amount, deposited_amount, estimate_withdrawable_amount)
+    #[view]
+    public fun get_account_stats(
+        vault_name: String, account: Object<WalletAccount>
+    ): (u64, u64, u64) acquires Strategy {
+        let strategy_addr = get_strategy_address();
+        let strategy = borrow_global<Strategy>(strategy_addr);
+        let vault_addr = get_vault_address(vault_name);
+        let vault = strategy.vaults.borrow(&vault_addr);
 
-    public fun get_stats(asset: &Object<Metadata>): (u128, u128, u128) acquires Strategy {
+        let pending_amount = vault.get_pending_amount(&account);
+
+        let account_data = get_account_data(&account);
+        let account_vault_data = get_account_data_for_vault(
+            &mut account_data, vault_addr
+        );
+        let deposited_amount = account_vault_data.deposited_amount;
+
+        let (total_shares, _) = vault.get_deposited_amount();
+        let shares =
+            vault.get_deposit_shares_from_vault_shares(
+                account_vault_data.vault_shares, total_shares
+            );
+
+        let withdrawable_amount =
+            aries::reserve::get_underlying_amount_from_lp_amount(
+                get_reserve_type_info(&vault.asset), shares
+            );
+
+        (pending_amount, deposited_amount, withdrawable_amount)
+    }
+
+    /// Returns (current_tvl, total_deposited, total_withdrawn)
+    #[view]
+    public fun get_strategy_stats(asset: Object<Metadata>): (u128, u128, u128) acquires Strategy {
         let strategy_addr = get_strategy_address();
         let strategy = borrow_global_mut<Strategy>(strategy_addr);
 
@@ -430,7 +462,7 @@ module moneyfi::strategy_aries {
         let total_withdrawn = 0;
         let current_tvl = 0;
         strategy.vaults.for_each_ref(|_, v| {
-            if (&v.asset == asset) {
+            if (&v.asset == &asset) {
                 total_deposited = total_deposited + v.total_deposited_amount;
                 total_withdrawn = total_withdrawn + v.total_withdrawn_amount;
 
@@ -441,6 +473,8 @@ module moneyfi::strategy_aries {
 
         (current_tvl, total_deposited, total_withdrawn)
     }
+
+    // -- Public
 
     //  -- Private
 
