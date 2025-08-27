@@ -16,6 +16,10 @@ module moneyfi::wallet_account {
     use moneyfi::storage;
 
     friend moneyfi::vault;
+    // TODO: remove these friend dependencies after refactor strategies
+    friend moneyfi::strategy_hyperion;
+    friend moneyfi::strategy_thala;
+    friend moneyfi::strategy_tapp;
 
     #[test_only]
     friend moneyfi::wallet_account_test;
