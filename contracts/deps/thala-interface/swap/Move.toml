@@ -11,10 +11,10 @@ thalaswap_v2_deployer = "0x1bf23f0881f8fa149500ff6b7a047f608967c028a8ad7a2100caa
 # git = "https://github.com/ThalaLabs/fixed_point64.git"
 # rev = "mainnet"
 
-# [dependencies.AptosFramework]
-# git = "https://github.com/aptos-labs/aptos-framework.git"
-# rev = "mainnet"
-# subdir = "aptos-framework"
+[dependencies.AptosFramework]
+git = "https://github.com/aptos-labs/aptos-framework.git"
+rev = "mainnet"
+subdir = "aptos-framework"
 
 # [dependencies.RateLimiter]
 # local = "../rate_limiter"

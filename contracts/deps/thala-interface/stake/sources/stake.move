@@ -4,7 +4,7 @@ module thala_staked_lpt::staked_lpt {
     use aptos_framework::object;
     use aptos_framework::fungible_asset;
     use aptos_framework::function_info;
-    use masterchef_lib::masterchef;
+    // use masterchef_lib::masterchef;
     use aptos_std::string_utils;
 
     struct NewRewardEvent has drop, store {
@@ -29,7 +29,7 @@ module thala_staked_lpt::staked_lpt {
     struct Farming has key {
         deposit_updating_farming: function_info::FunctionInfo,
         withdraw_updating_farming: function_info::FunctionInfo,
-        farming: masterchef::FarmingCore,
+        // farming: masterchef::FarmingCore,
         boost_scaling_factor_bps: u64,
         max_boost_multiplier_bps: u64,
         reward_store_extend_ref: object::ExtendRef,

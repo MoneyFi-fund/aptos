@@ -1,5 +1,4 @@
 module stable::stable {
-    use std::vector;
     struct Position has copy, drop, store {
         index: u64,
         shares: u256
@@ -18,8 +17,8 @@ module stable::stable {
 
     public fun calculate_pending_rewards(// pool address, position index
         arg0: address, arg1: u64
-    ): vector<CampaignReward> {   
-        vector::empty<CampaignReward>()
+    ): vector<CampaignReward> {
+        vector[]
     }
 
     public fun campaign_reward_amount(arg0: &CampaignReward): u64 {

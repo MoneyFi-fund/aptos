@@ -10,13 +10,13 @@ thala_staked_lpt_deployer = "0x1bf23f0881f8fa149500ff6b7a047f608967c028a8ad7a210
 # [dependencies.RateLimiter]
 # local = "../rate_limiter"
 
-[dependencies.MasterchefLib]
-local = "../masterschef"
+# [dependencies.MasterchefLib]
+# local = "../masterschef"
 
-# [dependencies.AptosFramework]
-# git = "https://github.com/aptos-labs/aptos-framework.git"
-# rev = "mainnet"
-# subdir = "aptos-framework"
+[dependencies.AptosFramework]
+git = "https://github.com/aptos-labs/aptos-framework.git"
+rev = "mainnet"
+subdir = "aptos-framework"
 
 # [dependencies.FixedPoint64]
 # git = "https://github.com/ThalaLabs/fixed_point64.git"
