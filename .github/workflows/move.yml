@@ -19,12 +19,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: aptos-labs/actions/install-aptos-cli@main
-      - name: Setup
-        run: ./contracts/setup.sh
       - uses: aptos-labs/actions/test-move@main
         with:
-          SKIP_INSTALLING_CLI: 'true'
+          # SKIP_INSTALLING_CLI: 'true'
           SKIP_FMT: 'true'
           SKIP_LINT: 'true'
           WORKING_DIRECTORY: contracts
