@@ -422,7 +422,7 @@ module moneyfi::strategy_aries {
 
     /// Returns (pending_amount, deposited_amount, estimate_withdrawable_amount)
     #[view]
-    public fun get_account_stats(
+    public fun get_account_state(
         vault_name: String, account: Object<WalletAccount>
     ): (u64, u64, u64) acquires Strategy {
         let strategy_addr = get_strategy_address();
