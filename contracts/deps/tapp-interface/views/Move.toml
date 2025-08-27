@@ -6,6 +6,6 @@ authors = []
 [addresses]
 views = "0xf5840b576a3a6a42464814bc32ae1160c50456fb885c62be389b817e75b2a385"
 
-# [dependencies]
+[dependencies]
 # AptosFramework = { git = "https://github.com/aptos-labs/aptos-framework.git", rev = "mainnet", subdir = "aptos-framework" }
 
