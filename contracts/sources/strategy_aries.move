@@ -316,6 +316,7 @@ module moneyfi::strategy_aries {
 
             let withdraw_amount = amount - pending_amount;
             amount = pending_amount;
+            deposit_amount = amount;
             let (total_deposit_shares, _) = vault.get_deposited_amount();
             let acc_deposit_shares =
                 vault.get_deposit_shares_from_vault_shares(
