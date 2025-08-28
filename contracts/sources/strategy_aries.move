@@ -23,7 +23,6 @@ module moneyfi::strategy_aries {
     const APT_FA_ADDRESS: address = @0xa;
     const U64_MAX: u64 = 18446744073709551615;
     const SHARE_DECIMALS: u64 = 8;
-    const STRATEGY_ID: u8 = 2;
 
     const E_VAULT_EXISTS: u64 = 1;
     const E_EXCEED_CAPACITY: u64 = 2;
@@ -272,7 +271,7 @@ module moneyfi::strategy_aries {
             error::permission_denied(E_EXCEED_CAPACITY)
         );
         moneyfi_vault::deposit_to_strategy_vault<Strategy>(
-            &strategy_signer, wallet_id, STRATEGY_ID, asset, amount
+            &strategy_signer, wallet_id, asset, amount
         );
 
         vault.total_deposited_amount = vault.total_deposited_amount + (amount as u128);
@@ -384,7 +383,6 @@ module moneyfi::strategy_aries {
         moneyfi_vault::withdrawn_from_strategy<Strategy>(
             strategy_signer,
             wallet_id,
-            STRATEGY_ID,
             asset,
             deposited_amount,
             amount,
@@ -433,11 +431,12 @@ module moneyfi::strategy_aries {
         vault.max_borrow_amount()
     }
 
-    /// Returns (pending_amount, deposited_amount, estimate_withdrawable_amount)
+    // Returns (pending_amount, deposited_amount, estimate_withdrawable_amount)
     #[view]
     public fun get_account_state(
-        vault_name: String, account: Object<WalletAccount>
+        vault_name: String, wallet_id: vector<u8>
     ): (u64, u64, u64) acquires Strategy {
+        let account = wallet_account::get_wallet_account(wallet_id);
         let strategy_addr = get_strategy_address();
         let strategy = borrow_global<Strategy>(strategy_addr);
         let vault_addr = get_vault_address(vault_name);
@@ -463,7 +462,7 @@ module moneyfi::strategy_aries {
         (pending_amount, deposited_amount, withdrawable_amount)
     }
 
-    /// Returns (current_tvl, total_deposited, total_withdrawn)
+    // Returns (current_tvl, total_deposited, total_withdrawn)
     #[view]
     public fun get_strategy_stats(asset: Object<Metadata>): (u128, u128, u128) acquires Strategy {
         let strategy_addr = get_strategy_address();

@@ -128,7 +128,7 @@ module moneyfi::vault {
         timestamp: u64
     }
 
-    /// Deprecated by DepositedToStrategyEvent
+    // Deprecated by DepositedToStrategyEvent
     #[event]
     struct DepositToStrategyEvent has drop, store {
         wallet_id: vector<u8>,
@@ -147,7 +147,7 @@ module moneyfi::vault {
         timestamp: u64
     }
 
-    /// Deprecated by WithdrawnFromStrategyEvent
+    // Deprecated by WithdrawnFromStrategyEvent
     #[event]
     struct WithdrawFromStrategyEvent has drop, store {
         wallet_id: vector<u8>,
