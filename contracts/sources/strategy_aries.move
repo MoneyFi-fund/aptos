@@ -894,7 +894,7 @@ module moneyfi::strategy_aries {
             withdraw_from_aries_impl(
                 strategy_signer,
                 *self.name.bytes(),
-                &self.asset,
+                &self.borrow_asset,
                 amount,
                 true
             );
