@@ -316,7 +316,7 @@ module moneyfi::strategy_aries {
 
             let withdraw_amount = amount - pending_amount;
             amount = pending_amount;
-            deposit_amount = amount;
+            deposited_amount = amount;
             let (total_deposit_shares, _) = vault.get_deposited_amount();
             let acc_deposit_shares =
                 vault.get_deposit_shares_from_vault_shares(
@@ -681,7 +681,8 @@ module moneyfi::strategy_aries {
                 strategy_signer,
                 *self.name.bytes(),
                 &self.asset,
-                amount
+                amount,
+                false
             );
         let (shares_after, _) = self.get_deposited_amount();
         assert!(shares_before >= shares_after);
@@ -711,7 +712,8 @@ module moneyfi::strategy_aries {
                 strategy_signer,
                 *self.name.bytes(),
                 &self.asset,
-                amount
+                amount,
+                false
             );
         self.available_amount = self.available_amount + amount;
         let shares = self.burn_vault_shares(deposit_shares, total_deposit_shares);
@@ -846,7 +848,8 @@ module moneyfi::strategy_aries {
         caller: &signer,
         profile: vector<u8>,
         asset: &Object<Metadata>,
-        amount: u64
+        amount: u64,
+        allow_borrow: bool
     ): u64 {
         let asset_addr = object::object_address(asset);
         assert!(
@@ -858,11 +861,11 @@ module moneyfi::strategy_aries {
         let balance_before = primary_fungible_store::balance(addr, *asset);
         if (asset_addr == @usdc) {
             aries::controller::withdraw_fa<aries::wrapped_coins::WrappedUSDC>(
-                caller, profile, amount, false
+                caller, profile, amount, allow_borrow
             );
         } else if (asset_addr == @usdt) {
             aries::controller::withdraw_fa<aries::fa_to_coin_wrapper::WrappedUSDT>(
-                caller, profile, amount, false
+                caller, profile, amount, allow_borrow
             );
         };
 
@@ -892,7 +895,8 @@ module moneyfi::strategy_aries {
                 strategy_signer,
                 *self.name.bytes(),
                 &self.asset,
-                amount
+                amount,
+                true
             );
         let (shares_after, loan_amount_after) = self.get_loan_amount();
         assert!(loan_amount_after >= shares_after);
