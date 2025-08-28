@@ -182,6 +182,17 @@ module moneyfi::vault {
     }
 
     #[event]
+    struct RebalanceStrategyEvent has drop, store {
+        wallet_id: vector<u8>,
+        asset: Object<Metadata>,
+        strategy: TypeInfo,
+        amount: u64,
+        interest_amount: u64,
+        system_fee: u64,
+        timestamp: u64
+    }
+
+    #[event]
     struct SwapAssetsEvent has drop, store {
         wallet_id: vector<u8>,
         strategy: u8,
