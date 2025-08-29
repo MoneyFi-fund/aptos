@@ -1110,7 +1110,7 @@ module moneyfi::strategy_aries {
         if (total_deposit_shares == 0) {
             (deposit_shares as u128) * math128::pow(10, SHARE_DECIMALS as u128)
         } else {
-            (deposit_shares as u128) * math128::pow(10, SHARE_DECIMALS as u128)
+            (deposit_shares as u128)
                 * self.total_shares / (total_deposit_shares as u128)
         }
     }
