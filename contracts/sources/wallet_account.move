@@ -5,6 +5,8 @@ module moneyfi::wallet_account {
     use std::error;
     use std::option::{Self, Option};
     use aptos_std::math64;
+    #[test_only]
+    use aptos_std::any;
     use aptos_std::type_info;
     use aptos_std::ordered_map::{Self, OrderedMap};
     use aptos_framework::event;
@@ -56,7 +58,7 @@ module moneyfi::wallet_account {
         extend_ref: ExtendRef
     }
 
-    struct AccountAsset has store, copy {
+    struct AccountAsset has store, copy, drop {
         current_amount: u64,
         // accumulated deposited amount
         deposited_amount: u64,
@@ -516,5 +518,33 @@ module moneyfi::wallet_account {
         addr: address
     ): signer acquires WalletAccount, WalletAccountObject {
         get_wallet_account_signer(&get_wallet_account_by_address(addr))
+    }
+
+    #[test_only]
+    public fun get_account_asset_data<T>(
+        data: &AccountAsset, field: vector<u8>
+    ): T {
+        if (field == b"distributed_amount") {
+            any::unpack<T>(any::pack(data.distributed_amount))
+        } else if (field == b"current_amount") {
+            any::unpack<T>(any::pack(data.current_amount))
+        } else if (field == b"deposited_amount") {
+            any::unpack<T>(any::pack(data.deposited_amount))
+        } else if (field == b"lp_amount") {
+            any::unpack<T>(any::pack(data.lp_amount))
+        } else if (field == b"swap_out_amount") {
+            any::unpack<T>(any::pack(data.swap_out_amount))
+        } else if (field == b"swap_in_amount") {
+            any::unpack<T>(any::pack(data.swap_in_amount))
+        } else if (field == b"withdrawn_amount") {
+            any::unpack<T>(any::pack(data.withdrawn_amount))
+        } else if (field == b"interest_amount") {
+            any::unpack<T>(any::pack(data.interest_amount))
+        } else if (field == b"interest_share_amount") {
+            any::unpack<T>(any::pack(data.interest_share_amount))
+        } else {
+            abort(0);
+            any::unpack<T>(any::pack(0))
+        }
     }
 }

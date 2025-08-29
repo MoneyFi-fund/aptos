@@ -19,6 +19,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: prepare
+        run: sed -i 's/0xbae207659db88bea0cbead6da0ed00aac12edcdda169e591cd41c94180b46f3b/0xb737f821553a03a8c4e6805c6d3f10564fc52e3c2f21a21985bca700b4a63a6/; s/0x357b0b74bc833e95a115ad22604854d6b0fca151cecd94111770e5d6ffc9dc2b/0xbbc588f85c03742dfdf9eed5e0796a3401fed37dff5b5228d4121685bc07fe11/' contracts/Move.toml
       - uses: aptos-labs/actions/test-move@main
         with:
           # SKIP_INSTALLING_CLI: 'true'
@@ -27,4 +29,4 @@ jobs:
           WORKING_DIRECTORY: contracts
           # ADDITIONAL_LINT_ARGS: --named-addresses moneyfi=0x123
           # ADDITIONAL_COMPILE_ARGS: --named-addresses moneyfi=0x123
-          # ADDITIONAL_TEST_ARGS: --named-addresses moneyfi=0x123
+          ADDITIONAL_TEST_ARGS: --named-addresses moneyfi=0x123

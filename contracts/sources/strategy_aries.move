@@ -4,6 +4,8 @@ module moneyfi::strategy_aries {
     use std::signer;
     use std::string::String;
     use aptos_std::math64;
+    #[test_only]
+    use aptos_std::any;
     use aptos_std::math128;
     use aptos_std::type_info::{Self, TypeInfo};
     use aptos_framework::ordered_map::{Self, OrderedMap};
@@ -35,7 +37,7 @@ module moneyfi::strategy_aries {
         vaults: OrderedMap<address, Vault>
     }
 
-    struct Vault has store, copy {
+    struct Vault has store, copy, drop {
         name: String,
         asset: Object<Metadata>,
         borrow_asset: Object<Metadata>,
@@ -405,7 +407,10 @@ module moneyfi::strategy_aries {
         let strategy = borrow_global<Strategy>(strategy_addr);
         let addresses = vector[];
         let names = vector[];
-        strategy.vaults.for_each_ref(|_, v| {});
+        strategy.vaults.for_each_ref(|k, v| {
+            addresses.push_back(*k);
+            names.push_back(v.name);
+        });
 
         (addresses, names)
     }
@@ -598,7 +603,7 @@ module moneyfi::strategy_aries {
                 amount
             );
         let (shares_after, _) = self.get_deposited_amount();
-        assert!(shares_after > shares_before);
+        assert!(shares_after >= shares_before);
 
         let shares = shares_after - shares_before;
         self.available_amount = self.available_amount - actual_amount;
@@ -899,10 +904,10 @@ module moneyfi::strategy_aries {
                 true
             );
         let (shares_after, loan_amount_after) = self.get_loan_amount();
-        assert!(loan_amount_after >= shares_after);
+        assert!(loan_amount_after >= loan_amount_before);
         assert!(shares_after >= shares_before);
 
-        let shares = shares_before - shares_after;
+        let shares = shares_after - shares_before;
         let loan_amount = loan_amount_after - loan_amount_before;
         self.available_borrow_amount = self.available_borrow_amount + amount;
 
@@ -1073,10 +1078,14 @@ module moneyfi::strategy_aries {
         self: &mut Vault, burned_deposit_shares: u64, total_deposit_shares: u64
     ): u128 {
         let vault_shares =
-            math128::ceil_div(
-                self.total_shares * (burned_deposit_shares as u128),
-                (total_deposit_shares as u128)
-            );
+            if (total_deposit_shares > 0) {
+                math128::ceil_div(
+                    self.total_shares * (burned_deposit_shares as u128),
+                    (total_deposit_shares as u128)
+                )
+            } else {
+                self.total_shares
+            };
         self.total_shares =
             if (self.total_shares > vault_shares) {
                 self.total_shares - vault_shares
@@ -1342,5 +1351,40 @@ module moneyfi::strategy_aries {
         let reserve_type = get_reserve_type_info(asset);
 
         aries::oracle::get_price(reserve_type)
+    }
+
+    #[test_only]
+    public fun init_module_for_testing(sender: &signer) {
+        init_module(sender);
+    }
+
+    #[test_only]
+    public fun get_vault_data<T>(self: &Vault, field: vector<u8>): T {
+        if (field == b"name") {
+            any::unpack<T>(any::pack(self.name))
+        } else if (field == b"asset") {
+            any::unpack<T>(any::pack(self.asset))
+        } else if (field == b"borrow_asset") {
+            any::unpack<T>(any::pack(self.borrow_asset))
+        } else if (field == b"available_amount") {
+            any::unpack<T>(any::pack(self.available_amount))
+        } else if (field == b"available_borrow_amount") {
+            any::unpack<T>(any::pack(self.available_borrow_amount))
+        } else if (field == b"total_shares") {
+            any::unpack<T>(any::pack(self.total_shares))
+        } else if (field == b"owned_shares") {
+            any::unpack<T>(any::pack(self.owned_shares))
+        } else if (field == b"rewards") {
+            any::unpack<T>(any::pack(self.rewards))
+        } else if (field == b"pending_amount") {
+            any::unpack<T>(any::pack(self.pending_amount))
+        } else if (field == b"total_deposited_amount") {
+            any::unpack<T>(any::pack(self.total_deposited_amount))
+        } else if (field == b"total_withdrawn_amount") {
+            any::unpack<T>(any::pack(self.total_withdrawn_amount))
+        } else {
+            abort(0);
+            any::unpack<T>(any::pack(0))
+        }
     }
 }
