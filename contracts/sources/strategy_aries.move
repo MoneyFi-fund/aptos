@@ -884,7 +884,9 @@ module moneyfi::strategy_aries {
         let strategy_addr = get_strategy_address();
         let reserve_info = get_reserve_type_info(&self.borrow_asset);
 
-        aries::profile::max_borrow_amount(strategy_addr, &self.name, reserve_info)
+        let amount =
+            aries::profile::max_borrow_amount(strategy_addr, &self.name, reserve_info);
+        amount * 90 / 100 // TODO: config percent
     }
 
     /// Returns amount, shares and loan amount
@@ -892,7 +894,7 @@ module moneyfi::strategy_aries {
         self: &mut Vault, strategy_signer: &signer, amount: u64
     ): (u64, u128, u128) {
         let borrowable_amount = self.max_borrow_amount();
-        assert!(borrowable_amount > amount);
+        assert!(borrowable_amount >= amount);
 
         let (shares_before, loan_amount_before) = self.get_loan_amount();
         let amount =
@@ -973,7 +975,7 @@ module moneyfi::strategy_aries {
             deposit_to_aries_impl(
                 strategy_signer,
                 *self.name.bytes(),
-                &self.asset,
+                &self.borrow_asset,
                 amount
             );
         self.available_borrow_amount = self.available_borrow_amount - amount;
@@ -1110,8 +1112,8 @@ module moneyfi::strategy_aries {
         if (total_deposit_shares == 0) {
             (deposit_shares as u128) * math128::pow(10, SHARE_DECIMALS as u128)
         } else {
-            (deposit_shares as u128)
-                * self.total_shares / (total_deposit_shares as u128)
+            (deposit_shares as u128) * self.total_shares
+                / (total_deposit_shares as u128)
         }
     }
 
@@ -1308,10 +1310,10 @@ module moneyfi::strategy_aries {
 
         // ignore price impact
         let sqrt_price_limit =
-            if (!hyperion::utils::is_sorted(*from, *to)) {
-                79226673515401279992447579055 // max sqrt price
-            } else {
+            if (hyperion::utils::is_sorted(*from, *to)) {
                 04295048016 // min sqrt price
+            } else {
+                79226673515401279992447579055 // max sqrt price
             };
 
         let balance_in_before = primary_fungible_store::balance(strategy_addr, *from);

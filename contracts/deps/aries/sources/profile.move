@@ -10,10 +10,12 @@ module aries::profile {
     native public(friend) fun asset_price(
         a0: &option::Option<string::String>, a1: &type_info::TypeInfo
     ): decimal::Decimal;
-    #[native_interface]
-    native public fun available_borrowing_power(
+
+    public fun available_borrowing_power(
         a0: address, a1: &string::String
-    ): decimal::Decimal;
+    ): decimal::Decimal {
+        decimal::from_u64(0)
+    }
 
     public fun claimable_reward_amount_on_farming<T0>(
         a0: address, a1: string::String
@@ -47,10 +49,11 @@ module aries::profile {
         aries::mock::get_call_data(b"profile::is_registered", false)
     }
 
-    #[native_interface]
-    native public fun max_borrow_amount(
+    public fun max_borrow_amount(
         a0: address, a1: &string::String, a2: type_info::TypeInfo
-    ): u64;
+    ): u64 {
+        aries::mock::get_call_data(b"profile::max_borrow_amount", 0)
+    }
 
     public fun new(a0: &signer, a1: string::String) {}
 
@@ -59,6 +62,7 @@ module aries::profile {
     }
 
     public fun profile_loan<T0>(a0: address, a1: string::String): (u128, u128) {
-        (0, 0)
+        let v = aries::mock::get_call_data(b"profile::profile_loan", vector[0, 0]);
+        (*v.borrow(0), *v.borrow(1))
     }
 }
