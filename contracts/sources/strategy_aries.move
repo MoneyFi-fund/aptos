@@ -1308,7 +1308,7 @@ module moneyfi::strategy_aries {
 
         // ignore price impact
         let sqrt_price_limit =
-            if (hyperion::utils::is_sorted(*from, *to)) {
+            if (!hyperion::utils::is_sorted(*from, *to)) {
                 79226673515401279992447579055 // max sqrt price
             } else {
                 04295048016 // min sqrt price
