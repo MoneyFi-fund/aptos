@@ -186,6 +186,11 @@ module moneyfi::access_control {
         )
     }
 
+    public fun is_admin(addr: address): bool acquires Registry {
+        let registry = borrow_global<Registry>(@moneyfi);
+        registry.has_role(&addr, ROLE_ADMIN)
+    }
+
     // -- Private
 
     fun has_role(self: &Registry, addr: &address, role: u8): bool {

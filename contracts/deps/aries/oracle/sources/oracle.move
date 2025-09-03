@@ -8,7 +8,7 @@ module oracle::oracle {
         weight: u64
     }
 
-    // NOTE: Functions are 'native' for simplicity. They may or may not be native in actuality.
-    #[native_interface]
-    native public fun get_price(a0: type_info::TypeInfo): decimal::Decimal;
+    public fun get_price(a0: type_info::TypeInfo): decimal::Decimal {
+        decimal::from_u64(1)
+    }
 }

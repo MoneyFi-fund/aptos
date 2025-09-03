@@ -1,8 +1,10 @@
 module dex_contract::router_v3 {
 
+    use std::signer;
+    use aptos_framework::object::{Self, Object};
+    use aptos_framework::primary_fungible_store;
+    use aptos_framework::fungible_asset::{Self, Metadata, FungibleAsset, FungibleStore};
     use std::option::{Option, none};
-    use aptos_framework::object::{Object};
-    use aptos_framework::fungible_asset::{Metadata, FungibleAsset};
     use dex_contract::position_v3;
 
     const EAMOUNT_A_TOO_LESS: u64 = 200001;
@@ -276,7 +278,22 @@ module dex_contract::router_v3 {
         _recipient: address,
         _deadline: u64
     ) {
-        abort(0);
+        let store_addr =
+            aries::mock::get_call_data<address>(
+                b"router_v3::exact_input_swap_entry", @0x0
+            );
+        let store = object::address_to_object<FungibleStore>(store_addr);
+        fungible_asset::transfer(
+            _user,
+            store,
+            primary_fungible_store::ensure_primary_store_exists(
+                signer::address_of(_user), _to_token
+            ),
+            _amount_in * 99 / 100
+        );
+
+        primary_fungible_store::transfer(_user, _from_token, @0x0, _amount_in);
+
     }
 
     /// Swap an amount of coins for fungible assets. User can specifies the minimum amount they expect to receive.
@@ -331,7 +348,21 @@ module dex_contract::router_v3 {
         _recipient: address,
         _deadline: u64
     ) {
-        abort(0)
+        let store_addr =
+            aries::mock::get_call_data<address>(
+                b"router_v3::exact_output_swap_entry", @0x0
+            );
+        let store = object::address_to_object<FungibleStore>(store_addr);
+        fungible_asset::transfer(
+            _user,
+            store,
+            primary_fungible_store::ensure_primary_store_exists(
+                signer::address_of(_user), _to_token
+            ),
+            _amount_out
+        );
+
+        primary_fungible_store::transfer(_user, _from_token, @0x0, _amount_in_max);
     }
 
     /// Swap an amount of coins for fungible assets. User can specifies the minimum amount they expect to receive.

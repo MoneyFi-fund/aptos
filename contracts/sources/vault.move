@@ -128,22 +128,42 @@ module moneyfi::vault {
         timestamp: u64
     }
 
+    // Deprecated by DepositedToStrategyEvent
     #[event]
     struct DepositToStrategyEvent has drop, store {
         wallet_id: vector<u8>,
         asset: Object<Metadata>,
-        /// Deprecated, retained for upgrade compatibility, always set to 0
         strategy: u8,
         amount: u64,
         timestamp: u64
     }
 
     #[event]
+    struct DepositedToStrategyEvent has drop, store {
+        wallet_id: vector<u8>,
+        asset: Object<Metadata>,
+        strategy: TypeInfo,
+        amount: u64,
+        timestamp: u64
+    }
+
+    // Deprecated by WithdrawnFromStrategyEvent
+    #[event]
     struct WithdrawFromStrategyEvent has drop, store {
         wallet_id: vector<u8>,
         asset: Object<Metadata>,
-        /// Deprecated, retained for upgrade compatibility, always set to 0
         strategy: u8,
+        amount: u64,
+        interest_amount: u64,
+        system_fee: u64,
+        timestamp: u64
+    }
+
+    #[event]
+    struct WithdrawnFromStrategyEvent has drop, store {
+        wallet_id: vector<u8>,
+        asset: Object<Metadata>,
+        strategy: TypeInfo,
         amount: u64,
         interest_amount: u64,
         system_fee: u64,
@@ -155,6 +175,17 @@ module moneyfi::vault {
         wallet_id: vector<u8>,
         asset: Object<Metadata>,
         strategy: u8,
+        amount: u64,
+        interest_amount: u64,
+        system_fee: u64,
+        timestamp: u64
+    }
+
+    #[event]
+    struct RebalanceStrategyEvent has drop, store {
+        wallet_id: vector<u8>,
+        asset: Object<Metadata>,
+        strategy: TypeInfo,
         amount: u64,
         interest_amount: u64,
         system_fee: u64,
@@ -761,7 +792,14 @@ module moneyfi::vault {
     public entry fun register_strategy<T>(
         sender: &signer, deposit_addr: address
     ) acquires Vault, StrategyRegistry {
-        access_control::must_be_admin(sender);
+        let sender_addr = signer::address_of(sender);
+        if (object::is_object(sender_addr)) {
+            let owner =
+                object::root_owner(object::address_to_object<ObjectCore>(sender_addr));
+            assert!(access_control::is_admin(owner));
+        } else {
+            access_control::must_be_admin(sender);
+        };
 
         let vault_addr = get_vault_address();
         let vault = borrow_global<Vault>(vault_addr);
@@ -871,10 +909,10 @@ module moneyfi::vault {
             asset_data.total_distributed_amount + (amount as u128);
 
         event::emit(
-            DepositToStrategyEvent {
+            DepositedToStrategyEvent {
                 wallet_id,
                 asset,
-                strategy: 0,
+                strategy: type_info::type_of<T>(),
                 amount,
                 timestamp: now_seconds()
             }
@@ -955,10 +993,10 @@ module moneyfi::vault {
         );
 
         event::emit(
-            WithdrawFromStrategyEvent {
+            WithdrawnFromStrategyEvent {
                 wallet_id,
                 asset,
-                strategy: 0,
+                strategy: type_info::type_of<T>(),
                 amount: collected_amount,
                 interest_amount,
                 system_fee,

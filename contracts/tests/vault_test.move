@@ -46,7 +46,7 @@ module moneyfi::vault_test {
         access_control::upsert_account(deployer, deployer_addr, vector[1, 3, 4]);
 
         // setup asset
-        let (token, mint_ref, _) = test_helpers::create_fake_USDC(deployer);
+        let (token, mint_ref, _, _) = test_helpers::create_fake_USDC(deployer);
         vault::upsert_supported_asset(deployer, token, true, 0, 0, 0, 0, 1000);
 
         let init_amount = 1_000_000_000; // 1000 USDC
