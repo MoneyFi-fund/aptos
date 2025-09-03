@@ -672,12 +672,29 @@ module moneyfi::strategy_aries {
                     } else {
                         self.owned_shares
                     };
-                let withdrawn_amount =
+                if (owned_shares > 0) {
                     self.withdraw_owned_shares(strategy_signer, owned_shares);
-                self.repay_aries(strategy_signer, withdrawn_amount, swap_slippage);
+                } else {
+                    withdraw_from_aries_impl(
+                        strategy_signer,
+                        *self.name.bytes(),
+                        &self.asset,
+                        avail_amount,
+                        false
+                    );
+                };
+                let avail_amount = self.get_avail_amount_without_pending_amount();
+                let repay_amount = self.estimate_repay_amount(avail_amount, swap_slippage);
+                self.repay_aries(strategy_signer, repay_amount, swap_slippage);
 
                 return self.withdraw_from_aries(strategy_signer, amount, swap_slippage);
             }
+        };
+
+        // it may need to be compounded again after repay
+        let avail_amount = self.get_avail_amount_without_pending_amount();
+        if (avail_amount > 0 || self.available_borrow_amount > 0) {
+            self.compound_vault_impl(strategy_signer);
         };
 
         let (shares_before, _) = self.get_deposited_amount();
@@ -1037,15 +1054,10 @@ module moneyfi::strategy_aries {
         amount_in + amount_in * slippage / 10000
     }
 
-    fun estimate_repay_amount(
-        self: &Vault,
-        borrow_asset: &Object<Metadata>,
-        amount: u64,
-        slippage: u64
-    ): u64 {
-        let (_, pool) = get_hyperion_pool(&self.asset, borrow_asset);
+    fun estimate_repay_amount(self: &Vault, amount: u64, slippage: u64): u64 {
+        let (_, pool) = get_hyperion_pool(&self.asset, &self.borrow_asset);
         let (amount_out, _) =
-            hyperion::pool_v3::get_amount_out(pool, *borrow_asset, amount);
+            hyperion::pool_v3::get_amount_out(pool, self.borrow_asset, amount);
 
         amount_out - amount_out * slippage / 10000
     }
