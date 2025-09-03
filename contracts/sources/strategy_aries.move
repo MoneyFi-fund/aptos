@@ -1044,6 +1044,7 @@ module moneyfi::strategy_aries {
         (amount_in, amount_out)
     }
 
+    /// estimate amount of vault asset needed to swap to repay_amount
     fun estimate_swap_amount_to_repay(
         self: &Vault, repay_amount: u64, slippage: u64
     ): u64 {
@@ -1054,6 +1055,7 @@ module moneyfi::strategy_aries {
         amount_in + amount_in * slippage / 10000
     }
 
+    /// estimate amount of borrow asset when swap from vault asset for repayment
     fun estimate_repay_amount(self: &Vault, amount: u64, slippage: u64): u64 {
         let (_, pool) = get_hyperion_pool(&self.asset, &self.borrow_asset);
         let (amount_out, _) = hyperion::pool_v3::get_amount_out(pool, self.asset, amount);
@@ -1309,7 +1311,9 @@ module moneyfi::strategy_aries {
         let (fee_tier, pool) = get_hyperion_pool(from, to);
         let (amount_in, amount_out) =
             if (exact_out) {
-                let (amount_in, _) = hyperion::pool_v3::get_amount_in(pool, *to, amount);
+                let (amount_in, _) = hyperion::pool_v3::get_amount_in(
+                    pool, *from, amount
+                );
                 amount_in = amount_in + (amount_in * slippage / 10000);
                 (amount_in, amount)
             } else {
