@@ -1049,15 +1049,14 @@ module moneyfi::strategy_aries {
     ): u64 {
         let (_, pool) = get_hyperion_pool(&self.asset, &self.borrow_asset);
         let (amount_in, _) =
-            hyperion::pool_v3::get_amount_in(pool, self.borrow_asset, repay_amount);
+            hyperion::pool_v3::get_amount_in(pool, self.asset, repay_amount);
 
         amount_in + amount_in * slippage / 10000
     }
 
     fun estimate_repay_amount(self: &Vault, amount: u64, slippage: u64): u64 {
         let (_, pool) = get_hyperion_pool(&self.asset, &self.borrow_asset);
-        let (amount_out, _) =
-            hyperion::pool_v3::get_amount_out(pool, self.borrow_asset, amount);
+        let (amount_out, _) = hyperion::pool_v3::get_amount_out(pool, self.asset, amount);
 
         amount_out - amount_out * slippage / 10000
     }
