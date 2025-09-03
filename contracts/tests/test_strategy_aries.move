@@ -95,9 +95,7 @@ module moneyfi::strategy_aries_test {
         }
     }
 
-    fun test_create_vault(
-        self: &mut TestContext, sender: &signer, wallet1: &signer
-    ) {
+    fun test_create_vault(self: &mut TestContext, sender: &signer) {
         aries::mock::on(b"profile::profile_exists", false, 1);
         aries::mock::on(b"profile::is_registered", false, 1);
         aries::mock::on(b"profile::get_profile_address", @0xabc, 1000);
@@ -217,7 +215,6 @@ module moneyfi::strategy_aries_test {
         let strategy_addr = strategy_aries::get_strategy_address();
         let ref = object::create_object(strategy_addr);
         let store = fungible_asset::create_store(&ref, self.usdt);
-        let balance = primary_fungible_store::balance(strategy_addr, self.usdt);
         fungible_asset::mint_to(&self.usdt_mint_ref, store, 1_000_000);
         aries::mock::on(
             b"controller::withdraw_fa:store", object::object_address(&store), 1
@@ -278,7 +275,6 @@ module moneyfi::strategy_aries_test {
         let strategy_addr = strategy_aries::get_strategy_address();
         let ref = object::create_object(strategy_addr);
         let store = fungible_asset::create_store(&ref, self.usdc);
-        let balance = primary_fungible_store::balance(strategy_addr, self.usdc);
         fungible_asset::mint_to(&self.usdc_mint_ref, store, 1_000_000);
         aries::mock::reset(b"controller::withdraw_fa:store");
         aries::mock::reset(b"controller::withdraw_fa:asset");
@@ -292,7 +288,6 @@ module moneyfi::strategy_aries_test {
         // mock hyperion swap
         let ref = object::create_object(strategy_addr);
         let usdt_store = fungible_asset::create_store(&ref, self.usdt);
-        let balance = primary_fungible_store::balance(strategy_addr, self.usdt);
         fungible_asset::mint_to(&self.usdt_mint_ref, usdt_store, 1_000_000);
         aries::mock::on(
             b"router_v3::exact_input_swap_entry",
@@ -331,7 +326,6 @@ module moneyfi::strategy_aries_test {
         let strategy_addr = strategy_aries::get_strategy_address();
         let ref = object::create_object(strategy_addr);
         let store = fungible_asset::create_store(&ref, self.usdt);
-        let balance = primary_fungible_store::balance(strategy_addr, self.usdt);
         fungible_asset::mint_to(&self.usdt_mint_ref, store, 1_000_000);
         aries::mock::on(
             b"controller::withdraw_fa:store", object::object_address(&store), 2
@@ -361,7 +355,6 @@ module moneyfi::strategy_aries_test {
 
         let ref = object::create_object(strategy_addr);
         let usdc_store = fungible_asset::create_store(&ref, self.usdc);
-        let balance = primary_fungible_store::balance(strategy_addr, self.usdc);
         fungible_asset::mint_to(&self.usdc_mint_ref, usdc_store, 1_000_000);
         aries::mock::on(
             b"router_v3::exact_output_swap_entry",
@@ -374,7 +367,7 @@ module moneyfi::strategy_aries_test {
         // after withdraw
         aries::mock::on(b"profile::get_deposited_amount", 0, 1);
 
-        let (_, vault) = strategy_aries::get_vault(self.vault_name);
+        // let (_, vault) = strategy_aries::get_vault(self.vault_name);
         // debug::print(&vault);
         strategy_aries::withdraw(
             sender,
@@ -392,17 +385,20 @@ module moneyfi::strategy_aries_test {
         assert!(get_vault_data<u128>(&vault, b"owned_shares") == 0);
         assert!(get_vault_data<u64>(&vault, b"available_borrow_amount") == 0);
         assert!(get_vault_data<u128>(&vault, b"total_withdrawn_amount") == 5010000);
+        assert!(get_vault_data<u128>(&vault, b"total_shares") == 0);
 
         // assert account state
         let account_data =
             wallet_account::get_strategy_data<strategy_aries::AccountData>(
                 &wallet_account::get_wallet_account(self.wallet1_id)
             );
+        debug::print(&account_data);
 
-        let (pending, deposited, _) =
+        let (pending, deposited, withdrawable) =
             strategy_aries::get_account_state(self.vault_name, self.wallet1_id);
         assert!(pending == 0);
         assert!(deposited == 0);
+        assert!(withdrawable == 0);
     }
 
     #[test(deployer = @moneyfi, aries_deployer = @aries, wallet1 = @0x111)]
@@ -412,7 +408,7 @@ module moneyfi::strategy_aries_test {
         let ctx = setup(deployer, aries_deployer, wallet1);
 
         debug::print(&string::utf8(b"--------------- test_create_vault"));
-        ctx.test_create_vault(deployer, wallet1);
+        ctx.test_create_vault(deployer);
         debug::print(&string::utf8(b"--------------- test_deposit"));
         ctx.test_deposit(deployer);
         debug::print(&string::utf8(b"--------------- test_withdraw_pending_amount"));

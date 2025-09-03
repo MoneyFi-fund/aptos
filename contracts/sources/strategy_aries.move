@@ -333,7 +333,7 @@ module moneyfi::strategy_aries {
                 withdraw_amount = acc_deposit_amount;
             };
 
-            let (withdrawn_amount, burned_shares) =
+            let (withdrawn_amount, burned_shares, total_deposit_shares) =
                 vault.withdraw_from_aries(strategy_signer, withdraw_amount, swap_slippage);
 
             let dep_amount =
@@ -643,13 +643,13 @@ module moneyfi::strategy_aries {
 
     /// Withdraw asset from Aries back to vault
     /// Assumes vault has been compounded
-    /// Return received amount and burned shares
+    /// Return received amount, burned shares and total shares before withdraw
     fun withdraw_from_aries(
         self: &mut Vault,
         strategy_signer: &signer,
         amount: u64,
         swap_slippage: u64
-    ): (u64, u64) {
+    ): (u64, u64, u64) {
         let reserve_type = get_reserve_type_info(&self.asset);
         let (borrow_shares, _) = self.get_loan_amount();
         let (total_deposit_shares, _) = self.get_deposited_amount();
@@ -695,7 +695,7 @@ module moneyfi::strategy_aries {
         let shares = shares_before - shares_after;
         self.available_amount = self.available_amount + amount;
 
-        (amount, shares)
+        (amount, shares, shares_before)
     }
 
     fun withdraw_owned_shares(
