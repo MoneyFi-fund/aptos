@@ -115,7 +115,6 @@ module moneyfi::strategy_aries_test {
             sender,
             self.vault_name,
             self.wallet1_id,
-            self.usdt,
             5_000_000
         );
 
@@ -143,9 +142,7 @@ module moneyfi::strategy_aries_test {
             sender,
             self.vault_name,
             self.wallet1_id,
-            self.usdt,
             1_000_000,
-            0,
             0
         );
 
@@ -233,9 +230,7 @@ module moneyfi::strategy_aries_test {
             sender,
             self.vault_name,
             self.wallet1_id,
-            self.usdt,
             3_500_000,
-            0,
             0
         );
 
@@ -312,7 +307,7 @@ module moneyfi::strategy_aries_test {
         assert!(get_vault_data<u128>(&vault, b"total_shares") == 5_100_000_000);
         assert!(get_vault_data<u128>(&vault, b"owned_shares") == 0);
 
-        strategy_aries::borrow_and_deposit(sender, self.vault_name, 150_000, 0);
+        strategy_aries::borrow_and_deposit(sender, self.vault_name, 150_000);
 
         // assert vault state
         let (_, vault) = strategy_aries::get_vault(self.vault_name);
@@ -326,25 +321,41 @@ module moneyfi::strategy_aries_test {
         let strategy_addr = strategy_aries::get_strategy_address();
         let ref = object::create_object(strategy_addr);
         let store = fungible_asset::create_store(&ref, self.usdt);
-        fungible_asset::mint_to(&self.usdt_mint_ref, store, 1_000_000);
+        fungible_asset::mint_to(&self.usdt_mint_ref, store, 10_000_000);
+        // withdraw: 2 for repay, 1 for withdraw
         aries::mock::on(
-            b"controller::withdraw_fa:store", object::object_address(&store), 2
+            b"controller::withdraw_fa:store", object::object_address(&store), 3
         );
         aries::mock::on(
-            b"controller::withdraw_fa:asset", object::object_address(&self.usdt), 2
+            b"controller::withdraw_fa:asset", object::object_address(&self.usdt), 3
         );
         aries::mock::reset(b"profile::get_deposited_amount");
         aries::mock::reset(b"reserve::get_underlying_amount_from_lp_amount");
         aries::mock::reset(b"reserve::get_lp_amount_from_underlying_amount");
         // before withdraw
         aries::mock::on(b"profile::get_deposited_amount", 60, 4);
-        aries::mock::on(b"profile::get_deposited_amount", 51, 2); // after repay
+        aries::mock::on(b"profile::get_deposited_amount", 54, 1); // after repay 1st
+        aries::mock::on(b"profile::get_deposited_amount", 50, 2); // after repay 2 times
         aries::mock::on(
             b"profile::profile_loan",
             vector<u128>[120, aries::decimal::raw(aries::decimal::from_u128(151_000))],
+            6
+        );
+        // after repay first time
+        aries::mock::on(
+            b"profile::profile_loan",
+            vector<u128>[10, aries::decimal::raw(aries::decimal::from_u128(16675))],
             3
         );
-        aries::mock::on(b"reserve::get_lp_amount_from_underlying_amount", 0, 1); // get shares from interest to burn
+        // after repay 2 times
+        aries::mock::on(
+            b"profile::profile_loan",
+            vector<u128>[0, aries::decimal::raw(aries::decimal::from_u128(0))],
+            10
+        );
+        aries::mock::on(b"reserve::get_lp_amount_from_underlying_amount", 0, 1); // compound: get shares from interest to burn
+        aries::mock::on(b"reserve::get_lp_amount_from_underlying_amount", 6, 1); // get shares from withdraw amount when repay 1st
+        aries::mock::on(b"reserve::get_lp_amount_from_underlying_amount", 3, 1); // get shares from withdraw amount when repay 2st
         aries::mock::on(b"reserve::get_lp_amount_from_underlying_amount", 51, 1); // get shares from withdraw amount
         // aries::mock::on(b"reserve::get_lp_amount_from_underlying_amount", 1, 1);
         aries::mock::on(b"reserve::get_underlying_amount_from_lp_amount", 510_000, 1);
@@ -352,17 +363,24 @@ module moneyfi::strategy_aries_test {
         aries::mock::on(b"reserve::get_underlying_amount_from_lp_amount", 510_000, 4);
         aries::mock::on(b"reserve::get_underlying_amount_from_lp_amount", 152_000, 1);
         aries::mock::on(b"reserve::get_borrow_amount_from_share_dec", 152_000 as u128, 1);
+        aries::mock::on(b"profile::available_borrowing_power", 150000, 2); // before repay 1st
+        aries::mock::on(b"profile::available_borrowing_power", 152000, 1); // after repay 1st
 
         let ref = object::create_object(strategy_addr);
         let usdc_store = fungible_asset::create_store(&ref, self.usdc);
         fungible_asset::mint_to(&self.usdc_mint_ref, usdc_store, 1_000_000);
         aries::mock::on(
-            b"router_v3::exact_output_swap_entry",
+            b"router_v3::exact_input_swap_entry",
             object::object_address(&usdc_store),
-            1
+            2 // repay 2 times
         );
+        // repay
         aries::mock::on(
-            b"controller::deposit_fa", object::object_address(&self.usdc), 1
+            b"controller::deposit_fa", object::object_address(&self.usdc), 2
+        );
+        // recompound
+        aries::mock::on(
+            b"controller::deposit_fa", object::object_address(&self.usdt), 1
         );
         // after withdraw
         aries::mock::on(b"profile::get_deposited_amount", 0, 1);
@@ -373,9 +391,7 @@ module moneyfi::strategy_aries_test {
             sender,
             self.vault_name,
             self.wallet1_id,
-            self.usdt,
             600_000,
-            0,
             0
         );
 
