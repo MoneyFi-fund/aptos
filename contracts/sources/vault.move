@@ -253,7 +253,7 @@ module moneyfi::vault {
         fee_recipient: address
     ) acquires Config {
         assert!(system_fee_percent <= 10_000);
-        // TODO: validate referrals_percents
+        wallet_account::validate_referral_percents(referral_percents);
 
         access_control::must_be_admin(sender);
         // must be fee manager to change fee_recipient, system_fee_percent
@@ -290,6 +290,13 @@ module moneyfi::vault {
     ) acquires Config {
         access_control::must_be_service_account(sender);
         let config = borrow_global_mut<Config>(@moneyfi);
+
+        if (max_deposit > 0) {
+            assert!(min_deposit <= max_deposit);
+        };
+        if (max_withdraw > 0) {
+            assert!(min_withdraw <= max_withdraw);
+        };
 
         config.upsert_asset(
             &asset,

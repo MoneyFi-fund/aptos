@@ -144,11 +144,15 @@ module moneyfi::wallet_account {
             let v = option::borrow(&system_fee_percent);
             assert!(*v <= 10000, error::invalid_argument(E_INVALID_ARGUMENT));
         };
+        validate_referral_percents(referral_percents);
+
         access_control::must_be_fee_manager(sender);
         let account_addr = object::object_address(&account);
         let acc = borrow_global_mut<WalletAccount>(account_addr);
         let system_fee_percent_before = acc.system_fee_percent;
         let referral_percents_before = acc.referral_percents;
+        acc.system_fee_percent = system_fee_percent;
+        acc.referral_percents = referral_percents;
 
         event::emit(
             ConfigFeeEvent {
@@ -444,6 +448,15 @@ module moneyfi::wallet_account {
 
         let wallet_account = borrow_global<WalletAccount>(addr);
         object::generate_signer_for_extending(&wallet_account.extend_ref)
+    }
+
+    public fun validate_referral_percents(percents: vector<u64>) {
+        let total = 0;
+        while (percents.length() > 0) {
+            total = total + percents.pop_back();
+        };
+
+        assert!(total < 10000, error::invalid_argument(E_INVALID_ARGUMENT));
     }
 
     public fun get_referrer_addresses(
