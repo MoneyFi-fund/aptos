@@ -6,9 +6,10 @@ on:
     # paths:
       # - 'aries/**'
   pull_request:
-    # branches: ["develop"]
+    branches: ["master"]
     paths:
       - 'aries/**'
+      - 'rust-client/**'
 
 env:
   CARGO_TERM_COLOR: always
