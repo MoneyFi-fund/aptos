@@ -14,7 +14,16 @@ module aries::profile {
     public fun available_borrowing_power(
         a0: address, a1: &string::String
     ): decimal::Decimal {
-        decimal::from_u64(0)
+        let amount = aries::mock::get_call_data(
+            b"profile::available_borrowing_power", 0
+        );
+
+        // std::debug::print(
+        //     &aptos_std::string_utils::format1(
+        //         &b"profile::available_borrowing_power: {}", amount
+        //     )
+        // );
+        decimal::from_u64(amount)
     }
 
     public fun claimable_reward_amount_on_farming<T0>(
@@ -35,8 +44,11 @@ module aries::profile {
     public fun get_deposited_amount(
         a0: address, a1: &string::String, a2: type_info::TypeInfo
     ): u64 {
-        // std::debug::print(&b"get_deposited_amount");
-        aries::mock::get_call_data(b"profile::get_deposited_amount", 0)
+        let amount = aries::mock::get_call_data(b"profile::get_deposited_amount", 0);
+        // std::debug::print(
+        //     &aptos_std::string_utils::format1(&b"get_deposited_amount: {}", amount)
+        // );
+        amount
     }
 
     public fun get_profile_address(a0: address, a1: string::String): address {
@@ -63,6 +75,9 @@ module aries::profile {
 
     public fun profile_loan<T0>(a0: address, a1: string::String): (u128, u128) {
         let v = aries::mock::get_call_data(b"profile::profile_loan", vector[0, 0]);
+        // std::debug::print(
+        //     &aptos_std::string_utils::format1(&b"profile::profile_loan: {}", v)
+        // );
         (*v.borrow(0), *v.borrow(1))
     }
 }
