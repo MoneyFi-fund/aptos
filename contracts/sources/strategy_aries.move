@@ -297,93 +297,45 @@ module moneyfi::strategy_aries {
         access_control::must_be_service_account(sender);
 
         // TODO: check rate limit
-
         let strategy_addr = get_strategy_address();
         let strategy = borrow_global_mut<Strategy>(strategy_addr);
         let strategy_signer = &strategy.get_strategy_signer();
 
-        let vault_addr = get_vault_address(vault_name);
-        let vault = strategy.get_vault_mut(vault_name);
-        assert!(!vault.paused);
-        assert!(&vault.asset == &asset);
-
-        let account = &wallet_account::get_wallet_account(wallet_id);
-        let account_data = get_account_data(account);
-        let account_vault_data = account_data.get_account_data_for_vault(vault_addr);
-
-        let deposited_amount = amount;
-        let pending_amount = vault.get_pending_amount(account);
-        if (amount > pending_amount) {
-            vault.compound_vault_impl(strategy_signer);
-
-            let withdraw_amount = amount - pending_amount;
-            amount = pending_amount;
-            deposited_amount = amount;
-            let (total_deposit_shares, _) = vault.get_deposited_amount();
-            let acc_deposit_shares =
-                vault.get_deposit_shares_from_vault_shares(
-                    account_vault_data.vault_shares, total_deposit_shares
-                );
-            let reserve_type = get_reserve_type_info(&vault.asset);
-            let acc_deposit_amount =
-                aries::reserve::get_underlying_amount_from_lp_amount(
-                    reserve_type, acc_deposit_shares
-                );
-            if (withdraw_amount > acc_deposit_amount) {
-                withdraw_amount = acc_deposit_amount;
-            };
-
-            let (withdrawn_amount, burned_shares, total_deposit_shares) =
-                vault.withdraw_from_aries(strategy_signer, withdraw_amount, swap_slippage);
-
-            let dep_amount =
-                math64::mul_div(
-                    account_vault_data.deposited_amount,
-                    burned_shares,
-                    acc_deposit_shares
-                );
-            account_vault_data.deposited_amount =
-                if (account_vault_data.deposited_amount > dep_amount) {
-                    account_vault_data.deposited_amount - dep_amount
-                } else { 0 };
-            let burned_vault_shares =
-                vault.burn_vault_shares(burned_shares, total_deposit_shares);
-            account_vault_data.vault_shares =
-                if (account_vault_data.vault_shares > burned_vault_shares) {
-                    account_vault_data.vault_shares - burned_vault_shares
-                } else { 0 };
-
-            let (_, owned_deposited_amount) =
-                vault.get_owned_deposited_amount(total_deposit_shares);
-            let total_loan_amount = vault.estimate_amount_to_repay();
-            if (total_loan_amount > owned_deposited_amount) {
-                let deduct_amount =
-                    (total_loan_amount - owned_deposited_amount) * burned_shares
-                        / total_deposit_shares;
-                withdrawn_amount =
-                    withdrawn_amount
-                        - math64::min(withdraw_amount, deduct_amount as u64);
-            };
-
-            deposited_amount = deposited_amount + dep_amount;
-            amount = amount + withdrawn_amount;
-            vault.update_pending_amount(account, withdrawn_amount, 0);
-        };
-
-        let account_addr = object::object_address(account);
-        primary_fungible_store::transfer(
-            strategy_signer,
-            vault.asset,
-            account_addr,
-            amount
-        );
-        vault.update_pending_amount(account, 0, amount);
-        vault.available_amount = vault.available_amount - amount;
-        vault.total_withdrawn_amount = vault.total_withdrawn_amount + (amount as u128);
-
-        wallet_account::set_strategy_data(account, account_data);
+        let (deposited_amount, amount) =
+            withdraw_internal(strategy_signer, strategy, vault_name, wallet_id, asset, amount, swap_slippage);
 
         moneyfi_vault::withdrawn_from_strategy<Strategy>(
+            strategy_signer,
+            wallet_id,
+            asset,
+            deposited_amount,
+            amount,
+            0,
+            gas_fee
+        );
+    }
+
+    /// Rebalance vault by withdrawing all funds back to vault
+    public entry fun rebalance(
+        sender: &signer,
+        vault_name: String,
+        wallet_id: vector<u8>,
+        asset: Object<Metadata>,
+        gas_fee: u64,
+        swap_slippage: u64
+    ) acquires Strategy {
+        assert!(swap_slippage < 10000);
+        access_control::must_be_service_account(sender);
+
+        // TODO: check rate limit
+        let strategy_addr = get_strategy_address();
+        let strategy = borrow_global_mut<Strategy>(strategy_addr);
+        let strategy_signer = &strategy.get_strategy_signer();
+
+        let (deposited_amount, amount) =
+            withdraw_internal(strategy_signer, strategy, vault_name, wallet_id, asset, U64_MAX, swap_slippage);
+
+        moneyfi_vault::rebalance_from_strategy<Strategy>(
             strategy_signer,
             wallet_id,
             asset,
@@ -639,6 +591,99 @@ module moneyfi::strategy_aries {
         assert!(balance_before >= balance_after);
 
         balance_before - balance_after
+    }
+
+    fun withdraw_internal(
+        strategy_signer: &signer,
+        strategy: &mut Strategy,
+        vault_name: String,
+        wallet_id: vector<u8>,
+        asset: Object<Metadata>,
+        amount: u64,
+        swap_slippage: u64
+    ): (u64, u64) {
+        let vault_addr = get_vault_address(vault_name);
+        let vault = strategy.get_vault_mut(vault_name);
+        assert!(!vault.paused);
+        assert!(&vault.asset == &asset);
+
+        let account = &wallet_account::get_wallet_account(wallet_id);
+        let account_data = get_account_data(account);
+        let account_vault_data = account_data.get_account_data_for_vault(vault_addr);
+
+        let deposited_amount = amount;
+        let pending_amount = vault.get_pending_amount(account);
+        if (amount > pending_amount) {
+            vault.compound_vault_impl(strategy_signer);
+
+            let withdraw_amount = amount - pending_amount;
+            amount = pending_amount;
+            deposited_amount = amount;
+            let (total_deposit_shares, _) = vault.get_deposited_amount();
+            let acc_deposit_shares =
+                vault.get_deposit_shares_from_vault_shares(
+                    account_vault_data.vault_shares, total_deposit_shares
+                );
+            let reserve_type = get_reserve_type_info(&vault.asset);
+            let acc_deposit_amount =
+                aries::reserve::get_underlying_amount_from_lp_amount(
+                    reserve_type, acc_deposit_shares
+                );
+            if (withdraw_amount > acc_deposit_amount) {
+                withdraw_amount = acc_deposit_amount;
+            };
+
+            let (withdrawn_amount, burned_shares, total_deposit_shares) =
+                vault.withdraw_from_aries(strategy_signer, withdraw_amount, swap_slippage);
+
+            let dep_amount =
+                math64::mul_div(
+                    account_vault_data.deposited_amount,
+                    burned_shares,
+                    acc_deposit_shares
+                );
+            account_vault_data.deposited_amount =
+                if (account_vault_data.deposited_amount > dep_amount) {
+                    account_vault_data.deposited_amount - dep_amount
+                } else { 0 };
+            let burned_vault_shares =
+                vault.burn_vault_shares(burned_shares, total_deposit_shares);
+            account_vault_data.vault_shares =
+                if (account_vault_data.vault_shares > burned_vault_shares) {
+                    account_vault_data.vault_shares - burned_vault_shares
+                } else { 0 };
+
+            let (_, owned_deposited_amount) =
+                vault.get_owned_deposited_amount(total_deposit_shares);
+            let total_loan_amount = vault.estimate_amount_to_repay();
+            if (total_loan_amount > owned_deposited_amount) {
+                let deduct_amount =
+                    (total_loan_amount - owned_deposited_amount) * burned_shares
+                        / total_deposit_shares;
+                withdrawn_amount =
+                    withdrawn_amount
+                        - math64::min(withdraw_amount, deduct_amount as u64);
+            };
+
+            deposited_amount = deposited_amount + dep_amount;
+            amount = amount + withdrawn_amount;
+            vault.update_pending_amount(account, withdrawn_amount, 0);
+        };
+
+        let account_addr = object::object_address(account);
+        primary_fungible_store::transfer(
+            strategy_signer,
+            vault.asset,
+            account_addr,
+            amount
+        );
+        vault.update_pending_amount(account, 0, amount);
+        vault.available_amount = vault.available_amount - amount;
+        vault.total_withdrawn_amount = vault.total_withdrawn_amount + (amount as u128);
+
+        wallet_account::set_strategy_data(account, account_data);
+
+        (deposited_amount, amount)
     }
 
     /// Withdraw asset from Aries back to vault
