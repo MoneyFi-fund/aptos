@@ -169,9 +169,8 @@ module moneyfi::strategy_hyperion {
         let (liquidity_remove, is_full_withdraw) =
             if (amount_min < position.amount) {
                 let liquidity =
-                    math128::mul_div(
-                        position.lp_amount,
-                        (amount_min as u128),
+                    math128::ceil_div(
+                        position.lp_amount * (amount_min as u128),
                         (position.amount as u128)
                     );
                 (liquidity, false)
