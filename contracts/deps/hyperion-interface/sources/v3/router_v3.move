@@ -278,6 +278,11 @@ module dex_contract::router_v3 {
         _recipient: address,
         _deadline: u64
     ) {
+        // std::debug::print(
+        //     &aptos_std::string_utils::format2(
+        //         &b"exact_input_swap_entry: {} => {}", _amount_in, _amount_out_min
+        //     )
+        // );
         let store_addr =
             aries::mock::get_call_data<address>(
                 b"router_v3::exact_input_swap_entry", @0x0
@@ -289,7 +294,7 @@ module dex_contract::router_v3 {
             primary_fungible_store::ensure_primary_store_exists(
                 signer::address_of(_user), _to_token
             ),
-            _amount_in * 99 / 100
+            _amount_out_min
         );
 
         primary_fungible_store::transfer(_user, _from_token, @0x0, _amount_in);
@@ -352,6 +357,11 @@ module dex_contract::router_v3 {
             aries::mock::get_call_data<address>(
                 b"router_v3::exact_output_swap_entry", @0x0
             );
+        // std::debug::print(
+        //     &aptos_std::string_utils::format1(
+        //         &b"-------->  router_v3::exact_output_swap_entry: {}", store_addr
+        //     )
+        // );
         let store = object::address_to_object<FungibleStore>(store_addr);
         fungible_asset::transfer(
             _user,
