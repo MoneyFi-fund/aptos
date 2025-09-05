@@ -353,15 +353,25 @@ module moneyfi::strategy_aries_test {
             vector<u128>[0, aries::decimal::raw(aries::decimal::from_u128(0))],
             10
         );
-        aries::mock::on(b"reserve::get_lp_amount_from_underlying_amount", 0, 1); // compound: get shares from interest to burn
         aries::mock::on(b"reserve::get_lp_amount_from_underlying_amount", 6, 1); // get shares from withdraw amount when repay 1st
         aries::mock::on(b"reserve::get_lp_amount_from_underlying_amount", 3, 1); // get shares from withdraw amount when repay 2st
         aries::mock::on(b"reserve::get_lp_amount_from_underlying_amount", 51, 1); // get shares from withdraw amount
-        // aries::mock::on(b"reserve::get_lp_amount_from_underlying_amount", 1, 1);
-        aries::mock::on(b"reserve::get_underlying_amount_from_lp_amount", 510_000, 1);
-        aries::mock::on(b"reserve::get_underlying_amount_from_lp_amount", 152_000, 1);
-        aries::mock::on(b"reserve::get_underlying_amount_from_lp_amount", 510_000, 4);
-        aries::mock::on(b"reserve::get_underlying_amount_from_lp_amount", 152_000, 1);
+
+        aries::mock::on(b"reserve::get_underlying_amount_from_lp_amount", 600_000, 1); // get_deposited_amount
+        aries::mock::on(b"reserve::get_underlying_amount_from_lp_amount", 90_000, 1); // get owned deposited amount
+        aries::mock::on(b"reserve::get_underlying_amount_from_lp_amount", 600_000, 1); // get_deposited_amount
+        aries::mock::on(b"reserve::get_underlying_amount_from_lp_amount", 510_000, 1); // get acc_deposit_amount
+        aries::mock::on(b"reserve::get_underlying_amount_from_lp_amount", 600_000, 1); // get_deposited_amount
+        aries::mock::on(b"reserve::get_underlying_amount_from_lp_amount", 90_000, 1); // get owned deposited amount
+        aries::mock::on(b"reserve::get_underlying_amount_from_lp_amount", 600_000, 1); // get_deposited_amount
+        aries::mock::on(b"reserve::get_underlying_amount_from_lp_amount", 540_000, 1); // after repay 1st
+        aries::mock::on(b"reserve::get_underlying_amount_from_lp_amount", 500_000, 1); // after repay 2nd
+        // aries::mock::on(b"reserve::get_underlying_amount_from_lp_amount", 2000, 1); // compouand again
+        aries::mock::on(b"reserve::get_underlying_amount_from_lp_amount", 0, 1);
+        aries::mock::on(b"reserve::get_underlying_amount_from_lp_amount", 500_000, 1);
+        aries::mock::on(b"reserve::get_underlying_amount_from_lp_amount", 0, 1);
+        // aries::mock::on(b"reserve::get_underlying_amount_from_lp_amount", 500_000, );
+
         aries::mock::on(b"reserve::get_borrow_amount_from_share_dec", 152_000 as u128, 1);
         aries::mock::on(b"profile::available_borrowing_power", 150000, 2); // before repay 1st
         aries::mock::on(b"profile::available_borrowing_power", 152000, 1); // after repay 1st
@@ -400,7 +410,7 @@ module moneyfi::strategy_aries_test {
         debug::print(&vault);
         assert!(get_vault_data<u128>(&vault, b"owned_shares") == 0);
         assert!(get_vault_data<u64>(&vault, b"available_borrow_amount") == 0);
-        assert!(get_vault_data<u128>(&vault, b"total_withdrawn_amount") == 5010000);
+        assert!(get_vault_data<u128>(&vault, b"total_withdrawn_amount") == 5000000);
         assert!(get_vault_data<u128>(&vault, b"total_shares") == 0);
 
         // assert account state
