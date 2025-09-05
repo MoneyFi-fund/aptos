@@ -463,6 +463,19 @@ module moneyfi::strategy_aries {
         vault.max_borrow_amount()
     }
 
+    #[view]
+    public fun get_borrow_power(vault_name: String): (u64, u64) acquires Strategy {
+        let strategy_addr = get_strategy_address();
+        let power = aries::profile::available_borrowing_power(
+            strategy_addr, &vault_name
+        );
+        let total = aries::profile::get_total_borrowing_power(
+            strategy_addr, &vault_name
+        );
+
+        (aries::decimal::as_u64(power), aries::decimal::as_u64(total))
+    }
+
     // Returns (pending_amount, deposited_amount, estimate_withdrawable_amount)
     #[view]
     public fun get_account_state(
