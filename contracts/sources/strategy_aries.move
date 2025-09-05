@@ -327,7 +327,7 @@ module moneyfi::strategy_aries {
                 withdraw_amount = acc_deposit_amount;
             };
 
-            let (withdrawn_amount, burned_shares, total_deposit_shares) =
+            let (withdrawn_amount, burned_shares, total_deposit_shares, _) =
                 vault.withdraw_from_aries(strategy_signer, withdraw_amount);
 
             // we must recalc acc_deposit_shares because total_deposit_shares has changed
@@ -669,20 +669,28 @@ module moneyfi::strategy_aries {
 
     /// Withdraw asset from Aries back to vault
     /// Assumes vault has been compounded
-    /// Return received amount, burned shares and total shares before withdraw
+    /// Return received amount, burned shares, total shares before withdraw, repaied_amount
     fun withdraw_from_aries(
         self: &mut Vault, strategy_signer: &signer, amount: u64
-    ): (u64, u64, u64) {
+    ): (u64, u64, u64, u64) {
         let (_, loan_amount) = self.get_loan_amount();
-        let (_, total_deposited_amount) = self.get_deposited_amount();
-        assert!(total_deposited_amount > 0);
+        let (total_deposited_shares, total_deposited_amount) =
+            self.get_deposited_amount();
+        let repaid_amount = 0;
         if (loan_amount > 0) {
             let avail_amount = self.get_available_withdraw_amount();
             if (amount > avail_amount) {
                 let loan_amount =
                     aries::decimal::ceil_u64(aries::decimal::from_scaled_val(loan_amount));
-                let repay_amount = amount * loan_amount / total_deposited_amount;
-                let (_, swapped_amount) = self.repay_aries(strategy_signer, repay_amount);
+                let (_, owned_deposited_amount) =
+                    self.get_owned_deposited_amount(total_deposited_shares);
+                assert!(total_deposited_amount > owned_deposited_amount);
+                let repay_amount =
+                    amount * loan_amount
+                        / (total_deposited_amount - owned_deposited_amount);
+                let (_repaid_amount, swapped_amount) =
+                    self.repay_aries(strategy_signer, repay_amount);
+                repaid_amount = _repaid_amount;
                 if (swapped_amount > 0) {
                     // vault must be compounded again after repayment
                     self.compound_vault_impl(strategy_signer);
@@ -690,7 +698,8 @@ module moneyfi::strategy_aries {
             }
         };
 
-        let (shares_before, _) = self.get_deposited_amount();
+        let (shares_before, total_deposited_amount) = self.get_deposited_amount();
+        amount = math64::min(amount, total_deposited_amount);
         let amount =
             withdraw_from_aries_impl(
                 strategy_signer,
@@ -705,7 +714,7 @@ module moneyfi::strategy_aries {
         let shares = shares_before - shares_after;
         self.available_amount = self.available_amount + amount;
 
-        (amount, shares, shares_before)
+        (amount, shares, shares_before, repaid_amount)
     }
 
     fun withdraw_owned_shares(
@@ -1138,6 +1147,10 @@ module moneyfi::strategy_aries {
     fun get_deposit_shares_from_vault_shares(
         self: &Vault, vault_shares: u128, total_deposit_shares: u64
     ): u64 {
+        if (vault_shares == 0) {
+            return 0;
+        };
+
         if (self.total_shares == 0) {
             total_deposit_shares
         } else {
