@@ -464,7 +464,7 @@ module moneyfi::strategy_aries {
     }
 
     #[view]
-    public fun get_borrow_power(vault_name: String): (u64, u64) acquires Strategy {
+    public fun get_borrow_power(vault_name: String): (u64, u64) {
         let strategy_addr = get_strategy_address();
         let power = aries::profile::available_borrowing_power(
             strategy_addr, &vault_name
