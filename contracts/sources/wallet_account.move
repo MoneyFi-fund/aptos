@@ -5,6 +5,9 @@ module moneyfi::wallet_account {
     use std::error;
     use std::option::{Self, Option};
     use aptos_std::math64;
+    #[test_only]
+    use aptos_std::any;
+    use aptos_std::type_info;
     use aptos_std::ordered_map::{Self, OrderedMap};
     use aptos_framework::event;
     use aptos_framework::object::{Self, Object, ExtendRef};
@@ -15,12 +18,10 @@ module moneyfi::wallet_account {
     use moneyfi::storage;
 
     friend moneyfi::vault;
-    friend moneyfi::strategy;
+    // TODO: remove these friend dependencies after refactor strategies
     friend moneyfi::strategy_hyperion;
     friend moneyfi::strategy_thala;
     friend moneyfi::strategy_tapp;
-    friend moneyfi::strategy_aries;
-    friend moneyfi::strategy_echelon;
 
     #[test_only]
     friend moneyfi::wallet_account_test;
@@ -57,7 +58,7 @@ module moneyfi::wallet_account {
         extend_ref: ExtendRef
     }
 
-    struct AccountAsset has store, copy {
+    struct AccountAsset has store, copy, drop {
         current_amount: u64,
         // accumulated deposited amount
         deposited_amount: u64,
@@ -143,11 +144,15 @@ module moneyfi::wallet_account {
             let v = option::borrow(&system_fee_percent);
             assert!(*v <= 10000, error::invalid_argument(E_INVALID_ARGUMENT));
         };
+        validate_referral_percents(referral_percents);
+
         access_control::must_be_fee_manager(sender);
         let account_addr = object::object_address(&account);
         let acc = borrow_global_mut<WalletAccount>(account_addr);
         let system_fee_percent_before = acc.system_fee_percent;
         let referral_percents_before = acc.referral_percents;
+        acc.system_fee_percent = system_fee_percent;
+        acc.referral_percents = referral_percents;
 
         event::emit(
             ConfigFeeEvent {
@@ -312,9 +317,12 @@ module moneyfi::wallet_account {
             asset_data.interest_share_amount + interest_share_amount;
     }
 
-    public(friend) fun set_strategy_data<T: store + drop + copy>(
+    public fun set_strategy_data<T: store + drop + copy>(
         account: &Object<WalletAccount>, data: T
     ) acquires StrategyData, WalletAccount {
+        let data_type = type_info::type_of<T>();
+        assert!(data_type.account_address() == @moneyfi);
+
         let addr = object::object_address(account);
         if (!exists<StrategyData<T>>(addr)) {
             let account_signer = get_wallet_account_signer(account);
@@ -325,7 +333,7 @@ module moneyfi::wallet_account {
         }
     }
 
-    public(friend) fun get_strategy_data<T: store + copy>(
+    public fun get_strategy_data<T: store + copy>(
         account: &Object<WalletAccount>
     ): T acquires StrategyData {
         let addr = object::object_address(account);
@@ -442,7 +450,16 @@ module moneyfi::wallet_account {
         object::generate_signer_for_extending(&wallet_account.extend_ref)
     }
 
-    public(friend) fun get_referrer_addresses(
+    public fun validate_referral_percents(percents: vector<u64>) {
+        let total = 0;
+        while (percents.length() > 0) {
+            total = total + percents.pop_back();
+        };
+
+        assert!(total < 10000, error::invalid_argument(E_INVALID_ARGUMENT));
+    }
+
+    public fun get_referrer_addresses(
         account: &Object<WalletAccount>, max: u8
     ): vector<address> acquires WalletAccount {
         let referrers = vector[];
@@ -514,5 +531,33 @@ module moneyfi::wallet_account {
         addr: address
     ): signer acquires WalletAccount, WalletAccountObject {
         get_wallet_account_signer(&get_wallet_account_by_address(addr))
+    }
+
+    #[test_only]
+    public fun get_account_asset_data<T>(
+        data: &AccountAsset, field: vector<u8>
+    ): T {
+        if (field == b"distributed_amount") {
+            any::unpack<T>(any::pack(data.distributed_amount))
+        } else if (field == b"current_amount") {
+            any::unpack<T>(any::pack(data.current_amount))
+        } else if (field == b"deposited_amount") {
+            any::unpack<T>(any::pack(data.deposited_amount))
+        } else if (field == b"lp_amount") {
+            any::unpack<T>(any::pack(data.lp_amount))
+        } else if (field == b"swap_out_amount") {
+            any::unpack<T>(any::pack(data.swap_out_amount))
+        } else if (field == b"swap_in_amount") {
+            any::unpack<T>(any::pack(data.swap_in_amount))
+        } else if (field == b"withdrawn_amount") {
+            any::unpack<T>(any::pack(data.withdrawn_amount))
+        } else if (field == b"interest_amount") {
+            any::unpack<T>(any::pack(data.interest_amount))
+        } else if (field == b"interest_share_amount") {
+            any::unpack<T>(any::pack(data.interest_share_amount))
+        } else {
+            abort(0);
+            any::unpack<T>(any::pack(0))
+        }
     }
 }

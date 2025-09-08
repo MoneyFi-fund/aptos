@@ -11,12 +11,15 @@ module moneyfi::test_helpers {
         FungibleAsset,
         Metadata,
         MintRef,
+        BurnRef,
         TransferRef
     };
 
     use moneyfi::access_control;
 
-    public fun create_fake_USDC(sender: &signer): (Object<Metadata>, MintRef, TransferRef) {
+    public fun create_fake_USDC(sender: &signer): (
+        Object<Metadata>, MintRef, TransferRef, BurnRef
+    ) {
         let constructor_ref = &object::create_named_object(sender, b"FAKE_USDC");
         let usdc_addr = object::address_from_constructor_ref(constructor_ref);
 
@@ -32,11 +35,14 @@ module moneyfi::test_helpers {
 
         let mint_ref = fungible_asset::generate_mint_ref(constructor_ref);
         let transfer_ref = fungible_asset::generate_transfer_ref(constructor_ref);
+        let burn_ref = fungible_asset::generate_burn_ref(constructor_ref);
 
-        (object::address_to_object(usdc_addr), mint_ref, transfer_ref)
+        (object::address_to_object(usdc_addr), mint_ref, transfer_ref, burn_ref)
     }
 
-    public fun create_fake_USDT(sender: &signer): (Object<Metadata>, MintRef, TransferRef) {
+    public fun create_fake_USDT(sender: &signer): (
+        Object<Metadata>, MintRef, TransferRef, BurnRef
+    ) {
         let constructor_ref = &object::create_named_object(sender, b"FAKE_USDT");
         let usdc_addr = object::address_from_constructor_ref(constructor_ref);
 
@@ -52,7 +58,8 @@ module moneyfi::test_helpers {
 
         let mint_ref = fungible_asset::generate_mint_ref(constructor_ref);
         let transfer_ref = fungible_asset::generate_transfer_ref(constructor_ref);
+        let burn_ref = fungible_asset::generate_burn_ref(constructor_ref);
 
-        (object::address_to_object(usdc_addr), mint_ref, transfer_ref)
+        (object::address_to_object(usdc_addr), mint_ref, transfer_ref, burn_ref)
     }
 }

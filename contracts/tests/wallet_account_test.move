@@ -39,7 +39,7 @@ module moneyfi::wallet_account_test {
         access_control::upsert_account(deployer, deployer_addr, vector[1, 3]);
 
         // setup asset
-        let (token, _, _) = test_helpers::create_fake_USDC(deployer);
+        let (token, _, _, _) = test_helpers::create_fake_USDC(deployer);
 
         token
     }

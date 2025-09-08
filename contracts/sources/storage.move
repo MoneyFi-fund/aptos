@@ -3,11 +3,6 @@ module moneyfi::storage {
 
     use moneyfi::access_control;
 
-    friend moneyfi::wallet_account;
-    friend moneyfi::vault;
-    friend moneyfi::strategy_aries;
-    friend moneyfi::strategy_echelon;
-
     const PHANTOM_OBJECT_SEED: vector<u8> = b"storage::PHANTOM_OBJECT";
 
     struct Storage has key {
@@ -54,17 +49,9 @@ module moneyfi::storage {
         object::create_object_address(&get_address(), seed)
     }
 
-    // -- Private
-
-    fun get_signer(): signer acquires Storage {
-        let storage = borrow_global<Storage>(@moneyfi);
-
-        object::generate_signer_for_extending(&storage.extend_ref)
-    }
-
     /// Creates a child object using the provided seed.
     /// Note: If the child object is intended to hold a fungible asset, use `create_child_object_with_phantom_owner` instead.
-    public(friend) fun create_child_object(seed: vector<u8>): ExtendRef acquires Storage {
+    public fun create_child_object(seed: vector<u8>): ExtendRef acquires Storage {
         let (extend_ref, _) = create_child_object_impl(seed);
 
         extend_ref
@@ -72,9 +59,7 @@ module moneyfi::storage {
 
     /// Creates a child object with a phantom owner, meaning the object does not have a real owner.
     /// This ensures that only the child object itself can transfer tokens from its fungible asset store.
-    public(friend) fun create_child_object_with_phantom_owner(
-        seed: vector<u8>
-    ): ExtendRef acquires Storage {
+    public fun create_child_object_with_phantom_owner(seed: vector<u8>): ExtendRef acquires Storage {
         let (extend_ref, transfer_ref) = create_child_object_impl(seed);
 
         // transfer ownership to phantom object
@@ -82,6 +67,14 @@ module moneyfi::storage {
         transfer_ownership(&transfer_ref, phantom_object_addr);
 
         extend_ref
+    }
+
+    // -- Private
+
+    fun get_signer(): signer acquires Storage {
+        let storage = borrow_global<Storage>(@moneyfi);
+
+        object::generate_signer_for_extending(&storage.extend_ref)
     }
 
     fun create_child_object_impl(seed: vector<u8>): (ExtendRef, TransferRef) acquires Storage {

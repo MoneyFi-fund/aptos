@@ -1,5 +1,5 @@
 [workspace]
-members = ["aries"]
+members = ["aries", "rust-client"]
 resolver = "3"
 
 # this is needed for building aries package
