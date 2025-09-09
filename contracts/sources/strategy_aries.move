@@ -876,7 +876,7 @@ module moneyfi::strategy_aries {
         let price = get_asset_price(&self.asset);
         let amount = aries::decimal::as_u64(aries::decimal::div(avail_power, price));
 
-        amount - amount * 10 / 100 // 90% of available power
+        math64::mul_div(amount, 9000, 10000) // 90% of available power
     }
 
     fun withdraw_from_aries_impl(
