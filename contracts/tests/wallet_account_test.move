@@ -112,4 +112,11 @@ module moneyfi::wallet_account_test {
         data = wallet_account::get_strategy_data<TestStrategy>(&a1);
         assert!(data.value == 456);
     }
+
+    #[test(deployer = @moneyfi, w1 = @0x111)]
+    #[expected_failure(abort_code = 0x10007, location = moneyfi::wallet_account)]
+    fun test_create_account_self_refer(deployer: &signer, w1: &signer) {
+        storage::init_module_for_testing(deployer);
+        wallet_account::create_wallet_account_for_test(w1, b"w1", 0, b"w1");
+    }
 }

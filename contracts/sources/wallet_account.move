@@ -181,6 +181,10 @@ module moneyfi::wallet_account {
         wallet_address: Option<address>,
         referrer_wallet_id: vector<u8>
     ): Object<WalletAccount> {
+        assert!(
+            &wallet_id != &referrer_wallet_id,
+            error::invalid_argument(E_INVALID_ARGUMENT)
+        );
         let account_addr = get_wallet_account_object_address(wallet_id);
         assert!(
             !object::object_exists<WalletAccount>(account_addr),
