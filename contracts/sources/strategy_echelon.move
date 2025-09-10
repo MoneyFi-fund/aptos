@@ -188,6 +188,42 @@ module moneyfi::strategy_echelon {
         };
     }
 
+    /// deposit fund from wallet account to strategy vault
+    public entry fun deposit(
+        sender: &signer,
+        vault_name: String,
+        wallet_id: vector<u8>,
+        amount: u64
+    ) acquires Strategy {
+        //TODO
+    }
+
+    /// Withdraw fund from strategy vault to wallet account
+    /// Pass amount = U64_MAX to withdraw all
+    public entry fun withdraw(
+        sender: &signer,
+        vault_name: String,
+        wallet_id: vector<u8>,
+        amount: u64,
+        gas_fee: u64
+    ) acquires Strategy {
+        //TODO
+    }
+
+    /// Deposits fund from vault to Echelon
+    /// Pass amount = U64_MAX to deposit all pending amount
+    public(friend) fun vault_deposit_echelon() {} //TODO
+
+    public(friend) fun borrow_echelon(): u64 {
+        0
+    } //TODO
+
+    public(friend) fun repay_echelon(): u64 {
+        0
+    } //TODO
+
+    public(friend) fun compound_echelon_rewards() {} //TODO
+
     fun init_strategy_account(): address {
         let account_addr = get_strategy_address();
         assert!(!exists<Strategy>(account_addr));
