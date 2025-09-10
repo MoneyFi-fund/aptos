@@ -6,17 +6,43 @@ module aries::controller {
     use aptos_framework::primary_fungible_store;
     use aptos_framework::fungible_asset::{Self, Metadata, FungibleStore};
 
-    // NOTE: Functions are 'native' for simplicity. They may or may not be native in actuality.
-    #[native_interface]
-    native public fun claim_reward_ti<T0>(
+    public fun claim_reward_ti<T0>(
         a0: &signer,
         a1: vector<u8>,
         a2: type_info::TypeInfo,
         a3: type_info::TypeInfo
-    );
+    ) {
+        let amount =
+            aries::mock::get_call_data<u64>(b"controller::claim_reward_ti:amount", 0);
+        let store_addr =
+            aries::mock::get_call_data<address>(
+                b"controller::claim_reward_ti:store", @0x0
+            );
+        let store = object::address_to_object<FungibleStore>(store_addr);
+        // std::debug::print(
+        //     &aptos_std::string_utils::format1(
+        //         &b"controller::claim_reward_ti: {}", amount
+        //     )
+        // );
+        fungible_asset::transfer(
+            a0,
+            store,
+            primary_fungible_store::ensure_primary_store_exists(
+                signer::address_of(a0),
+                object::address_to_object<Metadata>(@0xa)
+            ),
+            amount
+        );
+    }
 
     public entry fun deposit_fa<T0>(a0: &signer, a1: vector<u8>, a2: u64) {
-        let asset = aries::mock::get_call_data<address>(b"controller::deposit_fa", @0xa);
+        let asset =
+            aries::mock::get_call_data<address>(b"controller::deposit_fa:asset", @0xa);
+        // let amount = aries::mock::get_call_data<u64>(
+        //     b"controller::deposit_fa:amount", 0
+        // );
+        // assert!(amount == a2);
+
         primary_fungible_store::transfer(
             a0,
             object::address_to_object<Metadata>(asset),
@@ -41,6 +67,11 @@ module aries::controller {
             aries::mock::get_call_data<address>(b"controller::withdraw_fa:asset", @0x0);
         let store = object::address_to_object<FungibleStore>(store_addr);
         let asset = object::address_to_object<Metadata>(asset_addr);
+        // std::debug::print(
+        //     &aptos_std::string_utils::format2(
+        //         &b"controller::withdraw_fa: {}: {}", asset_addr, a2
+        //     )
+        // );
         fungible_asset::transfer(
             a0,
             store,

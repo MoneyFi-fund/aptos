@@ -2,6 +2,7 @@ module aries::profile {
     use std::option;
     use std::string;
     use aptos_std::type_info;
+    use aptos_framework::aptos_coin::AptosCoin;
 
     use decimal::decimal;
 
@@ -32,13 +33,25 @@ module aries::profile {
         let amount = aries::mock::get_call_data(
             b"profile::get_total_borrowing_power", 0
         );
+
         decimal::from_u64(amount)
     }
 
     public fun claimable_reward_amount_on_farming<T0>(
         a0: address, a1: string::String
     ): (vector<type_info::TypeInfo>, vector<u64>) {
-        (vector[], vector[])
+        let rewards = vector[];
+        let amounts = vector[];
+        let amount =
+            aries::mock::get_call_data(
+                b"profile::claimable_reward_amount_on_farming", 0
+            );
+        if (amount > 0) {
+            amounts.push_back(amount);
+            rewards.push_back(type_info::type_of<AptosCoin>());
+        };
+
+        (rewards, amounts)
     }
 
     #[native_interface]
@@ -55,7 +68,9 @@ module aries::profile {
     ): u64 {
         let amount = aries::mock::get_call_data(b"profile::get_deposited_amount", 0);
         // std::debug::print(
-        //     &aptos_std::string_utils::format1(&b"get_deposited_amount: {}", amount)
+        //     &aptos_std::string_utils::format1(
+        //         &b"profile::get_deposited_amount: {}", amount
+        //     )
         // );
         amount
     }

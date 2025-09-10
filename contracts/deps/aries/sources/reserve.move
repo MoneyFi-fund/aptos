@@ -16,18 +16,44 @@ module aries::reserve {
     public fun get_lp_amount_from_underlying_amount(
         a0: type_info::TypeInfo, a1: u64
     ): u64 {
-        // std::debug::print(&b"get_lp_amount_from_underlying_amount");
-        aries::mock::get_call_data(
-            b"reserve::get_lp_amount_from_underlying_amount", a1
-        )
+        let rate =
+            aries::mock::get_call_data(
+                b"reserve::get_lp_amount_from_underlying_amount:rate", 1000
+            );
+        let amount =
+            aries::mock::get_call_data(
+                b"reserve::get_lp_amount_from_underlying_amount",
+                a1 * rate / 1000
+            );
+
+        // std::debug::print(
+        //     &aptos_std::string_utils::format2(
+        //         &b"reserve::get_lp_amount_from_underlying_amount: {} => {}", a1, amount
+        //     )
+        // );
+
+        amount
     }
 
     public fun get_underlying_amount_from_lp_amount(
         a0: type_info::TypeInfo, a1: u64
     ): u64 {
-        // std::debug::print(&b"get_underlying_amount_from_lp_amount");
-        aries::mock::get_call_data(
-            b"reserve::get_underlying_amount_from_lp_amount", a1
-        )
+        let rate =
+            aries::mock::get_call_data(
+                b"reserve::get_underlying_amount_from_lp_amount:rate", 1000
+            );
+        let amount =
+            aries::mock::get_call_data(
+                b"reserve::get_underlying_amount_from_lp_amount",
+                a1 * rate / 1000
+            );
+
+        // std::debug::print(
+        //     &aptos_std::string_utils::format2(
+        //         &b"reserve::get_underlying_amount_from_lp_amount: {} => {}", a1, amount
+        //     )
+        // );
+
+        amount
     }
 }

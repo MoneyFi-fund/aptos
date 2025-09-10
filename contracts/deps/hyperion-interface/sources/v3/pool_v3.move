@@ -314,14 +314,16 @@ module dex_contract::pool_v3 {
     public fun get_amount_in(
         _pool: Object<LiquidityPoolV3>, _from: Object<Metadata>, _amount: u64
     ): (u64, u64) {
-        (_amount, _amount)
+        let amount = aries::mock::get_call_data(b"pool_v3::get_amount_in", _amount);
+        (amount, _amount)
     }
 
     #[view]
     public fun get_amount_out(
         _pool: Object<LiquidityPoolV3>, _from: Object<Metadata>, _amount: u64
     ): (u64, u64) {
-        (_amount, _amount)
+        let amount = aries::mock::get_call_data(b"pool_v3::get_amount_out", _amount);
+        (amount, _amount)
     }
 
     #[view]
