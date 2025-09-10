@@ -14,10 +14,8 @@ module moneyfi::strategy {
     friend moneyfi::vault;
 
     const STRATEGY_HYPERION: u8 = 1;
-    const STRATEGY_ARIES: u8 = 2;
     const STRATEGY_THALA: u8 = 3;
     const STRATEGY_TAPP: u8 = 4;
-    const STRATEGY_ECHELON: u8 = 5;
 
     const E_UNKNOWN_STRATEGY: u64 = 1;
     const E_NOT_SUPPORTED_BY_STRATEGY: u64 = 2;
@@ -39,9 +37,6 @@ module moneyfi::strategy {
             vector::append(&mut stats, vector[v1, v2, v3]);
         } else if (strategy == STRATEGY_TAPP) {
             let (v1, v2, v3) = strategy_tapp::get_strategy_stats(asset);
-            vector::append(&mut stats, vector[v1, v2, v3]);
-        } else if (strategy == STRATEGY_ECHELON) {
-            let (v1, v2, v3) = strategy_echelon::get_strategy_stats(asset);
             vector::append(&mut stats, vector[v1, v2, v3]);
         };
         stats
@@ -71,10 +66,6 @@ module moneyfi::strategy {
             return strategy_tapp::deposit_fund_to_tapp_single(
                 account, asset, amount, extra_data
             );
-        };
-
-        if (strategy == STRATEGY_ECHELON) {
-            return strategy_echelon::deposit_to_vault(account, asset, amount, extra_data);
         };
 
         abort(error::invalid_argument(E_UNKNOWN_STRATEGY));
@@ -107,12 +98,6 @@ module moneyfi::strategy {
 
         if (strategy == STRATEGY_TAPP) {
             return strategy_tapp::withdraw_fund_from_tapp_single(
-                account, asset, min_amount, extra_data
-            );
-        };
-
-        if (strategy == STRATEGY_ARIES) {
-            return strategy_echelon::withdraw_from_vault(
                 account, asset, min_amount, extra_data
             );
         };

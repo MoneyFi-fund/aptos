@@ -20,12 +20,8 @@ ThalaLSD = { local = "deps/thala-interface/thala_lsd" }
 Tap = { local = "deps/tapp-interface/router" }
 Stable = { local = "deps/tapp-interface/stable" }
 Views = { local = "deps/tapp-interface/views" }
-
-[dependencies.Lending]
-local = "deps/echelon-interface/lending"
-
-[dependencies.Leverage]
-local = "deps/echelon-interface/leverage"
+Lending = { local = "deps/echelon-interface/lending" }
+Leverage = { local = "deps/echelon-interface/leverage" }
 
 [dependencies.AptosFramework]
 git = "https://github.com/aptos-labs/aptos-framework.git"
