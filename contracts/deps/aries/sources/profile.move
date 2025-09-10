@@ -26,6 +26,15 @@ module aries::profile {
         decimal::from_u64(amount)
     }
 
+    public fun get_total_borrowing_power(
+        addr: address, profile_name: &string::String
+    ): decimal::Decimal {
+        let amount = aries::mock::get_call_data(
+            b"profile::get_total_borrowing_power", 0
+        );
+        decimal::from_u64(amount)
+    }
+
     public fun claimable_reward_amount_on_farming<T0>(
         a0: address, a1: string::String
     ): (vector<type_info::TypeInfo>, vector<u64>) {
