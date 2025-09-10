@@ -1,3 +1,4 @@
+/// This module is deprecated. Please do not add new strategies here.
 module moneyfi::strategy {
     use std::vector;
     use std::error;

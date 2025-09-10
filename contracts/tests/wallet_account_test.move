@@ -39,7 +39,7 @@ module moneyfi::wallet_account_test {
         access_control::upsert_account(deployer, deployer_addr, vector[1, 3]);
 
         // setup asset
-        let (token, _, _) = test_helpers::create_fake_USDC(deployer);
+        let (token, _, _, _) = test_helpers::create_fake_USDC(deployer);
 
         token
     }
@@ -111,5 +111,12 @@ module moneyfi::wallet_account_test {
         wallet_account::set_strategy_data(&a1, TestStrategy { value: 456 });
         data = wallet_account::get_strategy_data<TestStrategy>(&a1);
         assert!(data.value == 456);
+    }
+
+    #[test(deployer = @moneyfi, w1 = @0x111)]
+    #[expected_failure(abort_code = 0x10007, location = moneyfi::wallet_account)]
+    fun test_create_account_self_refer(deployer: &signer, w1: &signer) {
+        storage::init_module_for_testing(deployer);
+        wallet_account::create_wallet_account_for_test(w1, b"w1", 0, b"w1");
     }
 }
