@@ -79,12 +79,6 @@ module moneyfi::strategy_echelon {
         vault_shares: u128
     }
 
-    // struct ExtraData {
-    //     market: address,
-    //     reward_lend_id: u64,
-    //     reward_borrow_id: u64,
-    // }
-
     // -- Events
     #[event]
     struct VaultCreatedEvent has drop, store {
@@ -142,6 +136,10 @@ module moneyfi::strategy_echelon {
                 paused: false
             }
         );
+        move_to(&object::generate_signer_for_extending(&extend_ref), RewardInfo {
+            supply_reward_id,
+            borrow_reward_id
+        });
         let strategy_addr = get_strategy_address();
         let strategy = borrow_global_mut<Strategy>(strategy_addr);
         ordered_map::add(
@@ -222,7 +220,7 @@ module moneyfi::strategy_echelon {
         0
     } //TODO
 
-    public(friend) fun compound_echelon_rewards() {} //TODO
+    public(friend) fun compound_rewards() {} //TODO
 
     fun init_strategy_account(): address {
         let account_addr = get_strategy_address();
@@ -375,6 +373,17 @@ module moneyfi::strategy_echelon {
         let vault = get_vault_mut(self);
         let vault_addr = object::object_address(self);
         lending::account_liability(vault_addr, vault.borrow_market)
+    }
+
+    fun get_vault_shares_from_deposit_shares(
+        self: &Vault, deposit_shares: u64, total_deposit_shares: u64
+    ): u128 {
+        if (total_deposit_shares == 0) {
+            (deposit_shares as u128) * math128::pow(10, SHARE_DECIMALS as u128)
+        } else {
+            (deposit_shares as u128) * self.total_shares
+                / (total_deposit_shares as u128)
+        }
     }
 
     fun compound_vault_rewards(
