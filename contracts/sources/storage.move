@@ -1,4 +1,5 @@
 module moneyfi::storage {
+    use std::signer;
     use aptos_framework::object::{Self, Object, ObjectCore, TransferRef, ExtendRef};
 
     use moneyfi::access_control;
@@ -12,6 +13,7 @@ module moneyfi::storage {
     }
 
     fun init_module(sender: &signer) {
+        assert!(signer::address_of(sender) == @moneyfi);
         let constructor_ref = &object::create_sticky_object(@moneyfi);
 
         let transfer_ref = object::generate_transfer_ref(constructor_ref);

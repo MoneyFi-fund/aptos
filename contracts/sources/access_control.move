@@ -55,6 +55,7 @@ module moneyfi::access_control {
 
     fun init_module(sender: &signer) {
         let addr = signer::address_of(sender);
+        assert!(addr == @moneyfi);
         assert!(
             !exists<Registry>(addr),
             error::already_exists(E_ALREADY_INITIALIZED)
@@ -103,8 +104,12 @@ module moneyfi::access_control {
             )
         };
 
-        // TODO: remove duplicated values
-        let valid_roles = vector::filter(roles, |v| *v <= ROLE_COUNT);
+        let valid_roles = vector<u8>[];
+        roles.for_each(|v| {
+            if (v < ROLE_COUNT && !valid_roles.contains(&v)) {
+                valid_roles.push_back(v);
+            }
+        });
         assert!(
             !vector::is_empty(&valid_roles), error::invalid_argument(E_EMPTY_ROLES)
         );
@@ -117,7 +122,9 @@ module moneyfi::access_control {
 
         ordered_map::upsert(&mut registry.accounts, account, valid_roles);
 
-        event::emit(UpdateAccountEvent { account, roles, timestamp: now_seconds() });
+        event::emit(
+            UpdateAccountEvent { account, roles: valid_roles, timestamp: now_seconds() }
+        );
     }
 
     public entry fun remove_account(sender: &signer, account: address) acquires Registry {

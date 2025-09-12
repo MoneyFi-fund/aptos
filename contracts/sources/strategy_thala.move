@@ -34,6 +34,8 @@ module moneyfi::strategy_thala {
     const E_THALA_POSITION_NOT_EXISTS: u64 = 2;
     /// Invalid asset
     const E_INVALID_ASSET: u64 = 3;
+    /// Invalid amount
+    const E_INVALID_AMOUNT: u64 = 4;
 
     // -- Structs
     struct StrategyStats has key {
@@ -84,6 +86,7 @@ module moneyfi::strategy_thala {
         amount_in: u64,
         extra_data: vector<vector<u8>>
     ): u64 acquires StrategyStats {
+        assert!(amount_in > 0, error::invalid_argument(E_INVALID_AMOUNT));
         let extra_data = unpack_extra_data(extra_data);
         let position = create_or_get_exist_position(account, asset, extra_data);
         let wallet_signer = wallet_account::get_wallet_account_signer(account);
@@ -199,13 +202,21 @@ module moneyfi::strategy_thala {
                             @0x692ba87730279862aa1a93b5fef9a175ea0cccc1f29dfc84d3ec7fbe1561aef3,
                             @0x925660b8618394809f89f8002e2926600c775221f43bf1919782b297a79400d8
                         ];
+                        let amount_out_min =
+                            router_v3::get_batch_amount_out(
+                                lp_path,
+                                amount,
+                                staked_lpt::get_reward_metadata(reward_id),
+                                *asset
+                            ) * 98 / 100; //slippage 2%
+
                         router_v3::swap_batch_coin_entry<ThalaAPT>(
                             &wallet_signer,
                             lp_path,
                             staked_lpt::get_reward_metadata(reward_id),
                             *asset,
                             amount,
-                            0,
+                            amount_out_min,
                             wallet_address
                         );
                     }
@@ -450,21 +461,20 @@ module moneyfi::strategy_thala {
     }
 
     #[view]
-    public fun get_user_asset_allocation(
-        wallet_id: vector<u8>
-    ): (vector<address>, vector<u64>) {
+    public fun get_user_asset_allocation(wallet_id: vector<u8>):
+        (vector<address>, vector<u64>) {
         let account = &wallet_account::get_wallet_account(wallet_id);
         if (!exists_thala_strategy_data(account)) {
             return (vector::empty<address>(), vector::empty<u64>());
         };
-        
+
         let strategy_data = ensure_thala_strategy_data(account);
         let pools = ordered_map::keys<address, Position>(&strategy_data.pools);
         let assets = vector::empty<address>();
         let amounts = vector::empty<u64>();
         let i = 0;
         let len = vector::length(&pools);
-        
+
         while (i < len) {
             let pool_address = *vector::borrow(&pools, i);
             let pool = object::address_to_object<Pool>(pool_address);
@@ -472,7 +482,7 @@ module moneyfi::strategy_thala {
                 ordered_map::borrow<address, Position>(
                     &strategy_data.pools, &pool_address
                 );
-            
+
             let pool_lp_token_metadata = pool::pool_lp_token_metadata(pool);
             let pool_assets_metadata = pool::pool_assets_metadata(pool);
             let pool_amounts =
@@ -481,12 +491,12 @@ module moneyfi::strategy_thala {
                         pool, pool_lp_token_metadata, position.lp_amount as u64
                     )
                 );
-            
+
             let assets_len = vector::length(&pool_assets_metadata);
             let j = 0;
             while (j < assets_len) {
                 vector::push_back(
-                    &mut assets, 
+                    &mut assets,
                     object::object_address(vector::borrow(&pool_assets_metadata, j))
                 );
                 vector::push_back(&mut amounts, *vector::borrow(&pool_amounts, j));

@@ -1,12 +1,12 @@
 name: Contract Test
 
 on:
-  # push:
-    # branches:
-      # - develop
-    # paths:
-    #   - 'contracts/**'
-    #   - .github/workflows/move.yml
+  push:
+    branches:
+      - master
+    paths:
+      - 'contracts/**'
+      - .github/workflows/move.yml
   pull_request:
     # branches:
       # - develop

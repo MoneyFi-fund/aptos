@@ -5,6 +5,7 @@ module moneyfi::strategy_aries_test {
     use aptos_std::table;
     use aptos_std::any;
     use aptos_std::math64;
+    use aptos_std::math128;
     use std::option::{Self, Option};
     use std::string::{Self, String};
     use aptos_framework::account;
@@ -324,7 +325,7 @@ module moneyfi::strategy_aries_test {
             0, 0, 7_000_000, 0
         );
         // before withdraw
-        aries::mock::on(b"profile::get_deposited_amount", 7_000_000, 3);
+        aries::mock::on(b"profile::get_deposited_amount", 7_000_000, 2);
         // after withdraw
         aries::mock::on(b"profile::get_deposited_amount", 6_000_000, 99);
 
@@ -569,6 +570,167 @@ module moneyfi::strategy_aries_test {
         assert!(withdrawable == 2_000_000 + deposit_shares);
     }
 
+    fun test_withdraw_trigger_repay(
+        self: &mut TestContext, sender: &signer
+    ) {
+        aries::mock::reset(b"profile::get_deposited_amount");
+
+        let (_, vault) = strategy_aries::get_vault(self.vault_name);
+        let total_shares = 8_146_089_7216_0356;
+        let owned_shares = 2_146_089_7216_0356;
+        assert!(get_vault_data<u128>(&vault, b"total_shares") == total_shares);
+        assert!(get_vault_data<u128>(&vault, b"owned_shares") == owned_shares);
+
+        let account_data =
+            wallet_account::get_strategy_data<strategy_aries::AccountData>(
+                &wallet_account::get_wallet_account(self.wallet1_id)
+            );
+        let (_, vault_shares) =
+            account_data.get_raw_account_data_for_vault(self.vault_address);
+        assert!(vault_shares == 2_000_000_0000_0000);
+
+        let deposited_shares = 10_960_000;
+        let loan_amount = aries::decimal::raw(aries::decimal::from_u128(2_000_000));
+        self.mock_compound_vault(
+            0, 0, deposited_shares, loan_amount
+        );
+
+        // after compound
+        total_shares = 749394544121297;
+        owned_shares = 149394544121297;
+
+        let loan_amount_in_usdt = 2_010_000; // 0.05% slippage
+        let loan_repay =
+            vault_shares * loan_amount_in_usdt
+                / (8_146_089_7216_0356 - 2_146_089_7216_0356); // 670_000
+
+        aries::mock::on(b"profile::get_deposited_amount", deposited_shares, 3); // before repay
+
+        // after withdraw to repay 1st
+        let burn_shares = math128::ceil_div(
+            450_000 * total_shares, deposited_shares as u128
+        );
+        total_shares = total_shares - burn_shares;
+        owned_shares = owned_shares - burn_shares;
+
+        deposited_shares = deposited_shares - 450_000; // 10510000, withdraw to repay 1st
+        aries::mock::on(b"profile::get_deposited_amount", deposited_shares, 1); // after repay 1st
+
+        // after withdraw to repay 2nd
+        let burn_shares = math128::ceil_div(
+            220_012 * total_shares, deposited_shares as u128
+        );
+        total_shares = total_shares - burn_shares;
+        owned_shares = owned_shares - burn_shares;
+
+        deposited_shares = deposited_shares - 220_012; // 10289988, withdraw to repay 2nd
+        aries::mock::on(
+            b"profile::profile_loan",
+            vector[loan_amount, loan_amount],
+            6 // before repay 1st
+        );
+        let repaid_amount_1 = 447750;
+        loan_amount =
+            loan_amount
+                - aries::decimal::raw(aries::decimal::from_u128(repaid_amount_1));
+        aries::mock::on(
+            b"profile::profile_loan",
+            vector[loan_amount, loan_amount],
+            2 // before repay 2nd
+        );
+        // withdraw: 2 for repay, 1 for withdraw
+        self.mock_withdraw_fa(&self.usdt, 3, true);
+        aries::mock::on(b"profile::available_borrowing_power", 500_000, 2); // before repay 1st
+        aries::mock::on(b"profile::available_borrowing_power", 4_000_000, 10); // after repay 1st
+
+        let repaid_amount_2 = 218917;
+        loan_amount =
+            loan_amount
+                - aries::decimal::raw(aries::decimal::from_u128(repaid_amount_2));
+        aries::mock::on(
+            b"profile::profile_loan",
+            vector[loan_amount, loan_amount],
+            2 // after repay 2nd
+        );
+        // swap usdt -> usdc to repay
+        aries::mock::on(
+            b"router_v3::exact_input_swap_entry", self.usdc_secondary_store, 2
+        );
+        aries::mock::on(b"router_v3::exact_input_swap_entry:amount", 447750, 1);
+        aries::mock::on(b"router_v3::exact_input_swap_entry:amount", 220000, 1);
+
+        // recompound vault
+        self.mock_compound_vault(
+            0, 0, deposited_shares, loan_amount // pass loan_amount = 0 to do nothing
+        );
+        aries::mock::on(b"profile::get_deposited_amount", deposited_shares, 1); // after repay 2nd
+
+        burn_shares = 12033525967975; // shares burned when recompound
+        total_shares = total_shares - burn_shares;
+        owned_shares = owned_shares - burn_shares;
+
+        let withdraw: u64 = 2_975_925;
+        // after withdraw
+        burn_shares = 2_000_000_0000_0000;
+        total_shares = total_shares - burn_shares;
+
+        deposited_shares = deposited_shares - withdraw;
+
+        aries::mock::on(b"profile::get_deposited_amount", deposited_shares, 99); // after withdraw
+        loan_amount = loan_amount
+            - aries::decimal::raw(aries::decimal::from_u128(1083)); // recompound dust after repay
+        aries::mock::on(
+            b"profile::profile_loan",
+            vector[loan_amount, loan_amount],
+            99 // after recompound
+        );
+
+        aries::mock::on(
+            b"controller::deposit_fa:asset",
+            object::object_address(&self.usdc),
+            3 // 2 repay for withdraw + 1 repay for recompound
+        );
+        // recompound
+        aries::mock::on(
+            b"controller::deposit_fa:asset", object::object_address(&self.usdt), 1
+        );
+
+        strategy_aries::withdraw(
+            sender,
+            self.vault_name,
+            self.wallet1_id,
+            10_000_000, // > max withdrawable
+            0
+        );
+
+        // assert vault state
+        let (_, vault) = strategy_aries::get_vault(self.vault_name);
+        debug::print(&vault);
+        assert!(get_vault_data<u128>(&vault, b"total_shares") == total_shares);
+        assert!(get_vault_data<u128>(&vault, b"owned_shares") == owned_shares);
+        assert!(get_vault_data<u64>(&vault, b"available_borrow_amount") == 0);
+        assert!(
+            get_vault_data<u128>(&vault, b"total_withdrawn_amount")
+                == 7000000 + 2_000_000 + 2_975_925
+        );
+
+        // assert account state
+        let account_data =
+            wallet_account::get_strategy_data<strategy_aries::AccountData>(
+                &wallet_account::get_wallet_account(self.wallet1_id)
+            );
+        debug::print(&account_data);
+        let (_, vault_shares) =
+            account_data.get_raw_account_data_for_vault(self.vault_address);
+        assert!(vault_shares == 0);
+
+        let (pending, deposited, withdrawable) =
+            strategy_aries::get_account_state(self.vault_name, self.wallet1_id);
+        assert!(pending == 0);
+        assert!(deposited == 0);
+        assert!(withdrawable == 0);
+    }
+
     #[test(
         deployer = @moneyfi, aries_deployer = @aries, wallet1 = @0x111, wallet2 = @0x222
     )]
@@ -610,9 +772,9 @@ module moneyfi::strategy_aries_test {
         ctx.test_borrow_and_deposit(deployer);
         debug::print(&string::utf8(b"TEST ===> test_compound_vault"));
         ctx.test_compound_vault(deployer);
-        // debug::print(
-        //     &string::utf8(b"TEST ===> test_withdraw_trigger_repay: wallet1 withdraw max")
-        // );
-        // ctx.test_withdraw_trigger_repay(deployer);
+        debug::print(
+            &string::utf8(b"TEST ===> test_withdraw_trigger_repay: wallet1 withdraw max")
+        );
+        ctx.test_withdraw_trigger_repay(deployer);
     }
 }
