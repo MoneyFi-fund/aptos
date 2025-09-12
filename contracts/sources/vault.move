@@ -725,18 +725,6 @@ module moneyfi::vault {
         // strategy::update_tick(strategy_id, &account, extra_data);
     }
 
-    public entry fun batch_update_tick(
-        sender: &signer,
-        wallet_ids: vector<vector<u8>>,
-        strategy_id: u8,
-        extra_data: vector<vector<u8>>
-    ) {
-        assert!(vector::length(&wallet_ids) <= 20);
-        vector::for_each(wallet_ids, |wallet_id| {
-            update_tick(sender, wallet_id, strategy_id, extra_data)
-        });
-    }
-
     public entry fun swap_assets(
         sender: &signer,
         wallet_id: vector<u8>,
