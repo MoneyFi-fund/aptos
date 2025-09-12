@@ -305,14 +305,13 @@ module moneyfi::strategy_aries {
         vault.update_pending_amount(&account, amount, 0);
     }
 
-    /// Withdraw fund from strategy vault to wallet account
-    /// Pass amount = U64_MAX to withdraw all
-    public entry fun withdraw(
+    public entry fun withdraw_with_hook_data(
         sender: &signer,
         vault_name: String,
         wallet_id: vector<u8>,
         amount: u64,
-        gas_fee: u64
+        gas_fee: u64,
+        hook_data: vector<u8>
     ) acquires Strategy {
         assert!(amount > 0);
         access_control::must_be_service_account(sender);
@@ -417,15 +416,35 @@ module moneyfi::strategy_aries {
 
         wallet_account::set_strategy_data(account, account_data);
 
-        moneyfi_vault::withdrawn_from_strategy<Strategy>(
+        moneyfi_vault::withdrawn_from_strategy_with_hook_data<Strategy>(
             strategy_signer,
             wallet_id,
             vault.asset,
             deposited_amount,
             amount,
             0,
-            gas_fee
+            gas_fee,
+            hook_data
         );
+    }
+
+    /// Withdraw fund from strategy vault to wallet account
+    /// Pass amount = U64_MAX to withdraw all
+    public entry fun withdraw(
+        sender: &signer,
+        vault_name: String,
+        wallet_id: vector<u8>,
+        amount: u64,
+        gas_fee: u64
+    ) acquires Strategy {
+        withdraw_with_hook_data(
+            sender,
+            vault_name,
+            wallet_id,
+            amount,
+            gas_fee,
+            vector[]
+        )
     }
 
     /// pass amount = U64_MAX to repay all

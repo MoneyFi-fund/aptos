@@ -215,6 +215,11 @@ module moneyfi::vault {
         timestamp: u64
     }
 
+    #[event]
+    struct HookEvent has drop, store {
+        data: vector<u8>
+    }
+
     // -- init
     fun init_module(sender: &signer) {
         let addr = signer::address_of(sender);
@@ -938,6 +943,31 @@ module moneyfi::vault {
                 timestamp: now_seconds()
             }
         );
+    }
+
+    public fun withdrawn_from_strategy_with_hook_data<T>(
+        sender: &signer,
+        wallet_id: vector<u8>,
+        asset: Object<Metadata>,
+        deposited_amount: u64,
+        withdrawn_amount: u64,
+        withdraw_fee: u64,
+        gas_fee: u64,
+        hook_data: vector<u8>
+    ) acquires Config, Vault, StrategyRegistry {
+        withdrawn_from_strategy<T>(
+            sender,
+            wallet_id,
+            asset,
+            deposited_amount,
+            withdrawn_amount,
+            withdraw_fee,
+            gas_fee
+        );
+
+        if (hook_data.length() > 0) {
+            event::emit(HookEvent { data: hook_data });
+        }
     }
 
     public fun get_strategy_address<T>(): address acquires StrategyRegistry {
