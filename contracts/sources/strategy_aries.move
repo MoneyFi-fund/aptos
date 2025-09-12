@@ -218,7 +218,12 @@ module moneyfi::strategy_aries {
                 remaining_amount = remaining_amount - acc_deposited_amount;
 
                 let acc_vault_shares =
-                    (*v as u128) * vault_shares / (total_pending_amount as u128);
+                    math128::mul_div(
+                        acc_deposited_amount as u128,
+                        vault_shares,
+                        deposited_amount as u128
+                    );
+
                 *v = *v - acc_deposited_amount;
 
                 let account = &object::address_to_object<WalletAccount>(*k);
@@ -368,7 +373,7 @@ module moneyfi::strategy_aries {
                         account_vault_data.deposited_amount - dep_amount
                     } else { 0 };
 
-                // recalc burned_vault_shares from burned_shares will not = vault_shares
+                // recalc burned_vault_shares from burned_shares not exactly = vault_shares
                 // let burned_vault_shares =
                 //     vault.burn_vault_shares(burned_shares, total_deposit_shares);
                 vault.total_shares = vault.total_shares - vault_shares;
@@ -381,8 +386,11 @@ module moneyfi::strategy_aries {
                     vault.get_vault_borrowing_state(total_deposit_shares);
                 if (total_loan_amount > owned_deposited_amount) {
                     let deduct_amount =
-                        (total_loan_amount - owned_deposited_amount) * burned_shares
-                            / total_deposit_shares;
+                        math64::mul_div(
+                            total_loan_amount - owned_deposited_amount,
+                            burned_shares,
+                            total_deposit_shares
+                        );
                     withdrawn_amount =
                         withdrawn_amount
                             - math64::min(withdrawn_amount, deduct_amount as u64);
@@ -1224,7 +1232,9 @@ module moneyfi::strategy_aries {
         if (self.total_shares == 0) {
             total_deposit_shares
         } else {
-            (vault_shares * (total_deposit_shares as u128) / self.total_shares) as u64
+            math128::mul_div(
+                vault_shares, total_deposit_shares as u128, self.total_shares
+            ) as u64
         }
     }
 
@@ -1234,8 +1244,9 @@ module moneyfi::strategy_aries {
         if (total_deposit_shares == 0) {
             (deposit_shares as u128) * math128::pow(10, SHARE_DECIMALS as u128)
         } else {
-            (deposit_shares as u128) * self.total_shares
-                / (total_deposit_shares as u128)
+            math128::mul_div(
+                deposit_shares as u128, self.total_shares, total_deposit_shares as u128
+            )
         }
     }
 

@@ -216,6 +216,7 @@ module moneyfi::vault {
     // -- init
     fun init_module(sender: &signer) {
         let addr = signer::address_of(sender);
+        assert!(addr == @moneyfi);
         assert!(
             !exists<Config>(addr),
             error::already_exists(E_ALREADY_INITIALIZED)
@@ -577,7 +578,11 @@ module moneyfi::vault {
             } else { 0 };
 
         let system_fee = config.calc_system_fee(&account, interest_amount);
-        let total_fee = fee + system_fee + gas_fee;
+        let total_fee = fee + system_fee;
+        if (interest_amount > 0) {
+            total_fee = total_fee + gas_fee;
+            collected_amount = collected_amount - gas_fee;
+        };
         if (total_fee > 0) {
             let account_signer = wallet_account::get_wallet_account_signer(&account);
             primary_fungible_store::transfer(
@@ -587,8 +592,6 @@ module moneyfi::vault {
 
         collected_amount = collected_amount - system_fee;
         if (system_fee > 0) {
-            collected_amount = collected_amount - gas_fee;
-
             let (remaining_fee, referral_fees) =
                 config.calc_referral_shares(&account, system_fee);
             asset_data.total_fee_amount = asset_data.total_fee_amount + remaining_fee;
@@ -970,7 +973,11 @@ module moneyfi::vault {
             } else { 0 };
 
         let system_fee = config.calc_system_fee(&account, interest_amount);
-        let total_fee = withdraw_fee + system_fee + gas_fee;
+        let total_fee = withdraw_fee + system_fee;
+        if (interest_amount > 0) {
+            total_fee = total_fee + gas_fee;
+            collected_amount = collected_amount - gas_fee;
+        };
         if (total_fee > 0) {
             let account_signer = wallet_account::get_wallet_account_signer(&account);
             primary_fungible_store::transfer(
@@ -980,8 +987,6 @@ module moneyfi::vault {
 
         collected_amount = collected_amount - system_fee;
         if (system_fee > 0) {
-            collected_amount = collected_amount - gas_fee;
-
             let (remaining_fee, referral_fees) =
                 config.calc_referral_shares(&account, system_fee);
             asset_data.total_fee_amount = asset_data.total_fee_amount + remaining_fee;
@@ -1187,20 +1192,17 @@ module moneyfi::vault {
     }
 
     fun add_referral_fees(
-        self: &VaultAsset, data: &OrderedMap<address, u64>
+        self: &mut VaultAsset, data: &OrderedMap<address, u64>
     ) {
         let pending_referral_fees = self.pending_referral_fees;
-        ordered_map::for_each_ref(
-            data,
-            |k, v| {
-                let current =
-                    if (ordered_map::contains(&self.pending_referral_fees, k)) {
-                        *ordered_map::borrow(&self.pending_referral_fees, k)
-                    } else { 0 };
-                let v = *v + current;
-                ordered_map::upsert(&mut pending_referral_fees, *k, v);
-            }
-        );
+        data.for_each_ref(|k, v| {
+            let current =
+                if (pending_referral_fees.contains(k)) {
+                    *pending_referral_fees.borrow(k)
+                } else { 0 };
+            let v = *v + current;
+            pending_referral_fees.upsert(*k, v);
+        });
     }
 
     fun get_pending_referral_fee(
