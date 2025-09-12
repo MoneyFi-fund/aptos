@@ -717,12 +717,9 @@ module moneyfi::vault {
         _strategy_id: u8,
         _extra_data: vector<vector<u8>>
     ) {
-        // Deprecated, function retained for upgrade compatibility
-        abort(E_DEPRECATED);
-
-        // access_control::must_be_service_account(sender);
-        // let account = wallet_account::get_wallet_account(wallet_id);
-        // strategy::update_tick(strategy_id, &account, extra_data);
+        access_control::must_be_service_account(_sender);
+        let account = wallet_account::get_wallet_account(_wallet_id);
+        strategy::update_tick(_strategy_id, &account, _extra_data);
     }
 
     public entry fun swap_assets(
