@@ -573,6 +573,17 @@ module moneyfi::strategy_hyperion {
                     i32::wrapping_add(
                         i32::from_u32(current_tick), i32::from_u32(tick_spacing)
                     );
+                let pair =
+                    if (object::object_address<Metadata>(asset)
+                        == object::object_address<Metadata>(token_a)) {
+                        *token_b
+                    } else if (object::object_address<Metadata>(asset)
+                        == object::object_address<Metadata>(token_b)) {
+                        *token_a
+                    } else {
+                        assert!(false, error::invalid_argument(0x10035));
+                        *token_a // to satisfy compiler
+                    };
                 let position =
                     pool_v3::open_position(
                         &wallet_account::get_wallet_account_signer(account),
@@ -582,13 +593,6 @@ module moneyfi::strategy_hyperion {
                         i32::as_u32(tick_lower),
                         i32::as_u32(tick_upper)
                     );
-                let pair =
-                    if (object::object_address<Metadata>(asset)
-                        == object::object_address<Metadata>(token_a)) {
-                        *token_b
-                    } else {
-                        *token_a
-                    };
                 let new_position = Position {
                     position,
                     lp_amount: 0,

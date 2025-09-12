@@ -170,7 +170,7 @@ module moneyfi::wallet_account {
         account: &Object<WalletAccount>
     ): (Option<u64>, vector<u64>) acquires WalletAccount {
         let account_addr = object::object_address(account);
-        let acc = borrow_global_mut<WalletAccount>(account_addr);
+        let acc = borrow_global<WalletAccount>(account_addr);
 
         (acc.system_fee_percent, acc.referral_percents)
     }
