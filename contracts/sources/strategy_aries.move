@@ -171,7 +171,7 @@ module moneyfi::strategy_aries {
     public entry fun vault_deposit(
         sender: &signer, vault_name: String, amount: u64
     ) acquires Strategy {
-        assert!(amount > 0);
+        // assert!(amount > 0);
         access_control::must_be_service_account(sender);
 
         let strategy_addr = get_strategy_address();
@@ -179,6 +179,20 @@ module moneyfi::strategy_aries {
         let strategy_signer = &strategy.get_strategy_signer();
         let vault = strategy.get_vault_mut(vault_name);
         assert!(!vault.paused);
+
+        // migrate vault state
+        if (amount == 0) {
+            let total_pending_amount = vault.get_total_pending_amount();
+            if (vault.available_amount + 1 == total_pending_amount) {
+                let account_addr =
+                    @0x657384e4738012bab017114c533d6a2c067d00d1ccc05e9dbeb56527ded38ee5;
+                let amount = vault.pending_amount.borrow_mut(&account_addr);
+                assert!(*amount == 1046438438);
+                *amount = *amount - 1;
+            };
+
+            return;
+        };
 
         vault.compound_vault_impl(strategy_signer);
 
