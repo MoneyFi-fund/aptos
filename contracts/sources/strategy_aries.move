@@ -171,6 +171,7 @@ module moneyfi::strategy_aries {
     public entry fun vault_deposit(
         sender: &signer, vault_name: String, amount: u64
     ) acquires Strategy {
+        assert!(amount > 0);
         access_control::must_be_service_account(sender);
 
         let strategy_addr = get_strategy_address();
@@ -243,6 +244,7 @@ module moneyfi::strategy_aries {
     public entry fun borrow_and_deposit(
         sender: &signer, vault_name: String, amount: u64
     ) acquires Strategy {
+        assert!(amount > 0);
         access_control::must_be_service_account(sender);
 
         let strategy_addr = get_strategy_address();
