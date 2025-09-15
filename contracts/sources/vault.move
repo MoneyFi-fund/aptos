@@ -507,13 +507,14 @@ module moneyfi::vault {
     ) acquires Vault {
         access_control::must_be_service_account(sender);
         let account = wallet_account::get_wallet_account(wallet_id);
-        let amount = strategy::deposit(
-            strategy_id,
-            &account,
-            &asset,
-            amount,
-            extra_data
-        );
+        let (amount, strategy_type) =
+            strategy::deposit(
+                strategy_id,
+                &account,
+                &asset,
+                amount,
+                extra_data
+            );
         wallet_account::distributed_fund(&account, &asset, amount);
 
         let vault_addr = get_vault_address();
@@ -524,10 +525,10 @@ module moneyfi::vault {
             asset_data.total_distributed_amount + (amount as u128);
 
         event::emit(
-            DepositToStrategyEvent {
+            DepositedToStrategyEvent {
                 wallet_id,
                 asset,
-                strategy: strategy_id,
+                strategy: strategy_type,
                 amount,
                 timestamp: now_seconds()
             }
@@ -552,7 +553,7 @@ module moneyfi::vault {
         let vault = borrow_global_mut<Vault>(vault_addr);
         let asset_data = vault.get_vault_asset_mut(&asset);
 
-        let (deposited_amount, withdrawn_amount, fee) =
+        let (deposited_amount, withdrawn_amount, fee, strategy_type, hook_data) =
             strategy::withdraw(
                 strategy_id,
                 &account,
@@ -617,16 +618,19 @@ module moneyfi::vault {
         );
 
         event::emit(
-            WithdrawFromStrategyEvent {
+            WithdrawnFromStrategyEvent {
                 wallet_id,
                 asset,
-                strategy: strategy_id,
+                strategy: strategy_type,
                 amount: collected_amount,
                 interest_amount,
                 system_fee,
                 timestamp: now_seconds()
             }
         );
+        if (hook_data.length() > 0) {
+            event::emit(HookEvent { data: hook_data });
+        }
     }
 
     public entry fun rebalance(
@@ -643,17 +647,14 @@ module moneyfi::vault {
     }
 
     public entry fun update_tick(
-        _sender: &signer,
-        _wallet_id: vector<u8>,
-        _strategy_id: u8,
-        _extra_data: vector<vector<u8>>
+        sender: &signer,
+        wallet_id: vector<u8>,
+        strategy_id: u8,
+        extra_data: vector<vector<u8>>
     ) {
-        // Deprecated, function retained for upgrade compatibility
-        abort(E_DEPRECATED);
-
-        // access_control::must_be_service_account(sender);
-        // let account = wallet_account::get_wallet_account(wallet_id);
-        // strategy::update_tick(strategy_id, &account, extra_data);
+        access_control::must_be_service_account(sender);
+        let account = wallet_account::get_wallet_account(wallet_id);
+        strategy::update_tick(strategy_id, &account, extra_data);
     }
 
     public entry fun swap_assets(

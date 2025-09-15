@@ -4,6 +4,7 @@ module moneyfi::strategy_thala {
     use std::option;
     use std::string::String;
     use std::bcs::to_bytes;
+    use aptos_std::type_info::{Self, TypeInfo};
     use aptos_std::from_bcs;
     use aptos_std::math128;
     use aptos_std::ordered_map::{Self, OrderedMap};
@@ -67,6 +68,7 @@ module moneyfi::strategy_thala {
         reward_a: String,
         reward_b: String,
         withdraw_fee: u64
+        //hook_data
     }
 
     //--initialization
@@ -79,13 +81,13 @@ module moneyfi::strategy_thala {
         );
     }
 
-    // returns(actual_amount)
+    // returns(actual_amount, strategy_type)
     public(friend) fun deposit_fund_to_thala_single(
         account: &Object<WalletAccount>,
         asset: &Object<Metadata>,
         amount_in: u64,
         extra_data: vector<vector<u8>>
-    ): u64 acquires StrategyStats {
+    ): (u64, TypeInfo) acquires StrategyStats {
         assert!(amount_in > 0, error::invalid_argument(E_INVALID_AMOUNT));
         let extra_data = unpack_extra_data(extra_data);
         let position = create_or_get_exist_position(account, asset, extra_data);
@@ -138,16 +140,17 @@ module moneyfi::strategy_thala {
         strategy_stats_deposit(asset, actual_amount);
         let strategy_data = set_position_data(account, extra_data.pool, position);
         wallet_account::set_strategy_data(account, strategy_data);
-        actual_amount
+        (actual_amount, get_strategy_type())
     }
 
-    // return (total_deposited_amount, total_withdrawn_amount)
+    // return (total_deposited_amount, total_withdrawn_amount, withdraw_fee, strategy_type, hook_data)
     public(friend) fun withdraw_fund_from_thala_single(
         account: &Object<WalletAccount>,
         asset: &Object<Metadata>,
         amount_min: u64,
         extra_data: vector<vector<u8>>
-    ): (u64, u64, u64) acquires StrategyStats {
+    ): (u64, u64, u64, TypeInfo, vector<u8>) acquires StrategyStats {
+        let hook_data = get_hook_data(extra_data);
         let extra_data = unpack_extra_data(extra_data);
         let position = get_position_data(account, extra_data.pool);
         let pool_obj = object::address_to_object<Pool>(extra_data.pool);
@@ -281,7 +284,13 @@ module moneyfi::strategy_thala {
             };
         wallet_account::set_strategy_data(account, strategy_data);
         strategy_stats_withdraw(asset, total_deposited_amount, total_withdrawn_amount);
-        (total_deposited_amount, total_withdrawn_amount, extra_data.withdraw_fee)
+        (
+            total_deposited_amount,
+            total_withdrawn_amount,
+            extra_data.withdraw_fee,
+            get_strategy_type(),
+            hook_data
+        )
     }
 
     // return (
@@ -654,5 +663,13 @@ module moneyfi::strategy_thala {
         if (total_stablecoin_amount > position.amount) {
             total_stablecoin_amount - position.amount
         } else { 0 }
+    }
+
+    fun get_strategy_type(): TypeInfo {
+        type_info::type_of<ThalaStrategyData>()
+    }
+
+    fun get_hook_data(extra_data: vector<vector<u8>>): vector<u8> {
+        *vector::borrow(&extra_data, vector::length(&extra_data) - 1)
     }
 }

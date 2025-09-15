@@ -2,6 +2,7 @@
 module moneyfi::strategy {
     use std::vector;
     use std::error;
+    use aptos_std::type_info::{Self, TypeInfo};
     use aptos_framework::object::Object;
     use aptos_framework::fungible_asset::Metadata;
 
@@ -50,7 +51,7 @@ module moneyfi::strategy {
         asset: &Object<Metadata>,
         amount: u64,
         extra_data: vector<vector<u8>>
-    ): u64 {
+    ): (u64, TypeInfo) {
         if (strategy == STRATEGY_HYPERION) {
             return strategy_hyperion::deposit_fund_to_hyperion_single(
                 account, asset, amount, extra_data
@@ -70,7 +71,7 @@ module moneyfi::strategy {
         };
 
         abort(error::invalid_argument(E_UNKNOWN_STRATEGY));
-        0
+        (0, type_info::type_of<TypeInfo>()) // to satisfy the return type
     }
 
     /// return (
@@ -84,7 +85,7 @@ module moneyfi::strategy {
         asset: &Object<Metadata>,
         min_amount: u64,
         extra_data: vector<vector<u8>>
-    ): (u64, u64, u64) {
+    ): (u64, u64, u64, TypeInfo, vector<u8>) {
         if (strategy == STRATEGY_HYPERION) {
             return strategy_hyperion::withdraw_fund_from_hyperion_single(
                 account, asset, min_amount, extra_data
@@ -104,7 +105,8 @@ module moneyfi::strategy {
         };
 
         abort(error::invalid_argument(E_UNKNOWN_STRATEGY));
-        (0, 0, 0)
+        (0, 0, 0, type_info::type_of<TypeInfo>(), vector::empty<u8>())
+        // to satisfy the return type
     }
 
     public(friend) fun update_tick(
