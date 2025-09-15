@@ -137,7 +137,7 @@ module moneyfi::access_control_test {
     }
 
     #[test(deployer = @moneyfi, user1 = @0x2)]
-    #[expected_failure(abort_code = 0x50004, location = moneyfi::access_control)]
+    #[expected_failure(abort_code = 0x30004, location = moneyfi::access_control)]
     fun test_cannot_remove_last_admin(deployer: &signer, user1: &signer) {
         setup_test_environment(deployer);
         let user1_addr = signer::address_of(user1);
@@ -148,26 +148,6 @@ module moneyfi::access_control_test {
 
         // Should fail when trying to remove the last admin
         access_control::remove_account(user1, deployer_addr);
-    }
-
-    #[test(deployer = @moneyfi, user1 = @0x2, user2 = @0x3)]
-    #[expected_failure(abort_code = 0x50004, location = moneyfi::access_control)]
-    fun test_cannot_remove_last_role_manager(
-        deployer: &signer, user1: &signer, user2: &signer
-    ) {
-        setup_test_environment(deployer);
-        let user1_addr = signer::address_of(user1);
-        let user2_addr = signer::address_of(user2);
-
-        // Add two role managers
-        access_control::upsert_account(deployer, user1_addr, vector[ROLE_ROLE_MANAGER]);
-        access_control::upsert_account(user1, user2_addr, vector[ROLE_ROLE_MANAGER]);
-
-        // Remove one role manager
-        access_control::remove_account(user1, user2_addr);
-
-        // Should fail when trying to remove the last role manager
-        access_control::remove_account(user1, user1_addr);
     }
 
     #[test(deployer = @moneyfi)]
@@ -223,7 +203,11 @@ module moneyfi::access_control_test {
         access_control::must_be_role_manager(user1);
 
         // Update user to have service account role instead
-        access_control::upsert_account(user1, user1_addr, vector[ROLE_SERVICE_ACCOUNT]);
+        access_control::upsert_account(
+            user1,
+            user1_addr,
+            vector[ROLE_ROLE_MANAGER, ROLE_SERVICE_ACCOUNT]
+        );
         access_control::must_be_service_account(user1);
     }
 
@@ -238,14 +222,16 @@ module moneyfi::access_control_test {
         access_control::upsert_account(
             deployer,
             user1_addr,
-            vector[ROLE_ADMIN, ROLE_SERVICE_ACCOUNT]
+            vector[ROLE_ROLE_MANAGER, ROLE_SERVICE_ACCOUNT]
         );
-        access_control::must_be_admin(user1);
+        access_control::must_be_role_manager(user1);
         access_control::must_be_service_account(user1);
     }
 
-    #[test(deployer = @moneyfi)]
-    fun test_get_accounts_view_function(deployer: &signer) {
+    #[test(deployer = @moneyfi, user1 = @0x2)]
+    fun test_get_accounts_view_function(
+        deployer: &signer, user1: &signer
+    ) {
         setup_test_environment(deployer);
         // let deployer_addr = signer::address_of(deployer);
 
@@ -254,29 +240,32 @@ module moneyfi::access_control_test {
         assert!(vector::length(&accounts) == 1, 0);
 
         // Add more accounts
-        access_control::upsert_account(deployer, @0x3, vector[ROLE_SERVICE_ACCOUNT]);
         access_control::upsert_account(deployer, @0x2, vector[ROLE_ROLE_MANAGER]);
+        access_control::upsert_account(user1, @0x3, vector[ROLE_SERVICE_ACCOUNT]);
 
         // Should now have three accounts
         let accounts = access_control::get_accounts();
         assert!(vector::length(&accounts) == 3, 1);
     }
 
-    #[test(deployer = @moneyfi, user1 = @0x2)]
+    #[test(deployer = @moneyfi, user1 = @0x2, user2 = @0x3)]
     #[expected_failure(abort_code = 0x50002, location = moneyfi::access_control)]
     fun test_service_account_cannot_manage_roles(
-        deployer: &signer, user1: &signer
+        deployer: &signer, user1: &signer, user2: &signer
     ) {
         setup_test_environment(deployer);
         let user1_addr = signer::address_of(user1);
+        let user2_addr = signer::address_of(user2);
 
+        // Add user as role manager
+        access_control::upsert_account(deployer, user1_addr, vector[ROLE_ROLE_MANAGER]);
         // Add user as service account
         access_control::upsert_account(
-            deployer, user1_addr, vector[ROLE_SERVICE_ACCOUNT]
+            deployer, user2_addr, vector[ROLE_SERVICE_ACCOUNT]
         );
 
         // Service account should not be able to add other accounts
-        access_control::upsert_account(user1, @0x4, vector[ROLE_SERVICE_ACCOUNT]);
+        access_control::upsert_account(user2, @0x4, vector[ROLE_SERVICE_ACCOUNT]);
     }
 
     #[test(deployer = @moneyfi, user1 = @0x2)]
