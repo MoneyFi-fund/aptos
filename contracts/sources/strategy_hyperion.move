@@ -24,7 +24,7 @@ module moneyfi::strategy_hyperion {
     friend moneyfi::strategy;
 
     // -- Constants
-    const DEADLINE_BUFFER: u64 = 31556926; // 1 years
+    const DEADLINE_BUFFER: u64 = 31556926; // 1 years //Deprecated
     const USDC_ADDRESS: address = @stablecoin;
 
     const STRATEGY_ID: u8 = 1; // Hyperion strategy id
@@ -141,7 +141,7 @@ module moneyfi::strategy_hyperion {
                 position.pair,
                 *asset,
                 signer::address_of(&wallet_signer),
-                timestamp::now_seconds() + DEADLINE_BUFFER
+                timestamp::now_seconds() + 600 // deadline
             );
         };
 
@@ -268,7 +268,7 @@ module moneyfi::strategy_hyperion {
             0,
             0,
             wallet_address,
-            timestamp::now_seconds() + DEADLINE_BUFFER
+            timestamp::now_seconds() + 600 // deadline
         );
         let balance_asset_after_remove =
             primary_fungible_store::balance(wallet_address, position.asset);
@@ -323,7 +323,7 @@ module moneyfi::strategy_hyperion {
                 position.pair,
                 position.asset,
                 wallet_address,
-                timestamp::now_seconds() + DEADLINE_BUFFER // deadline
+                timestamp::now_seconds() + 600 // deadline
             );
         };
 
@@ -417,7 +417,7 @@ module moneyfi::strategy_hyperion {
                     token_a,
                     asset,
                     wallet_address,
-                    timestamp::now_seconds() + DEADLINE_BUFFER // deadline
+                    timestamp::now_seconds() + 600 // deadline
                 );
             };
         };
@@ -435,7 +435,7 @@ module moneyfi::strategy_hyperion {
                     token_b,
                     asset,
                     wallet_address,
-                    timestamp::now_seconds() + DEADLINE_BUFFER // deadline
+                    timestamp::now_seconds() + 600 // deadline
                 );
             };
         };
@@ -459,7 +459,7 @@ module moneyfi::strategy_hyperion {
                         reward_token,
                         asset,
                         wallet_address,
-                        timestamp::now_seconds() + DEADLINE_BUFFER // deadline
+                        timestamp::now_seconds() + 600 // deadline
                     );
                 };
             };

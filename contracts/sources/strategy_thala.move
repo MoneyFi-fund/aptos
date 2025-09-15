@@ -23,7 +23,7 @@ module moneyfi::strategy_thala {
     friend moneyfi::strategy;
 
     // -- Constants
-    const DEADLINE_BUFFER: u64 = 31556926; // 1 years
+    const DEADLINE_BUFFER: u64 = 31556926; // 1 years //Deprecated
     const USDC_ADDRESS: address = @stablecoin;
 
     const STRATEGY_ID: u8 = 3;

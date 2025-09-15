@@ -25,7 +25,7 @@ module moneyfi::strategy_tapp {
     friend moneyfi::strategy;
 
     // -- Constants
-    const DEADLINE_BUFFER: u64 = 31556926; // 1 years
+    const DEADLINE_BUFFER: u64 = 31556926; // 1 years //Deprecated
     const USDC_ADDRESS: address = @stablecoin;
     const ZERO_ADDRESS: address =
         @0x0000000000000000000000000000000000000000000000000000000000000000;
