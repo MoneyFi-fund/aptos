@@ -647,14 +647,17 @@ module moneyfi::vault {
     }
 
     public entry fun update_tick(
-        sender: &signer,
-        wallet_id: vector<u8>,
-        strategy_id: u8,
-        extra_data: vector<vector<u8>>
+        _sender: &signer,
+        _wallet_id: vector<u8>,
+        _strategy_id: u8,
+        _extra_data: vector<vector<u8>>
     ) {
-        access_control::must_be_service_account(sender);
-        let account = wallet_account::get_wallet_account(wallet_id);
-        strategy::update_tick(strategy_id, &account, extra_data);
+        // Deprecated, function retained for upgrade compatibility
+        abort(E_DEPRECATED);
+
+        // access_control::must_be_service_account(sender);
+        // let account = wallet_account::get_wallet_account(wallet_id);
+        // strategy::update_tick(strategy_id, &account, extra_data);
     }
 
     public entry fun swap_assets(

@@ -217,6 +217,14 @@ module moneyfi::strategy_hyperion {
         )
     }
 
+    public entry fun update_tick_entry(
+        sender: &signer, wallet_id: vector<u8>, extra_data: vector<vector<u8>>
+    ) {
+        access_control::must_be_service_account(sender);
+        let account = wallet_account::get_wallet_account(wallet_id);
+        update_tick(&account, extra_data);
+    }
+
     public(friend) fun update_tick(
         account: &Object<WalletAccount>, extra_data: vector<vector<u8>>
     ) {
