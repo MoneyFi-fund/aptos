@@ -30,6 +30,7 @@ module moneyfi::strategy_aries {
     const E_EXCEED_CAPACITY: u64 = 2;
     const E_UNSUPPORTED_ASSET: u64 = 3;
     const E_POOL_NOT_EXIST: u64 = 4;
+    const E_VAULT_NOT_EXISTS: u64 = 5;
 
     #[resource_group_member(group = aptos_framework::object::ObjectGroup)]
     struct Strategy has key {
@@ -502,7 +503,7 @@ module moneyfi::strategy_aries {
         let vault_addr = get_vault_address(name);
         assert!(
             ordered_map::contains(&strategy.vaults, &vault_addr),
-            error::not_found(E_VAULT_EXISTS)
+            error::not_found(E_VAULT_NOT_EXISTS)
         );
 
         (vault_addr, *ordered_map::borrow(&strategy.vaults, &vault_addr))
@@ -999,7 +1000,7 @@ module moneyfi::strategy_aries {
 
         let amount =
             aries::profile::max_borrow_amount(strategy_addr, &self.name, reserve_info);
-        amount * 90 / 100 // TODO: config percent
+        math64::mul_div(amount, 90, 100) // TODO: config percent
     }
 
     /// Returns amount, shares and loan amount
@@ -1190,7 +1191,7 @@ module moneyfi::strategy_aries {
         let (pool, _, slippage) = get_hyperion_pool(&self.asset, &self.borrow_asset);
         let (amount_out, _) = hyperion::pool_v3::get_amount_out(pool, self.asset, amount);
 
-        amount_out * (10000 - slippage) / 10000
+        math64::mul_div(amount_out, (10000 - slippage), 10000)
     }
 
     fun get_reward(self: &Vault, reward: address): u64 {
@@ -1453,12 +1454,12 @@ module moneyfi::strategy_aries {
                 let (amount_in, _) = hyperion::pool_v3::get_amount_in(
                     pool, *from, amount
                 );
-                amount_in = amount_in * (10000 + slippage) / 10000;
+                amount_in = math64::mul_div(amount_in, (10000 + slippage), 10000);
                 (amount_in, amount)
             } else {
                 let (amount_out, _) =
                     hyperion::pool_v3::get_amount_out(pool, *from, amount);
-                amount_out = amount_out * (10000 - slippage) / 10000;
+                amount_out = math64::mul_div(amount_out, (10000 - slippage), 10000);
                 (amount, amount_out)
             };
 

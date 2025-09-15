@@ -5,6 +5,7 @@ module moneyfi::vault {
     use std::string;
     use std::option;
     use aptos_std::type_info::{Self, TypeInfo};
+    use aptos_std::math64;
     use aptos_framework::ordered_map::{Self, OrderedMap};
     use aptos_framework::object::{Self, Object, ObjectCore, ExtendRef};
     use aptos_framework::event;
@@ -401,7 +402,7 @@ module moneyfi::vault {
         let config = borrow_global<Config>(@moneyfi);
         assert!(
             config.can_withdraw(&asset, amount),
-            error::permission_denied(E_DEPOSIT_NOT_ALLOWED)
+            error::permission_denied(E_WITHDRAW_NOT_ALLOWED)
         );
 
         let account_signer = wallet_account::get_wallet_account_signer(&account);
@@ -1114,7 +1115,7 @@ module moneyfi::vault {
             percent = *option::borrow(&system_fee_percent);
         };
 
-        interest_amount * percent / 10_000
+        math64::mul_div(interest_amount, percent, 10_000)
     }
 
     /// return (remaining_fee, share_fees)
