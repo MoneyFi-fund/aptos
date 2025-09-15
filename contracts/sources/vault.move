@@ -5,6 +5,7 @@ module moneyfi::vault {
     use std::string;
     use std::option;
     use aptos_std::type_info::{Self, TypeInfo};
+    use aptos_std::math64;
     use aptos_framework::ordered_map::{Self, OrderedMap};
     use aptos_framework::object::{Self, Object, ObjectCore, ExtendRef};
     use aptos_framework::event;
@@ -170,6 +171,7 @@ module moneyfi::vault {
         timestamp: u64
     }
 
+    /// Deprecated
     #[event]
     struct RebalanceEvent has drop, store {
         wallet_id: vector<u8>,
@@ -181,6 +183,7 @@ module moneyfi::vault {
         timestamp: u64
     }
 
+    /// Deprecated
     #[event]
     struct RebalanceStrategyEvent has drop, store {
         wallet_id: vector<u8>,
@@ -213,9 +216,15 @@ module moneyfi::vault {
         timestamp: u64
     }
 
+    #[event]
+    struct HookEvent has drop, store {
+        data: vector<u8>
+    }
+
     // -- init
     fun init_module(sender: &signer) {
         let addr = signer::address_of(sender);
+        assert!(addr == @moneyfi);
         assert!(
             !exists<Config>(addr),
             error::already_exists(E_ALREADY_INITIALIZED)
@@ -393,7 +402,7 @@ module moneyfi::vault {
         let config = borrow_global<Config>(@moneyfi);
         assert!(
             config.can_withdraw(&asset, amount),
-            error::permission_denied(E_DEPOSIT_NOT_ALLOWED)
+            error::permission_denied(E_WITHDRAW_NOT_ALLOWED)
         );
 
         let account_signer = wallet_account::get_wallet_account_signer(&account);
@@ -499,13 +508,14 @@ module moneyfi::vault {
     ) acquires Vault {
         access_control::must_be_service_account(sender);
         let account = wallet_account::get_wallet_account(wallet_id);
-        let amount = strategy::deposit(
-            strategy_id,
-            &account,
-            &asset,
-            amount,
-            extra_data
-        );
+        let (amount, strategy_type) =
+            strategy::deposit(
+                strategy_id,
+                &account,
+                &asset,
+                amount,
+                extra_data
+            );
         wallet_account::distributed_fund(&account, &asset, amount);
 
         let vault_addr = get_vault_address();
@@ -516,10 +526,10 @@ module moneyfi::vault {
             asset_data.total_distributed_amount + (amount as u128);
 
         event::emit(
-            DepositToStrategyEvent {
+            DepositedToStrategyEvent {
                 wallet_id,
                 asset,
-                strategy: strategy_id,
+                strategy: strategy_type,
                 amount,
                 timestamp: now_seconds()
             }
@@ -544,7 +554,7 @@ module moneyfi::vault {
         let vault = borrow_global_mut<Vault>(vault_addr);
         let asset_data = vault.get_vault_asset_mut(&asset);
 
-        let (deposited_amount, withdrawn_amount, fee) =
+        let (deposited_amount, withdrawn_amount, fee, strategy_type, hook_data) =
             strategy::withdraw(
                 strategy_id,
                 &account,
@@ -577,7 +587,11 @@ module moneyfi::vault {
             } else { 0 };
 
         let system_fee = config.calc_system_fee(&account, interest_amount);
-        let total_fee = fee + system_fee + gas_fee;
+        let total_fee = fee + system_fee;
+        if (interest_amount > 0) {
+            total_fee = total_fee + gas_fee;
+            collected_amount = collected_amount - gas_fee;
+        };
         if (total_fee > 0) {
             let account_signer = wallet_account::get_wallet_account_signer(&account);
             primary_fungible_store::transfer(
@@ -587,8 +601,6 @@ module moneyfi::vault {
 
         collected_amount = collected_amount - system_fee;
         if (system_fee > 0) {
-            collected_amount = collected_amount - gas_fee;
-
             let (remaining_fee, referral_fees) =
                 config.calc_referral_shares(&account, system_fee);
             asset_data.total_fee_amount = asset_data.total_fee_amount + remaining_fee;
@@ -607,108 +619,32 @@ module moneyfi::vault {
         );
 
         event::emit(
-            WithdrawFromStrategyEvent {
+            WithdrawnFromStrategyEvent {
                 wallet_id,
                 asset,
-                strategy: strategy_id,
+                strategy: strategy_type,
                 amount: collected_amount,
                 interest_amount,
                 system_fee,
                 timestamp: now_seconds()
             }
         );
+        if (hook_data.length() > 0) {
+            event::emit(HookEvent { data: hook_data });
+        }
     }
 
     public entry fun rebalance(
-        sender: &signer,
-        wallet_id: vector<u8>,
-        strategy_id: u8,
-        asset: Object<Metadata>,
-        amount: u64,
-        gas_fee: u64,
-        extra_data: vector<vector<u8>>
-    ) acquires Config, Vault {
-        access_control::must_be_service_account(sender);
-        let account = wallet_account::get_wallet_account(wallet_id);
-        let config = borrow_global<Config>(@moneyfi);
-
-        let vault_addr = get_vault_address();
-        let vault = borrow_global_mut<Vault>(vault_addr);
-        let asset_data = vault.get_vault_asset_mut(&asset);
-
-        let (deposited_amount, withdrawn_amount, fee) =
-            strategy::withdraw(
-                strategy_id,
-                &account,
-                &asset,
-                amount,
-                extra_data
-            );
-        assert!(fee <= withdrawn_amount);
-        assert!(asset_data.total_distributed_amount >= (deposited_amount as u128));
-
-        let collected_amount = withdrawn_amount - fee;
-        let interest_amount = 0;
-        let loss_amount = 0;
-        if (deposited_amount > collected_amount) {
-            loss_amount = deposited_amount - collected_amount;
-        } else {
-            interest_amount = collected_amount - deposited_amount;
-        };
-        interest_amount =
-            if (interest_amount > gas_fee) {
-                interest_amount - gas_fee
-            } else { 0 };
-
-        asset_data.total_distributed_amount =
-            asset_data.total_distributed_amount - (deposited_amount as u128);
-        asset_data.total_amount = asset_data.total_amount + (interest_amount as u128);
-        asset_data.total_amount =
-            if (asset_data.total_amount > (loss_amount as u128)) {
-                asset_data.total_amount - (loss_amount as u128)
-            } else { 0 };
-
-        let system_fee = config.calc_system_fee(&account, interest_amount);
-        let total_fee = fee + system_fee + gas_fee;
-        if (total_fee > 0) {
-            let account_signer = wallet_account::get_wallet_account_signer(&account);
-            primary_fungible_store::transfer(
-                &account_signer, asset, vault_addr, total_fee
-            );
-        };
-
-        collected_amount = collected_amount - system_fee;
-        if (system_fee > 0) {
-            collected_amount = collected_amount - gas_fee;
-
-            let (remaining_fee, referral_fees) =
-                config.calc_referral_shares(&account, system_fee);
-            asset_data.total_fee_amount = asset_data.total_fee_amount + remaining_fee;
-            asset_data.pending_fee_amount = asset_data.pending_fee_amount
-                + remaining_fee;
-            asset_data.add_referral_fees(&referral_fees);
-        };
-
-        wallet_account::collected_fund(
-            &account,
-            &asset,
-            deposited_amount,
-            collected_amount,
-            interest_amount,
-            system_fee
-        );
-
-        event::emit(
-            RebalanceEvent {
-                wallet_id,
-                asset,
-                strategy: strategy_id,
-                amount: collected_amount,
-                interest_amount,
-                system_fee,
-                timestamp: now_seconds()
-            }
-        );
+        _sender: &signer,
+        _wallet_id: vector<u8>,
+        _strategy_id: u8,
+        _asset: Object<Metadata>,
+        _amount: u64,
+        _gas_fee: u64,
+        _extra_data: vector<vector<u8>>
+    ) {
+        // Deprecated, function retained for upgrade compatibility
+        abort(E_DEPRECATED);
     }
 
     public entry fun update_tick(
@@ -970,7 +906,11 @@ module moneyfi::vault {
             } else { 0 };
 
         let system_fee = config.calc_system_fee(&account, interest_amount);
-        let total_fee = withdraw_fee + system_fee + gas_fee;
+        let total_fee = withdraw_fee + system_fee;
+        if (interest_amount > 0) {
+            total_fee = total_fee + gas_fee;
+            collected_amount = collected_amount - gas_fee;
+        };
         if (total_fee > 0) {
             let account_signer = wallet_account::get_wallet_account_signer(&account);
             primary_fungible_store::transfer(
@@ -980,8 +920,6 @@ module moneyfi::vault {
 
         collected_amount = collected_amount - system_fee;
         if (system_fee > 0) {
-            collected_amount = collected_amount - gas_fee;
-
             let (remaining_fee, referral_fees) =
                 config.calc_referral_shares(&account, system_fee);
             asset_data.total_fee_amount = asset_data.total_fee_amount + remaining_fee;
@@ -1010,6 +948,31 @@ module moneyfi::vault {
                 timestamp: now_seconds()
             }
         );
+    }
+
+    public fun withdrawn_from_strategy_with_hook_data<T>(
+        sender: &signer,
+        wallet_id: vector<u8>,
+        asset: Object<Metadata>,
+        deposited_amount: u64,
+        withdrawn_amount: u64,
+        withdraw_fee: u64,
+        gas_fee: u64,
+        hook_data: vector<u8>
+    ) acquires Config, Vault, StrategyRegistry {
+        withdrawn_from_strategy<T>(
+            sender,
+            wallet_id,
+            asset,
+            deposited_amount,
+            withdrawn_amount,
+            withdraw_fee,
+            gas_fee
+        );
+
+        if (hook_data.length() > 0) {
+            event::emit(HookEvent { data: hook_data });
+        }
     }
 
     public fun get_strategy_address<T>(): address acquires StrategyRegistry {
@@ -1152,7 +1115,7 @@ module moneyfi::vault {
             percent = *option::borrow(&system_fee_percent);
         };
 
-        interest_amount * percent / 10_000
+        math64::mul_div(interest_amount, percent, 10_000)
     }
 
     /// return (remaining_fee, share_fees)
@@ -1187,20 +1150,17 @@ module moneyfi::vault {
     }
 
     fun add_referral_fees(
-        self: &VaultAsset, data: &OrderedMap<address, u64>
+        self: &mut VaultAsset, data: &OrderedMap<address, u64>
     ) {
         let pending_referral_fees = self.pending_referral_fees;
-        ordered_map::for_each_ref(
-            data,
-            |k, v| {
-                let current =
-                    if (ordered_map::contains(&self.pending_referral_fees, k)) {
-                        *ordered_map::borrow(&self.pending_referral_fees, k)
-                    } else { 0 };
-                let v = *v + current;
-                ordered_map::upsert(&mut pending_referral_fees, *k, v);
-            }
-        );
+        data.for_each_ref(|k, v| {
+            let current =
+                if (pending_referral_fees.contains(k)) {
+                    *pending_referral_fees.borrow(k)
+                } else { 0 };
+            let v = *v + current;
+            pending_referral_fees.upsert(*k, v);
+        });
     }
 
     fun get_pending_referral_fee(

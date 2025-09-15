@@ -170,7 +170,7 @@ module moneyfi::wallet_account {
         account: &Object<WalletAccount>
     ): (Option<u64>, vector<u64>) acquires WalletAccount {
         let account_addr = object::object_address(account);
-        let acc = borrow_global_mut<WalletAccount>(account_addr);
+        let acc = borrow_global<WalletAccount>(account_addr);
 
         (acc.system_fee_percent, acc.referral_percents)
     }
@@ -240,7 +240,7 @@ module moneyfi::wallet_account {
         let asset_data = wallet_account.get_asset_mut(asset);
         assert!(
             amount > 0 && asset_data.current_amount >= amount,
-            E_INVALID_ARGUMENT
+            error::invalid_argument(E_INVALID_ARGUMENT)
         );
 
         let total = asset_data.current_amount + asset_data.distributed_amount;
@@ -267,7 +267,7 @@ module moneyfi::wallet_account {
         let asset_data_0 = wallet_account.get_asset_mut(from_asset);
         assert!(
             from_amount > 0 && asset_data_0.current_amount >= from_amount,
-            E_INVALID_ARGUMENT
+            error::invalid_argument(E_INVALID_ARGUMENT)
         );
 
         let total_0 = asset_data_0.current_amount + asset_data_0.distributed_amount;
@@ -292,7 +292,10 @@ module moneyfi::wallet_account {
         let wallet_account = borrow_global_mut<WalletAccount>(account_addr);
 
         let asset_data = wallet_account.get_asset_mut(asset);
-        assert!(asset_data.current_amount >= amount, E_INVALID_ARGUMENT);
+        assert!(
+            asset_data.current_amount >= amount,
+            error::invalid_argument(E_INVALID_ARGUMENT)
+        );
 
         asset_data.distributed_amount = asset_data.distributed_amount + amount;
         asset_data.current_amount = asset_data.current_amount - amount;
@@ -311,7 +314,10 @@ module moneyfi::wallet_account {
 
         let wallet_account = borrow_global_mut<WalletAccount>(account_addr);
         let asset_data = wallet_account.get_asset_mut(asset);
-        assert!(asset_data.distributed_amount >= distributed_amount, E_INVALID_ARGUMENT);
+        assert!(
+            asset_data.distributed_amount >= distributed_amount,
+            error::invalid_argument(E_INVALID_ARGUMENT)
+        );
 
         asset_data.distributed_amount = asset_data.distributed_amount
             - distributed_amount;
@@ -343,7 +349,7 @@ module moneyfi::wallet_account {
         let addr = object::object_address(account);
         assert!(
             exists<StrategyData<T>>(addr),
-            E_STRATEGY_DATA_NOT_EXISTS
+            error::not_found(E_STRATEGY_DATA_NOT_EXISTS)
         );
 
         let strategy_data = borrow_global<StrategyData<T>>(addr);
@@ -382,7 +388,7 @@ module moneyfi::wallet_account {
         let addr = get_wallet_account_object_address(wallet_id);
         assert!(
             object::object_exists<WalletAccount>(addr),
-            error::not_found(E_WALLET_ACCOUNT_EXISTS)
+            error::not_found(E_WALLET_ACCOUNT_NOT_EXISTS)
         );
 
         object::address_to_object<WalletAccount>(addr)
@@ -395,7 +401,7 @@ module moneyfi::wallet_account {
         let addr = get_wallet_account_object_address(wallet_id);
         assert!(
             object::object_exists<WalletAccount>(addr),
-            error::not_found(E_WALLET_ACCOUNT_EXISTS)
+            error::not_found(E_WALLET_ACCOUNT_NOT_EXISTS)
         );
 
         let account = borrow_global<WalletAccount>(addr);
@@ -420,7 +426,10 @@ module moneyfi::wallet_account {
         let account = get_wallet_account(wallet_id);
         let addr = object::object_address(&account);
         let wallet_account = borrow_global<WalletAccount>(addr);
-        assert!(option::is_some(&wallet_account.wallet_address), E_NOT_OWNER);
+        assert!(
+            option::is_some(&wallet_account.wallet_address),
+            error::permission_denied(E_NOT_OWNER)
+        );
         *option::borrow(&wallet_account.wallet_address)
     }
 

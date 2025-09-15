@@ -5,6 +5,7 @@ module moneyfi::strategy_hyperion {
     use aptos_std::from_bcs;
     use aptos_std::math128;
     use aptos_std::ordered_map::{Self, OrderedMap};
+    use aptos_std::type_info::{Self, TypeInfo};
     use aptos_framework::error;
     use aptos_framework::object::{Self, Object};
     use aptos_framework::primary_fungible_store;
@@ -23,7 +24,7 @@ module moneyfi::strategy_hyperion {
     friend moneyfi::strategy;
 
     // -- Constants
-    const DEADLINE_BUFFER: u64 = 31556926; // 1 years
+    const DEADLINE_BUFFER: u64 = 31556926; // 1 years //Deprecated
     const USDC_ADDRESS: address = @stablecoin;
 
     const STRATEGY_ID: u8 = 1; // Hyperion strategy id
@@ -74,6 +75,7 @@ module moneyfi::strategy_hyperion {
         threshold_numerator: u256,
         threshold_denominator: u256,
         withdraw_fee: u64
+        //hook_data
     }
 
     //--initialization
@@ -88,13 +90,13 @@ module moneyfi::strategy_hyperion {
 
     //-- private functions
 
-    // returns(actual_amount)
+    // returns(actual_amount, strategy_type)
     public(friend) fun deposit_fund_to_hyperion_single(
         account: &Object<WalletAccount>,
         asset: &Object<Metadata>,
         amount_in: u64,
         extra_data: vector<vector<u8>>
-    ): u64 acquires StrategyStats {
+    ): (u64, TypeInfo) acquires StrategyStats {
         let extra_data = unpack_extra_data(extra_data);
         let position =
             create_or_get_exist_position(
@@ -139,7 +141,7 @@ module moneyfi::strategy_hyperion {
                 position.pair,
                 *asset,
                 signer::address_of(&wallet_signer),
-                timestamp::now_seconds() + DEADLINE_BUFFER
+                timestamp::now_seconds() + 600 // deadline
             );
         };
 
@@ -154,16 +156,17 @@ module moneyfi::strategy_hyperion {
         let strategy_data = set_position_data(account, extra_data.pool, position);
         wallet_account::set_strategy_data(account, strategy_data);
         strategy_stats_deposit(asset, actual_amount);
-        actual_amount // returns (actual_amount)
+        (actual_amount, get_strategy_type()) // returns (actual_amount, strategy_type)
     }
 
-    // return (total_deposited_amount, total_withdrawn_amount, withdraw_fee)
+    // return (total_deposited_amount, total_withdrawn_amount, withdraw_fee, strategy_type, hook_data)
     public(friend) fun withdraw_fund_from_hyperion_single(
         account: &Object<WalletAccount>,
         asset: &Object<Metadata>,
         amount_min: u64,
         extra_data: vector<vector<u8>>
-    ): (u64, u64, u64) acquires StrategyStats {
+    ): (u64, u64, u64, TypeInfo, vector<u8>) acquires StrategyStats {
+        let hook_data = get_hook_data(extra_data);
         let extra_data = unpack_extra_data(extra_data);
         let position = get_position_data(account, extra_data.pool);
         let (liquidity_remove, is_full_withdraw) =
@@ -205,7 +208,21 @@ module moneyfi::strategy_hyperion {
             };
         wallet_account::set_strategy_data(account, strategy_data);
         strategy_stats_withdraw(asset, total_deposited_amount, total_withdrawn_amount);
-        (total_deposited_amount, total_withdrawn_amount, extra_data.withdraw_fee)
+        (
+            total_deposited_amount,
+            total_withdrawn_amount,
+            extra_data.withdraw_fee,
+            get_strategy_type(),
+            hook_data
+        )
+    }
+
+    public entry fun update_tick_entry(
+        sender: &signer, wallet_id: vector<u8>, extra_data: vector<vector<u8>>
+    ) {
+        access_control::must_be_service_account(sender);
+        let account = wallet_account::get_wallet_account(wallet_id);
+        update_tick(&account, extra_data);
     }
 
     public(friend) fun update_tick(
@@ -251,7 +268,7 @@ module moneyfi::strategy_hyperion {
             0,
             0,
             wallet_address,
-            timestamp::now_seconds() + DEADLINE_BUFFER
+            timestamp::now_seconds() + 600 // deadline
         );
         let balance_asset_after_remove =
             primary_fungible_store::balance(wallet_address, position.asset);
@@ -306,7 +323,7 @@ module moneyfi::strategy_hyperion {
                 position.pair,
                 position.asset,
                 wallet_address,
-                timestamp::now_seconds() + DEADLINE_BUFFER // deadline
+                timestamp::now_seconds() + 600 // deadline
             );
         };
 
@@ -400,7 +417,7 @@ module moneyfi::strategy_hyperion {
                     token_a,
                     asset,
                     wallet_address,
-                    timestamp::now_seconds() + DEADLINE_BUFFER // deadline
+                    timestamp::now_seconds() + 600 // deadline
                 );
             };
         };
@@ -418,7 +435,7 @@ module moneyfi::strategy_hyperion {
                     token_b,
                     asset,
                     wallet_address,
-                    timestamp::now_seconds() + DEADLINE_BUFFER // deadline
+                    timestamp::now_seconds() + 600 // deadline
                 );
             };
         };
@@ -442,7 +459,7 @@ module moneyfi::strategy_hyperion {
                         reward_token,
                         asset,
                         wallet_address,
-                        timestamp::now_seconds() + DEADLINE_BUFFER // deadline
+                        timestamp::now_seconds() + 600 // deadline
                     );
                 };
             };
@@ -573,6 +590,17 @@ module moneyfi::strategy_hyperion {
                     i32::wrapping_add(
                         i32::from_u32(current_tick), i32::from_u32(tick_spacing)
                     );
+                let pair =
+                    if (object::object_address<Metadata>(asset)
+                        == object::object_address<Metadata>(token_a)) {
+                        *token_b
+                    } else if (object::object_address<Metadata>(asset)
+                        == object::object_address<Metadata>(token_b)) {
+                        *token_a
+                    } else {
+                        assert!(false, error::invalid_argument(0x10035));
+                        *token_a // to satisfy compiler
+                    };
                 let position =
                     pool_v3::open_position(
                         &wallet_account::get_wallet_account_signer(account),
@@ -582,13 +610,6 @@ module moneyfi::strategy_hyperion {
                         i32::as_u32(tick_lower),
                         i32::as_u32(tick_upper)
                     );
-                let pair =
-                    if (object::object_address<Metadata>(asset)
-                        == object::object_address<Metadata>(token_a)) {
-                        *token_b
-                    } else {
-                        *token_a
-                    };
                 let new_position = Position {
                     position,
                     lp_amount: 0,
@@ -827,5 +848,13 @@ module moneyfi::strategy_hyperion {
             j = j + 1;
         };
         total_stablecoin_amount
+    }
+
+    fun get_strategy_type(): TypeInfo {
+        type_info::type_of<HyperionStrategyData>()
+    }
+
+    fun get_hook_data(extra_data: vector<vector<u8>>): vector<u8> {
+        *vector::borrow(&extra_data, vector::length(&extra_data) - 1)
     }
 }
