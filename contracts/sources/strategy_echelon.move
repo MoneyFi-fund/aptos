@@ -28,6 +28,8 @@ module moneyfi::strategy_echelon {
     const STRATEGY_ACCOUNT_SEED: vector<u8> = b"strategy_echelon::STRATEGY_ACCOUNT";
 
     const U64_MAX: u64 = 18446744073709551615;
+    const HEALTH_FACTOR_DENOMINATOR: u64 = 10000;
+    const SHARE_DECIMALS: u64 = 8;
 
     const E_VAULT_EXISTS: u64 = 1;
     const E_EXCEED_CAPACITY: u64 = 2;
@@ -59,6 +61,8 @@ module moneyfi::strategy_echelon {
         pending_amount: OrderedMap<address, u64>,
         // shares minted by vault for wallet account
         total_shares: u128,
+        // config health factor for borrow
+        health_factor: u64,
         paused: bool
     }
 
@@ -102,10 +106,14 @@ module moneyfi::strategy_echelon {
         borrow_market: Object<Market>,
         reward: vector<address>, // reward token addresses
         supply_reward_id: u64,
-        borrow_reward_id: u64
+        borrow_reward_id: u64,
+        health_factor: u64
     ) acquires Strategy {
         access_control::must_be_service_account(sender);
         let vault_addr = storage::get_child_object_address(*name.bytes());
+        // unsupported borrow other asset in this version
+        assert!(market == borrow_market, error::invalid_argument(E_UNSUPPORTED_ASSET));
+
         assert!(
             !exists<Vault>(vault_addr),
             error::already_exists(E_VAULT_EXISTS)
@@ -133,13 +141,14 @@ module moneyfi::strategy_echelon {
                 rewards: reward_map,
                 pending_amount: ordered_map::new(),
                 total_shares: 0,
+                health_factor,
                 paused: false
             }
         );
-        move_to(&object::generate_signer_for_extending(&extend_ref), RewardInfo {
-            supply_reward_id,
-            borrow_reward_id
-        });
+        move_to(
+            &object::generate_signer_for_extending(&extend_ref),
+            RewardInfo { supply_reward_id, borrow_reward_id }
+        );
         let strategy_addr = get_strategy_address();
         let strategy = borrow_global_mut<Strategy>(strategy_addr);
         ordered_map::add(
@@ -160,6 +169,7 @@ module moneyfi::strategy_echelon {
         emode: Option<u8>,
         deposit_cap: u64,
         new_rewards: vector<address>,
+        health_factor: u64,
         paused: bool
     ) acquires Strategy {
         access_control::must_be_service_account(sender);
@@ -169,6 +179,7 @@ module moneyfi::strategy_echelon {
 
         vault.deposit_cap = deposit_cap;
         vault.paused = paused;
+        vault.health_factor = health_factor;
 
         if (option::is_some(&emode)) {
             let emode = option::borrow(&emode);
@@ -187,7 +198,7 @@ module moneyfi::strategy_echelon {
     }
 
     /// deposit fund from wallet account to strategy vault
-    public entry fun deposit(
+    public(friend) fun deposit(
         sender: &signer,
         vault_name: String,
         wallet_id: vector<u8>,
@@ -198,12 +209,13 @@ module moneyfi::strategy_echelon {
 
     /// Withdraw fund from strategy vault to wallet account
     /// Pass amount = U64_MAX to withdraw all
-    public entry fun withdraw(
+    public(friend) fun withdraw(
         sender: &signer,
         vault_name: String,
         wallet_id: vector<u8>,
         amount: u64,
-        gas_fee: u64
+        gas_fee: u64,
+        hook_data: vector<u8>
     ) acquires Strategy {
         //TODO
     }
@@ -237,11 +249,53 @@ module moneyfi::strategy_echelon {
         account_addr
     }
 
+    /// Return actual amount and shares, total shares before deposit
+    fun deposit_to_echelon(self: &mut Vault, amount: u64): (u64, u64, u64) acquires Strategy {
+        let vault_signer = self.get_vault_signer();
+        let (share_before, _) = self.get_deposited_amount();
+        let actual_deposit_amount =
+            deposit_to_echelon_impl(
+                &vault_signer,
+                &self.market,
+                &self.asset,
+                amount
+            );
+        let (share_after, _) = self.get_deposited_amount();
+        assert!(share_after >= share_before);
+        assert!(actual_deposit_amount <= amount);
+
+        let shares = share_after - share_before;
+        self.available_amount = self.available_amount - actual_deposit_amount;
+
+        (actual_deposit_amount, shares, share_before)
+    }
+
+    // return actual deposited amount
+    fun deposit_to_echelon_impl(
+        caller: &signer,
+        market: &Object<Market>,
+        asset: &Object<Metadata>,
+        amount: u64
+    ): u64 {
+        let caller_addr = signer::address_of(caller);
+        let balance_before = primary_fungible_store::balance(caller_addr, *asset);
+        scripts::supply_fa(caller, *market, amount);
+
+        let balance_after = primary_fungible_store::balance(caller_addr, *asset);
+
+        assert!(balance_before >= balance_after);
+        balance_before - balance_after
+    }
+
     fun get_strategy_address(): address {
         storage::get_child_object_address(STRATEGY_ACCOUNT_SEED)
     }
 
-    fun get_vault(name: String): Object<Vault> {
+    fun get_vault_address(name: String): address acquires Strategy {
+        object::object_address(&get_vault(name))
+    }
+
+    fun get_vault(name: String): Object<Vault> acquires Strategy {
         let strategy_addr = get_strategy_address();
         let strategy = borrow_global<Strategy>(strategy_addr);
         assert!(ordered_map::contains(&strategy.vaults, &name));
@@ -360,19 +414,17 @@ module moneyfi::strategy_echelon {
     }
 
     /// Returns shares and current asset amount
-    fun get_deposited_amount(self: &Object<Vault>): (u64, u64) {
-        let vault = get_vault_mut(self);
-        let vault_addr = object::object_address(self);
-        let shares = lending::account_shares(vault_addr, vault.market);
-        let asset_amount = lending::account_coins(vault_addr, vault.market);
+    fun get_deposited_amount(self: &Vault): (u64, u64) acquires Strategy {
+        let vault_addr = get_vault_address(self.name);
+        let shares = lending::account_shares(vault_addr, self.market);
+        let asset_amount = lending::account_coins(vault_addr, self.market);
         (shares, asset_amount)
     }
 
     /// Returns current loan
-    fun get_loan_amount(self: &Object<Vault>): u64 {
-        let vault = get_vault_mut(self);
-        let vault_addr = object::object_address(self);
-        lending::account_liability(vault_addr, vault.borrow_market)
+    fun get_loan_amount(self: &Vault): u64 acquires Strategy {
+        let vault_addr = get_vault_address(self.name);
+        lending::account_liability(vault_addr, self.borrow_market)
     }
 
     fun get_vault_shares_from_deposit_shares(
