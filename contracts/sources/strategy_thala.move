@@ -355,7 +355,7 @@ module moneyfi::strategy_thala {
     }
 
     fun strategy_stats_withdraw(
-        asset: &Object<Metadata>, deposit_amount: u64, interest: u64
+        asset: &Object<Metadata>, deposit_amount: u64, withdraw_amount: u64
     ) acquires StrategyStats {
         let stats = borrow_global_mut<StrategyStats>(@moneyfi);
         if (ordered_map::contains(&stats.assets, asset)) {
@@ -363,7 +363,7 @@ module moneyfi::strategy_thala {
             asset_stats.total_value_locked =
                 asset_stats.total_value_locked - (deposit_amount as u128);
             asset_stats.total_withdrawn =
-                asset_stats.total_withdrawn + ((deposit_amount + interest) as u128);
+                asset_stats.total_withdrawn + (withdraw_amount as u128);
         } else {
             assert!(false, error::not_found(E_THALA_POSITION_NOT_EXISTS));
         };
