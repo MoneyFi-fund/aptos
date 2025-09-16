@@ -104,7 +104,7 @@ module moneyfi::access_control {
 
         let valid_roles = vector<u8>[];
         roles.for_each(|v| {
-            if (v < ROLE_COUNT && !valid_roles.contains(&v)) {
+            if (v <= ROLE_COUNT && !valid_roles.contains(&v)) {
                 valid_roles.push_back(v);
             }
         });
