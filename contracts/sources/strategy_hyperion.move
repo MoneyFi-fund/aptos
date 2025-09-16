@@ -738,9 +738,27 @@ module moneyfi::strategy_hyperion {
                 if (total_amount + position.remaining_amount > position.amount) {
                     total_amount + position.remaining_amount - position.amount
                 } else { 0 };
+            let interest_usdc =
+                if (interest > 0) {
+                    if (object::object_address(&position.asset) == USDC_ADDRESS) {
+                        interest
+                    } else {
+                        let (amount_out, _) =
+                            pool_v3::get_amount_out(
+                                pool_v3::liquidity_pool(
+                                    object::address_to_object<Metadata>(USDC_ADDRESS),
+                                    position.asset,
+                                    0
+                                ),
+                                position.asset,
+                                interest
+                            );
+                        amount_out
+                    }
+                } else { 0 };
             total_profit =
                 total_profit + get_pending_rewards_and_fees_usdc(position.position)
-                    + interest;
+                    + interest_usdc;
             i = i + 1;
         };
 

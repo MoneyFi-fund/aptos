@@ -209,8 +209,12 @@ module moneyfi::strategy_tapp {
             if (object::object_address(asset)
                 == object::object_address(&position.asset)) {
                 position.pair
-            } else {
+            } else if (object::object_address(asset)
+                == object::object_address(&position.pair)) {
                 position.asset
+            } else {
+                assert!(false, error::invalid_argument(E_INVALID_ASSET));
+                position.asset // to satisfy the type checker
             };
         let balance_asset_before = primary_fungible_store::balance(
             wallet_address, *asset
