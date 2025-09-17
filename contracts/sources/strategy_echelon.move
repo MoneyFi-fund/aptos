@@ -438,11 +438,9 @@ module moneyfi::strategy_echelon {
         }
     }
 
-    fun compound_vault_rewards(
-        self: &mut Vault, strategy_signer: &signer, extra_data: vector<vector<u8>>
-    ): u64 {
+    fun compound_vault_rewards(self: &mut Vault): u64 {
         let asset = self.asset;
-        self.claim_rewards(strategy_signer, extra_data);
+        self.claim_rewards();
         let asset_amount: u64 = 0;
         vector::for_each(
             self.rewards.keys(),
@@ -454,7 +452,7 @@ module moneyfi::strategy_echelon {
                     asset_amount =
                         asset_amount
                             + swap_reward_with_hyperion(
-                                strategy_signer,
+                                &self.get_vault_signer(),
                                 &asset,
                                 reward_addr,
                                 *reward_amount
@@ -464,7 +462,7 @@ module moneyfi::strategy_echelon {
             }
         );
         if (asset_amount > 0) {
-            self.deposit_to_aries(strategy_signer, asset_amount);
+            self.deposit_to_echelon(asset_amount);
         };
 
         asset_amount
