@@ -171,8 +171,12 @@ module moneyfi::strategy_thala {
             if (object::object_address(asset)
                 == object::object_address(&position.asset)) {
                 position.pair
-            } else {
+            } else if (object::object_address(asset)
+                == object::object_address(&position.pair)) {
                 position.asset
+            } else {
+                assert!(false, error::invalid_argument(E_INVALID_ASSET));
+                position.asset // to satisfy the type checker
             };
         let balance_asset_before = primary_fungible_store::balance(
             wallet_address, *asset
@@ -351,7 +355,7 @@ module moneyfi::strategy_thala {
     }
 
     fun strategy_stats_withdraw(
-        asset: &Object<Metadata>, deposit_amount: u64, interest: u64
+        asset: &Object<Metadata>, deposit_amount: u64, withdraw_amount: u64
     ) acquires StrategyStats {
         let stats = borrow_global_mut<StrategyStats>(@moneyfi);
         if (ordered_map::contains(&stats.assets, asset)) {
@@ -359,7 +363,7 @@ module moneyfi::strategy_thala {
             asset_stats.total_value_locked =
                 asset_stats.total_value_locked - (deposit_amount as u128);
             asset_stats.total_withdrawn =
-                asset_stats.total_withdrawn + ((deposit_amount + interest) as u128);
+                asset_stats.total_withdrawn + (withdraw_amount as u128);
         } else {
             assert!(false, error::not_found(E_THALA_POSITION_NOT_EXISTS));
         };
@@ -603,6 +607,24 @@ module moneyfi::strategy_thala {
             )
         );
 
+        let position_amount_usdc =
+            if (object::object_address(&position.asset)
+                == object::object_address(&stablecoin_metadata)) {
+                position.amount as u64
+            } else {
+                let swap_preview =
+                    pool::preview_swap_exact_in_stable(
+                        pool,
+                        position.asset,
+                        stablecoin_metadata,
+                        position.amount as u64,
+                        option::none()
+                    );
+                let (_, _, amount_out, _, _, _, _, _, _, _) =
+                    pool::swap_preview_info(swap_preview);
+                amount_out
+            };
+
         let total_stablecoin_amount: u64 = 0;
         let i = 0;
         let assets_len = vector::length(&assets);
@@ -660,8 +682,8 @@ module moneyfi::strategy_thala {
             j = j + 1;
         };
 
-        if (total_stablecoin_amount > position.amount) {
-            total_stablecoin_amount - position.amount
+        if (total_stablecoin_amount > position_amount_usdc) {
+            total_stablecoin_amount - position_amount_usdc
         } else { 0 }
     }
 

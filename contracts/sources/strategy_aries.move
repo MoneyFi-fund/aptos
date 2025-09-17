@@ -499,7 +499,7 @@ module moneyfi::strategy_aries {
     #[view]
     public fun get_vault(name: String): (address, Vault) acquires Strategy {
         let strategy_addr = get_strategy_address();
-        let strategy = borrow_global_mut<Strategy>(strategy_addr);
+        let strategy = borrow_global<Strategy>(strategy_addr);
         let vault_addr = get_vault_address(name);
         assert!(
             ordered_map::contains(&strategy.vaults, &vault_addr),
@@ -575,7 +575,7 @@ module moneyfi::strategy_aries {
     #[view]
     public fun get_strategy_stats(asset: Object<Metadata>): (u128, u128, u128) acquires Strategy {
         let strategy_addr = get_strategy_address();
-        let strategy = borrow_global_mut<Strategy>(strategy_addr);
+        let strategy = borrow_global<Strategy>(strategy_addr);
 
         let total_deposited = 0;
         let total_withdrawn = 0;
