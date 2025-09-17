@@ -70,7 +70,7 @@ module moneyfi::vault {
         strategies: OrderedMap<TypeInfo, address>
     }
 
-    struct VaultAsset has store {
+    struct VaultAsset has store, drop {
         // total current amount of all accounts
         total_amount: u128,
         // total lp supply
@@ -883,6 +883,29 @@ module moneyfi::vault {
         registry.strategies
     }
 
+    #[view]
+    public fun get_pending_referral_fees(
+        wallet_id: vector<u8>
+    ): OrderedMap<address, u64> acquires Vault {
+        let account = wallet_account::get_wallet_account(wallet_id);
+
+        let vault_addr = get_vault_address();
+        let vault = borrow_global<Vault>(vault_addr);
+
+        let result = ordered_map::new();
+        ordered_map::for_each_ref(
+            &vault.assets,
+            |asset_addr_, asset_data| {
+                let pending_fee = asset_data.get_pending_referral_fee(&account);
+                if (pending_fee > 0) {
+                    ordered_map::add(&mut result, *asset_addr_, pending_fee);
+                }
+            }
+        );
+
+        result
+    }
+
     // -- Public
 
     public fun get_lp_token(): Object<Metadata> acquires LPToken {
@@ -1184,20 +1207,17 @@ module moneyfi::vault {
     }
 
     fun add_referral_fees(
-        self: &VaultAsset, data: &OrderedMap<address, u64>
+        self: &mut VaultAsset, data: &OrderedMap<address, u64>
     ) {
-        let pending_referral_fees = self.pending_referral_fees;
-        ordered_map::for_each_ref(
-            data,
-            |k, v| {
-                let current =
-                    if (ordered_map::contains(&self.pending_referral_fees, k)) {
-                        *ordered_map::borrow(&self.pending_referral_fees, k)
-                    } else { 0 };
-                let v = *v + current;
-                ordered_map::upsert(&mut pending_referral_fees, *k, v);
-            }
-        );
+        let pending_referral_fees = &mut self.pending_referral_fees;
+        data.for_each_ref(|k, v| {
+            let current =
+                if (pending_referral_fees.contains(k)) {
+                    *pending_referral_fees.borrow(k)
+                } else { 0 };
+            let v = *v + current;
+            pending_referral_fees.upsert(*k, v);
+        });
     }
 
     fun get_pending_referral_fee(
@@ -1281,5 +1301,34 @@ module moneyfi::vault {
     #[test_only]
     public fun mint_lp_for_testing(recipient: address, amount: u64) acquires LPToken {
         mint_lp(recipient, amount);
+    }
+
+    #[test]
+    fun test_add_referral_fees() {
+        let asset = VaultAsset {
+            total_amount: 0,
+            total_lp_amount: 0,
+            total_distributed_amount: 0,
+            total_fee_amount: 0,
+            pending_fee_amount: 0,
+            pending_referral_fees: ordered_map::new()
+        };
+
+        let referral_fees = ordered_map::new_from(vector[@0x111], vector[100]);
+        asset.add_referral_fees(&referral_fees);
+        assert!(
+            asset.pending_referral_fees
+                == ordered_map::new_from(vector[@0x111], vector[100])
+        );
+
+        let referral_fees = ordered_map::new_from(
+            vector[@0x111, @0x222], vector[100, 200]
+        );
+        asset.add_referral_fees(&referral_fees);
+
+        assert!(
+            asset.pending_referral_fees
+                == ordered_map::new_from(vector[@0x111, @0x222], vector[200, 200])
+        );
     }
 }
