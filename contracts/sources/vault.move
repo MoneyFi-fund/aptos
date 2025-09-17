@@ -653,12 +653,9 @@ module moneyfi::vault {
         _strategy_id: u8,
         _extra_data: vector<vector<u8>>
     ) {
-        // Deprecated, function retained for upgrade compatibility
-        abort(E_DEPRECATED);
-
-        // access_control::must_be_service_account(sender);
-        // let account = wallet_account::get_wallet_account(wallet_id);
-        // strategy::update_tick(strategy_id, &account, extra_data);
+        access_control::must_be_service_account(_sender);
+        let account = wallet_account::get_wallet_account(_wallet_id);
+        strategy::update_tick(_strategy_id, &account, _extra_data);
     }
 
     public entry fun swap_assets(
@@ -820,6 +817,29 @@ module moneyfi::vault {
         let registry = borrow_global<StrategyRegistry>(vault_addr);
 
         registry.strategies
+    }
+
+    #[view]
+    public fun get_pending_referral_fees(
+        wallet_id: vector<u8>
+    ): OrderedMap<address, u64> acquires Vault {
+        let account = wallet_account::get_wallet_account(wallet_id);
+
+        let vault_addr = get_vault_address();
+        let vault = borrow_global<Vault>(vault_addr);
+
+        let result = ordered_map::new();
+        ordered_map::for_each_ref(
+            &vault.assets,
+            |asset_addr_, asset_data| {
+                let pending_fee = asset_data.get_pending_referral_fee(&account);
+                if (pending_fee > 0) {
+                    ordered_map::add(&mut result, *asset_addr_, pending_fee);
+                }
+            }
+        );
+
+        result
     }
 
     // -- Public

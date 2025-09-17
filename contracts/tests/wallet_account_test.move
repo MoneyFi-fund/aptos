@@ -119,4 +119,31 @@ module moneyfi::wallet_account_test {
         storage::init_module_for_testing(deployer);
         wallet_account::create_wallet_account_for_test(w1, b"w1", 0, b"w1");
     }
+
+    #[test(deployer = @moneyfi, w1 = @0x111, w2 = @0x222)]
+    fun test_set_referrer(deployer: &signer, w1: &signer, w2: &signer) {
+        timestamp::set_time_has_started_for_testing(
+            &account::create_signer_for_test(@0x1)
+        );
+        storage::init_module_for_testing(deployer);
+        let acc1 = wallet_account::create_wallet_account_for_test(w1, b"w1", 0, vector[]);
+        let acc2 = wallet_account::create_wallet_account_for_test(w2, b"w2", 0, vector[]);
+
+        wallet_account::set_referrer(w1, b"w2");
+        let refs = wallet_account::get_referrer_addresses(&acc1, 1);
+
+        assert!(refs == vector[object::object_address(&acc2)]);
+    }
+
+    #[test(deployer = @moneyfi, w1 = @0x111)]
+    #[expected_failure(abort_code = 0x50009, location = moneyfi::wallet_account)]
+    fun test_set_referrer_again(deployer: &signer, w1: &signer) {
+        timestamp::set_time_has_started_for_testing(
+            &account::create_signer_for_test(@0x1)
+        );
+        storage::init_module_for_testing(deployer);
+        wallet_account::create_wallet_account_for_test(w1, b"w1", 0, b"w2");
+
+        wallet_account::set_referrer(w1, b"w3");
+    }
 }

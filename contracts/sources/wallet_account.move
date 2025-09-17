@@ -41,6 +41,8 @@ module moneyfi::wallet_account {
     const E_WALLET_ACCOUNT_ALREADY_CONNECTED: u64 = 6;
     const E_INVALID_ARGUMENT: u64 = 7;
     const E_STRATEGY_DATA_NOT_EXISTS: u64 = 8;
+    /// referrer wallet id has been set already
+    const E_REFERRER_WALLET_ID_EXISTS: u64 = 9;
 
     // -- Structs
     #[resource_group_member(group = aptos_framework::object::ObjectGroup)]
@@ -102,6 +104,13 @@ module moneyfi::wallet_account {
         timestamp: u64
     }
 
+    #[event]
+    struct SetReferrerEvent has drop, store {
+        account: Object<WalletAccount>,
+        referrer_wallet_id: vector<u8>,
+        timestamp: u64
+    }
+
     public entry fun register(
         sender: &signer,
         verifier: &signer,
@@ -129,6 +138,34 @@ module moneyfi::wallet_account {
                 wallet_id,
                 chain_id: CHAIN_ID_APTOS,
                 wallet_account,
+                timestamp: timestamp::now_seconds()
+            }
+        );
+    }
+
+    public entry fun set_referrer(
+        sender: &signer, referrer_wallet_id: vector<u8>
+    ) acquires WalletAccount, WalletAccountObject {
+        let wallet_address = signer::address_of(sender);
+        assert!(
+            exists<WalletAccountObject>(wallet_address),
+            error::not_found(E_WALLET_ACCOUNT_NOT_EXISTS)
+        );
+
+        let obj = borrow_global<WalletAccountObject>(wallet_address);
+        let account =
+            borrow_global_mut<WalletAccount>(object::object_address(&obj.wallet_account));
+        assert!(
+            account.referrer_wallet_id.length() == 0,
+            error::permission_denied(E_REFERRER_WALLET_ID_EXISTS)
+        );
+
+        account.referrer_wallet_id = referrer_wallet_id;
+
+        event::emit(
+            SetReferrerEvent {
+                account: obj.wallet_account,
+                referrer_wallet_id,
                 timestamp: timestamp::now_seconds()
             }
         );
