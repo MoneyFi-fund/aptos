@@ -18,7 +18,7 @@ module moneyfi::strategy_echelon {
     use lending::scripts;
     use lending::lending::{Self, Market};
     use thala_lsd::staking::ThalaAPT;
-    use fixed_point64::fixed_point64;
+    use fixed_point64::fixed_point64::{Self, FixedPoint64};
 
     use moneyfi::access_control;
     use moneyfi::storage;
@@ -470,7 +470,7 @@ module moneyfi::strategy_echelon {
         asset_amount
     }
 
-    /// Swap APT reward to USDT/USDC using Hyperion
+    /// Swap ThalaAPT reward to USDT/USDC using Hyperion
     /// Returns the amount of USDT/USDC received
     fun swap_reward_with_hyperion(
         caller: &signer,
@@ -478,51 +478,103 @@ module moneyfi::strategy_echelon {
         from: address,
         amount: u64
     ): u64 {
-        let strategy_addr = get_strategy_address();
-
-        let fee_tier = 1; // 0.05%
-        let apt = object::address_to_object<Metadata>(APT_FA_ADDRESS);
-        // let (exist, pool_addr) =
-        //     hyperion::pool_v3::liquidity_pool_address_safe(apt, *to, fee_tier);
-        // assert!(exist, error::permission_denied(E_POOL_NOT_EXIST));
-        // let pool =
-        //     object::address_to_object<hyperion::pool_v3::LiquidityPoolV3>(pool_addr);
-
-        let pool = hyperion::pool_v3::liquidity_pool(apt, *to, fee_tier);
-        let (amount_out, _) = hyperion::pool_v3::get_amount_out(pool, apt, amount);
-        amount_out = amount_out - (amount_out * 1 / 1000); // 0.1% slippage
-
-        // ignore price impact
-        let sqrt_price_limit =
-            if (hyperion::utils::is_sorted(apt, *to)) {
-                79226673515401279992447579055 // max sqrt price
-            } else {
-                04295048016 // min sqrt price
-            };
-
-        let balance_before = primary_fungible_store::balance(strategy_addr, *to);
-        hyperion::router_v3::exact_input_swap_entry(
+        let caller_addr = signer::address_of(caller);
+        let thala_apt_metadata = coin::paired_metadata<ThalaAPT>();
+        let reward_path = get_reward_path(to);
+        let balance_before = primary_fungible_store::balance(caller_addr, *to);
+        let amount_out =
+            hyperion::router_v3::get_batch_amount_out(
+                reward_path,
+                amount,
+                option::borrow(&thala_apt_metadata),
+                *to
+            );
+        let amount_out_min = math64::mul_div(amount_out, 98, 100); //slippage 0.5%
+        hyperion::router_v3::swap_batch_coin_entry<ThalaAPT>(
             caller,
-            fee_tier,
-            amount,
-            amount_out,
-            sqrt_price_limit,
-            apt,
+            reward_path,
+            option::destroy_some(thala_apt_metadata),
             *to,
-            strategy_addr,
-            timestamp::now_seconds() + 60
+            amount,
+            amount_out_min,
+            caller_addr
         );
-        let balance_after = primary_fungible_store::balance(strategy_addr, *to);
+        let balance_after = primary_fungible_store::balance(caller_addr, *to);
 
         balance_after - balance_before
     }
 
+    fun get_reward_path(to: &Object<Metadata>): vector<address> {
+        if (object::object_address(to) == @usdc) {
+            let lp_path: vector<address> = vector[
+                @0x692ba87730279862aa1a93b5fef9a175ea0cccc1f29dfc84d3ec7fbe1561aef3,
+                @0x925660b8618394809f89f8002e2926600c775221f43bf1919782b297a79400d8
+            ];
+            lp_path
+        } else if (object::object_address(to) == @usdt) {
+            let lp_path: vector<address> = vector[
+                @0x692ba87730279862aa1a93b5fef9a175ea0cccc1f29dfc84d3ec7fbe1561aef3,
+                @0x925660b8618394809f89f8002e2926600c775221f43bf1919782b297a79400d8,
+                @0xd3894aca06d5f42b27c89e6f448114b3ed6a1ba07f992a58b2126c71dd83c127
+            ];
+            lp_path
+        } else {
+            abort E_UNSUPPORTED_ASSET;
+            vector::empty<address>()
+        }
+    }
+
     fun borrowable_amount_given_health_factor(
-        vault: Object<Vault>, health_factor: u64
+        vault: &Vault, health_factor: u64
     ): u64 {
-        let vault_addr = object::object_address(&vault);
-        let total_deposit = 0; //todo
-        //Todo
-        0
+        assert!(health_factor > HEALTH_FACTOR_DENOMINATOR, error::invalid_argument(4));
+        let vault_addr = get_vault_address(vault.name);
+        let total_deposit = lending::account_coins(vault_addr, vault.market);
+        let total_borrow = lending::account_liability(vault_addr, vault.borrow_market);
+        if (total_deposit == 0) {
+            return 0;
+        };
+        let max_borrow =
+            calc_borrow_amount(
+                total_deposit,
+                lending::market_asset_mantissa(vault.market),
+                lending::asset_price(vault.market),
+                lending::account_market_collateral_factor_bps(vault_addr, vault.market),
+                lending::market_asset_mantissa(vault.borrow_market),
+                lending::asset_price(vault.borrow_market),
+                health_factor
+            );
+        if (max_borrow <= total_borrow) {
+            return 0;
+        };
+        max_borrow - total_borrow
+    }
+
+    fun calc_borrow_amount(
+        supply_amount: u64,
+        supply_asset_mantissa: u64,
+        supply_asset_price: FixedPoint64,
+        account_market_collateral_factor_bps: u64,
+        borrow_asset_mantissa: u64,
+        borrow_asset_price: FixedPoint64,
+        health_factor: u64
+    ): u64 {
+        let v0 = supply_asset_mantissa * health_factor;
+        assert!(v0 != 0, error::invalid_argument(4));
+        fixed_point64::decode_round_down(
+            fixed_point64::div_fp(
+                fixed_point64::mul(
+                    supply_asset_price,
+                    (
+                        ((supply_amount as u128)
+                            * ((
+                                borrow_asset_mantissa
+                                    * account_market_collateral_factor_bps
+                            ) as u128) / (v0 as u128)) as u64
+                    )
+                ),
+                borrow_asset_price
+            )
+        )
     }
 }
