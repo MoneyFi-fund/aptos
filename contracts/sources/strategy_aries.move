@@ -378,7 +378,10 @@ module moneyfi::strategy_aries {
                 // recalc burned_vault_shares from burned_shares not exactly = vault_shares
                 // let burned_vault_shares =
                 //     vault.burn_vault_shares(burned_shares, total_deposit_shares);
-                vault.total_shares = vault.total_shares - vault_shares;
+                vault.total_shares =
+                    if (vault.total_shares > vault_shares) {
+                        vault.total_shares - vault_shares
+                    } else { 0 };
                 account_vault_data.vault_shares =
                     if (account_vault_data.vault_shares > vault_shares) {
                         account_vault_data.vault_shares - vault_shares
@@ -769,15 +772,15 @@ module moneyfi::strategy_aries {
             if (amount > avail_amount) {
                 let (total_deposited_shares, total_deposited_amount) =
                     self.get_deposited_amount();
-                let loan_amount =
-                    aries::decimal::ceil_u64(aries::decimal::from_scaled_val(loan_amount));
-                let (_, owned_deposited_amount) =
-                    self.get_owned_deposited_amount(total_deposited_shares);
-                assert!(total_deposited_amount > owned_deposited_amount);
                 let repay_amount =
-                    math64::ceil_div(
-                        amount * loan_amount,
-                        total_deposited_amount - owned_deposited_amount
+                    aries::decimal::ceil_u64(
+                        aries::decimal::from_scaled_val(
+                            math128::mul_div(
+                                vault_shares,
+                                (loan_amount as u128),
+                                self.total_shares - self.owned_shares
+                            )
+                        )
                     );
                 let (_repaid_amount, swapped_amount) =
                     self.repay_aries(strategy_signer, repay_amount);
@@ -1076,11 +1079,7 @@ module moneyfi::strategy_aries {
                         withdraw_amount, avail_withdraw_amount
                     );
 
-                    let (total_deposit_shares, _) = self.get_deposited_amount();
-                    let shares =
-                        aries::reserve::get_lp_amount_from_underlying_amount(
-                            get_reserve_type_info(&self.asset), withdraw_amount
-                        );
+                    let (total_deposit_shares_before, _) = self.get_deposited_amount();
                     withdraw_amount = withdraw_from_aries_impl(
                         strategy_signer,
                         *self.name.bytes(),
@@ -1089,8 +1088,11 @@ module moneyfi::strategy_aries {
                         false
                     );
                     self.available_amount = self.available_amount + withdraw_amount;
+                    let (total_deposit_shares_after, _) = self.get_deposited_amount();
+                    let shares = total_deposit_shares_before
+                        - total_deposit_shares_after;
                     let vault_shares =
-                        self.burn_vault_shares(shares, total_deposit_shares);
+                        self.burn_vault_shares(shares, total_deposit_shares_before);
                     self.owned_shares =
                         if (self.owned_shares > vault_shares) {
                             self.owned_shares - vault_shares

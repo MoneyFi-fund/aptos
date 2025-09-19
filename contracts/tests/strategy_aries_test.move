@@ -614,7 +614,7 @@ module moneyfi::strategy_aries_test {
         owned_shares = owned_shares - burn_shares;
 
         deposited_shares = deposited_shares - 450_000; // 10510000, withdraw to repay 1st
-        aries::mock::on(b"profile::get_deposited_amount", deposited_shares, 1); // after repay 1st
+        aries::mock::on(b"profile::get_deposited_amount", deposited_shares, 2); // after repay 1st
 
         // after withdraw to repay 2nd
         let burn_shares = math128::ceil_div(
@@ -663,7 +663,7 @@ module moneyfi::strategy_aries_test {
         self.mock_compound_vault(
             0, 0, deposited_shares, loan_amount // pass loan_amount = 0 to do nothing
         );
-        aries::mock::on(b"profile::get_deposited_amount", deposited_shares, 1); // after repay 2nd
+        aries::mock::on(b"profile::get_deposited_amount", deposited_shares, 2); // after repay 2nd
 
         burn_shares = 12033525967975; // shares burned when recompound
         total_shares = total_shares - burn_shares;
