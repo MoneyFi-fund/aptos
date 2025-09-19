@@ -21,4 +21,12 @@ module moneyfi::strategy_echelon_tapp {
     use dex_contract::router_v3;
 
     use moneyfi::strategy_echelon;
+
+    const ZERO_ADDRESS: address =
+        @0x0000000000000000000000000000000000000000000000000000000000000000;
+
+    /// Position not exists
+    const E_TAPP_POSITION_NOT_EXISTS: u64 = 2;
+    /// Invalid asset
+    const E_INVALID_ASSET: u64 = 3;
 }
