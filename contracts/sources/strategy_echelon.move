@@ -244,7 +244,7 @@ module moneyfi::strategy_echelon {
         amount: u64,
         gas_fee: u64,
         hook_data: vector<u8>
-    ) acquires Strategy, Vault {
+    ) {
         //Todo
     }
 
