@@ -221,6 +221,14 @@ module moneyfi::vault {
         data: vector<u8>
     }
 
+    #[event]
+    struct ClaimReferralFeeEvent has drop, store {
+        asset: Object<Metadata>,
+        recipient: address,
+        amount: u64,
+        timestamp: u64
+    }
+
     // -- init
     fun init_module(sender: &signer) {
         let addr = signer::address_of(sender);
@@ -392,6 +400,14 @@ module moneyfi::vault {
                 pending_referral_fee
             );
             ordered_map::remove(&mut asset_data.pending_referral_fees, &account_addr);
+            event::emit(
+                ClaimReferralFeeEvent {
+                    asset,
+                    recipient: wallet_addr,
+                    amount: pending_referral_fee,
+                    timestamp: now_seconds()
+                }
+            );
         };
 
         let balance = primary_fungible_store::balance(account_addr, asset);
