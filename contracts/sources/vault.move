@@ -229,6 +229,14 @@ module moneyfi::vault {
         timestamp: u64
     }
 
+    #[event]
+    struct ShareFeeEvent has drop, store {
+        asset: Object<Metadata>,
+        total_fee: u64,
+        referral_fees: OrderedMap<address, u64>,
+        timestamp: u64
+    }
+
     // -- init
     fun init_module(sender: &signer) {
         let addr = signer::address_of(sender);
@@ -958,9 +966,12 @@ module moneyfi::vault {
         };
 
         collected_amount = collected_amount - system_fee;
+        let referral_fees = ordered_map::new();
         if (system_fee > 0) {
-            let (remaining_fee, referral_fees) =
-                config.calc_referral_shares(&account, system_fee);
+            let remaining_fee = 0;
+            (remaining_fee, referral_fees) = config.calc_referral_shares(
+                &account, system_fee
+            );
             asset_data.total_fee_amount = asset_data.total_fee_amount + remaining_fee;
             asset_data.pending_fee_amount = asset_data.pending_fee_amount
                 + remaining_fee;
@@ -987,6 +998,17 @@ module moneyfi::vault {
                 timestamp: now_seconds()
             }
         );
+
+        if (!referral_fees.is_empty()) {
+            event::emit(
+                ShareFeeEvent {
+                    asset,
+                    total_fee: system_fee,
+                    referral_fees,
+                    timestamp: now_seconds()
+                }
+            )
+        }
     }
 
     public fun withdrawn_from_strategy_with_hook_data<T>(
@@ -1166,21 +1188,27 @@ module moneyfi::vault {
 
         let percents = self.referral_percents;
         let (_, referral_percents) = wallet_account::get_fee_config(account);
-        if (!vector::is_empty(&referral_percents)) {
+        if (!referral_percents.is_empty()) {
             percents = referral_percents;
         };
 
-        let len = vector::length(&percents);
-        let referrers = wallet_account::get_referrer_addresses(account, len as u8);
-        len = vector::length(&referrers);
+        let len = percents.length();
+        let (referrers, custom_percents) = wallet_account::get_referrers(
+            account, len as u8
+        );
+        len = referrers.length();
         let i = 0;
         while (i < len) {
-            let addr = *vector::borrow(&referrers, i);
-            let percent = *vector::borrow(&percents, i);
+            let addr = *referrers.borrow(i);
+            let percent = *percents.borrow(i);
+            let v = custom_percents.borrow(i);
+            if (v.is_some()) {
+                percent = *v.borrow();
+            };
             let fee = total_fee * percent / 10_000;
             assert!(remaining_fee > fee);
             remaining_fee = remaining_fee - fee;
-            ordered_map::upsert(&mut share_fees, addr, fee);
+            share_fees.upsert(addr, fee);
 
             i = i + 1;
         };
@@ -1312,5 +1340,22 @@ module moneyfi::vault {
             asset.pending_referral_fees
                 == ordered_map::new_from(vector[@0x111, @0x222], vector[200, 200])
         );
+    }
+
+    #[test_only]
+    public fun register_strategy_for_test<T>(deposit_addr: address) acquires StrategyRegistry, Vault {
+        let vault_addr = get_vault_address();
+        let vault = borrow_global<Vault>(vault_addr);
+        if (!exists<StrategyRegistry>(vault_addr)) {
+            move_to(
+                &vault.get_vault_signer(),
+                StrategyRegistry { strategies: ordered_map::new() }
+            );
+        };
+        let registry = borrow_global_mut<StrategyRegistry>(vault_addr);
+        let vault_type = type_info::type_of<T>();
+        assert!(!registry.strategies.contains(&vault_type));
+
+        registry.strategies.add(vault_type, deposit_addr);
     }
 }

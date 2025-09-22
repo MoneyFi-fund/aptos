@@ -1,6 +1,7 @@
 module moneyfi::wallet_account_test {
     use std::signer;
     use std::bcs;
+    use std::option::{Self, Option};
     use aptos_framework::account;
     use aptos_framework::object::{Self, Object, ObjectCore, ExtendRef};
     use aptos_framework::fungible_asset::{Self, Metadata, FungibleAsset};
@@ -62,40 +63,50 @@ module moneyfi::wallet_account_test {
     #[test(
         deployer = @moneyfi, w1 = @0x111, w2 = @0x222, w3 = @0x333
     )]
-    fun test_get_referrer_addresses(
+    fun test_get_referrers(
         deployer: &signer,
         w1: &signer,
         w2: &signer,
         w3: &signer
     ) {
+        timestamp::set_time_has_started_for_testing(
+            &account::create_signer_for_test(@0x1)
+        );
         storage::init_module_for_testing(deployer);
+        access_control::init_module_for_testing(deployer);
+        access_control::upsert_account(deployer, @moneyfi, vector[1, 3, 4]);
 
         let a1 = wallet_account::create_wallet_account_for_test(w1, b"w1", 0, vector[]);
-        let referrers = wallet_account::get_referrer_addresses(&a1, 2);
+        let a1_addr = object::object_address(&a1);
+        let (referrers, percents) = wallet_account::get_referrers(&a1, 2);
         assert!(referrers == vector[]);
+        assert!(percents == vector[]);
 
         let a2 = wallet_account::create_wallet_account_for_test(w2, b"w2", 0, b"w1");
         let a3 = wallet_account::create_wallet_account_for_test(w3, b"w3", 0, b"w2");
+        let a2_addr = object::object_address(&a2);
+        let a3_addr = object::object_address(&a3);
 
-        let referrers = wallet_account::get_referrer_addresses(&a2, 3);
+        let (referrers, percents) = wallet_account::get_referrers(&a2, 3);
+        assert!(referrers == vector[a1_addr]);
+        assert!(percents == vector[option::none()]);
+
+        let (referrers, percents) = wallet_account::get_referrers(&a3, 3);
+        assert!(referrers == vector[a2_addr, a1_addr]);
         assert!(
-            referrers
-                == vector[wallet_account::get_wallet_account_object_address(b"w1")]
+            percents == vector[option::none(), option::none()]
         );
 
-        let referrers = wallet_account::get_referrer_addresses(&a3, 3);
-        assert!(
-            referrers
-                == vector[
-                    wallet_account::get_wallet_account_object_address(b"w2"),
-                    wallet_account::get_wallet_account_object_address(b"w1")
-                ]
-        );
+        let (referrers, percents) = wallet_account::get_referrers(&a3, 1);
+        assert!(referrers == vector[a2_addr]);
+        assert!(percents == vector[option::none()]);
 
-        let referrers = wallet_account::get_referrer_addresses(&a3, 1);
+        wallet_account::config_fee(deployer, a1, option::none(), vector[20, 10, 5]);
+        wallet_account::config_fee(deployer, a2, option::none(), vector[22, 11, 6]);
+        let (referrers, percents) = wallet_account::get_referrers(&a3, 3);
+        assert!(referrers == vector[a2_addr, a1_addr]);
         assert!(
-            referrers
-                == vector[wallet_account::get_wallet_account_object_address(b"w2")]
+            percents == vector[option::some(22), option::some(10)]
         );
     }
 
@@ -130,7 +141,7 @@ module moneyfi::wallet_account_test {
         let acc2 = wallet_account::create_wallet_account_for_test(w2, b"w2", 0, vector[]);
 
         wallet_account::set_referrer(w1, b"w2");
-        let refs = wallet_account::get_referrer_addresses(&acc1, 1);
+        let (refs, _) = wallet_account::get_referrers(&acc1, 1);
 
         assert!(refs == vector[object::object_address(&acc2)]);
     }
