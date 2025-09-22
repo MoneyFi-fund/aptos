@@ -257,7 +257,6 @@ module moneyfi::strategy_echelon {
         access_control::must_be_service_account(sender);
         let object_vault = get_vault(vault_name);
         let vault = get_vault_mut(&object_vault);
-        let vault_signer = vault.get_vault_signer();
         assert!(!vault.paused);
         // need compound tapp reward first if borrow and deposit to tapp
         vault.compound_vault_rewards();
@@ -269,6 +268,7 @@ module moneyfi::strategy_echelon {
 
         let (deposited_amount, deposited_shares, total_deposit_shares) =
             vault.deposit_to_echelon(amount);
+
         let vault_shares = vault.mint_vault_shares(deposited_shares, total_deposit_shares);
 
         vault.divide_deposited_amount(
