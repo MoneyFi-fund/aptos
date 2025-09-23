@@ -411,7 +411,7 @@ module moneyfi::vault {
             event::emit(
                 ClaimReferralFeeEvent {
                     asset,
-                    recipient: wallet_addr,
+                    recipient: account_addr,
                     amount: pending_referral_fee,
                     timestamp: now_seconds()
                 }
