@@ -198,6 +198,35 @@ module moneyfi::strategy_echelon {
         };
     }
 
+    public fun estimate_repay_amount_from_withdraw_amount(
+        name: String, withdraw_amount: u64
+    ): u64 acquires Vault {
+        let vault = get_vault_mut(&get_vault(name));
+        let vault_addr = get_vault_address(vault.name);
+        let loan_amount = vault.get_loan_amount();
+        if (loan_amount == 0 || withdraw_amount == 0) {
+            return 0;
+        };
+        let (_, deposited_amount) = vault.get_deposited_amount();
+        if (withdraw_amount >= deposited_amount) {
+            return loan_amount;
+        };
+        let max_borrow_after_withdraw =
+            calc_borrow_amount(
+                deposited_amount - withdraw_amount,
+                lending::market_asset_mantissa(vault.market),
+                lending::asset_price(vault.market),
+                lending::account_market_collateral_factor_bps(vault_addr, vault.market),
+                lending::market_asset_mantissa(vault.borrow_market),
+                lending::asset_price(vault.borrow_market),
+                vault.health_factor
+            );
+        if (max_borrow_after_withdraw >= loan_amount) { 0 }
+        else {
+            loan_amount - max_borrow_after_withdraw + 1
+        }
+    }
+
     /// deposit fund from wallet account to strategy vault
     public(friend) fun deposit(
         sender: &signer,
@@ -244,9 +273,7 @@ module moneyfi::strategy_echelon {
         amount: u64,
         gas_fee: u64,
         hook_data: vector<u8>
-    ) {
-        //Todo
-    }
+    ) {}
 
     /// Deposits fund from vault to Echelon
     /// Pass amount = U64_MAX to deposit all pending amount
@@ -259,7 +286,7 @@ module moneyfi::strategy_echelon {
         let vault = get_vault_mut(&object_vault);
         assert!(!vault.paused);
         // need compound tapp reward first if borrow and deposit to tapp
-        vault.compound_vault_rewards();
+        assert!(vault.is_compound_rewards());
 
         let total_pending_amount = vault.get_total_pending_amount();
         if (amount > total_pending_amount) {
@@ -331,7 +358,13 @@ module moneyfi::strategy_echelon {
 
     // Compound rewards of colab protocol
     // Rewards has been swaped to asset first
-    public(friend) fun compound_rewards(name: String, amount: u64) {} //TODO
+    public(friend) fun compound_rewards(name: String, amount: u64) {
+        let vault = get_vault_mut(&get_vault(name));
+        vault.compound_vault_rewards();
+        if (amount > 0) {
+            vault.deposit_to_echelon(amount);
+        };
+    }
 
     fun init_strategy_account(): address {
         let account_addr = get_strategy_address();
@@ -681,6 +714,38 @@ module moneyfi::strategy_echelon {
         };
 
         asset_amount
+    }
+
+    fun is_compound_rewards(self: &Vault): bool acquires Strategy, RewardInfo {
+        let (_, _, claimable_amounts) = self.claimable_rewards();
+        let min_amount = 1_000_000;
+
+        let all_below_threshold = {
+            let i = 0;
+            let len = vector::length(&claimable_amounts);
+            let ok = true;
+            while (i < len) {
+                let claimable_amount = *vector::borrow(&claimable_amounts, i);
+                if (claimable_amount >= min_amount) {
+                    ok = false;
+                    break;
+                };
+                i = i + 1;
+            };
+            ok
+        };
+
+        let all_rewards_zero = {
+            let ok = true;
+            self.rewards.for_each_ref(|_, reward_amount| {
+                if (*reward_amount > 0) {
+                    ok = false;
+                };
+            });
+            ok
+        };
+
+        (all_below_threshold && all_rewards_zero)
     }
 
     fun claim_rewards(self: &mut Vault) acquires Strategy, RewardInfo {
