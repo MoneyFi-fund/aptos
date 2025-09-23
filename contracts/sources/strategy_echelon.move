@@ -200,7 +200,7 @@ module moneyfi::strategy_echelon {
 
     public fun estimate_repay_amount_from_withdraw_amount(
         name: String, withdraw_amount: u64
-    ): u64 acquires Vault {
+    ): u64 acquires Vault, Strategy {
         let vault = get_vault_mut(&get_vault(name));
         let vault_addr = get_vault_address(vault.name);
         let loan_amount = vault.get_loan_amount();
@@ -358,7 +358,7 @@ module moneyfi::strategy_echelon {
 
     // Compound rewards of colab protocol
     // Rewards has been swaped to asset first
-    public(friend) fun compound_rewards(name: String, amount: u64) {
+    public(friend) fun compound_rewards(name: String, amount: u64) acquires Strategy, Vault, RewardInfo {
         let vault = get_vault_mut(&get_vault(name));
         vault.compound_vault_rewards();
         if (amount > 0) {
