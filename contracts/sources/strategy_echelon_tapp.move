@@ -25,6 +25,8 @@ module moneyfi::strategy_echelon_tapp {
     const ZERO_ADDRESS: address =
         @0x0000000000000000000000000000000000000000000000000000000000000000;
 
+    const MINIMUM_LIQUIDITY: u128 = 1_000_000_000;
+
     const APT_FA_ADDRESS: address = @0xa;
     //Error
     /// Position not exists
@@ -238,15 +240,117 @@ module moneyfi::strategy_echelon_tapp {
     }
 
     // Return reward_amounts to asset
-    fun claim_tapp_reward(
-        caller: &signer,
-        position: Position
-    )
+    fun claim_tapp_reward(caller: &signer, pool: address): u64 acquires TappData {
+        let tapp_data = ensure_tapp_data(caller);
+        if (!exists_tapp_position(tapp_data, pool)) {
+            return 0
+        };
+        let position = get_position_data(caller, pool);
+        let caller_addr = signer::address_of(caller);
+        if (position.position == ZERO_ADDRESS) {
+            return 0
+        };
+        // Calculate minimal liquidity to keep
+        let minimal_liquidity =
+            math128::min(
+                MINIMUM_LIQUIDITY, math128::ceil_div(position.lp_amount, 10000)
+            ); // Keep 0.01% or minimum
+        let liquidity_to_remove = (position.lp_amount - minimal_liquidity) as u256;
+        if (liquidity_to_remove == 0) {
+            return 0 // Not enough liquidity to claim meaningful rewards
+        };
+        let (active_rewards, _) = get_active_rewards(pool, &position);
+        if (active_rewards.is_empty()) {
+            return 0
+        };
+        let assets = hook_factory::pool_meta_assets(&hook_factory::pool_meta(pool));
+        let token_a = object::address_to_object<Metadata>(*vector::borrow(&assets, 0));
+        let token_b = object::address_to_object<Metadata>(*vector::borrow(&assets, 1));
+        let balance_a_before_remove =
+            primary_fungible_store::balance(caller_addr, token_a);
+        let balance_b_before_remove =
+            primary_fungible_store::balance(caller_addr, token_b);
+        // Serialize data to bytes
+        let payload: vector<u8> = vector[];
+        vector::append(&mut payload, to_bytes<address>(&pool));
+        vector::append(&mut payload, to_bytes<address>(&position.position));
+        let remove_type: u8 = 3;
+        vector::append(&mut payload, to_bytes<u8>(&remove_type));
+        vector::append(&mut payload, to_bytes<u256>(&liquidity_to_remove));
+        let remove_amounts = stable_views::calc_ratio_amounts(pool, liquidity_to_remove);
+        let min_amounts = vector::map(
+            remove_amounts,
+            |amount| { math128::mul_div(amount as u128, 98, 100) as u256 }
+        );
+        vector::append(
+            &mut payload,
+            to_bytes<vector<u256>>(&min_amounts)
+        );
+        // Call integration to remove liquidity
+        router::remove_liquidity(caller, payload);
+        let amount_a =
+            primary_fungible_store::balance(caller_addr, token_a)
+                - balance_a_before_remove;
+        let amount_b =
+            primary_fungible_store::balance(caller_addr, token_b)
+                - balance_b_before_remove;
+
+        // Determine which token we're depositing and create amounts vector
+        let amounts = vector::empty<u256>();
+        vector::push_back(&mut amounts, (amount_a as u256));
+        vector::push_back(&mut amounts, (amount_b as u256));
+        // serialize data to bytes
+        let payload: vector<u8> = vector[];
+        vector::append(&mut payload, to_bytes<address>(&pool));
+
+        vector::append(
+            &mut payload,
+            to_bytes<Option<address>>(&option::some(position.position))
+        );
+
+        vector::append(
+            &mut payload,
+            to_bytes<vector<u256>>(&amounts)
+        );
+        let minMintAmount: u256 = 0;
+        vector::append(&mut payload, to_bytes<u256>(&minMintAmount));
+        // Call integration to add liquidity
+        let (position_idx, position_addr) = integration::add_liquidity(caller, payload);
+        assert!(position.position == position_addr);
+        let balance_before = primary_fungible_store::balance(
+            caller_addr, position.asset
+        );
+        //Swap all reward tokens to asset
+        vector::for_each(
+            active_rewards,
+            |reward_token_addr| {
+                if (reward_token_addr != object::object_address(&position.asset)) {
+                    let reward_balance =
+                        primary_fungible_store::balance(
+                            caller_addr,
+                            object::address_to_object<Metadata>(reward_token_addr)
+                        );
+
+                    if (reward_balance > 0) {
+                        swap_with_hyperion(
+                            caller,
+                            &object::address_to_object<Metadata>(reward_token_addr),
+                            &position.asset,
+                            reward_balance,
+                            false
+                        );
+                    };
+                };
+            }
+        );
+        position.lp_amount = stable_views::position_shares(pool, position_idx) as u128;
+        set_position_data(caller, pool, position);
+        (primary_fungible_store::balance(caller_addr, position.asset) - balance_before)
+    }
 
     fun create_or_get_exist_position(
         caller: &signer, asset: &Object<Metadata>, pool: address
     ): Position acquires TappData {
-        let caller_address = signer::address_of(caller);
         let tapp_data = ensure_tapp_data(caller);
         let position =
             if (exists_tapp_position(tapp_data, pool)) {
@@ -275,7 +379,7 @@ module moneyfi::strategy_echelon_tapp {
         position
     }
 
-    fun get_position_data(caller: &signer, pool: address): Position {
+    fun get_position_data(caller: &signer, pool: address): Position acquires TappData {
         let tapp_data = ensure_tapp_data(caller);
         assert!(
             exists_tapp_position(tapp_data, pool),
