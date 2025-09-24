@@ -43,6 +43,7 @@ module moneyfi::wallet_account {
     const E_STRATEGY_DATA_NOT_EXISTS: u64 = 8;
     /// referrer wallet id has been set already
     const E_REFERRER_WALLET_ID_EXISTS: u64 = 9;
+    const E_DEPRECATED: u64 = 10;
 
     // -- Structs
     #[resource_group_member(group = aptos_framework::object::ObjectGroup)]
@@ -459,6 +460,15 @@ module moneyfi::wallet_account {
         ordered_map::to_vec_pair<address, AccountAsset>(wallet_account.assets)
     }
 
+    #[view]
+    public fun get_wallet_id_by_wallet_account(
+        object: Object<WalletAccount>
+    ): vector<u8> acquires WalletAccount {
+        let addr = object::object_address(&object);
+        let wallet_account = borrow_global<WalletAccount>(addr);
+        wallet_account.wallet_id
+    }
+
     public fun get_owner_address(wallet_id: vector<u8>): address acquires WalletAccount {
         let account = get_wallet_account(wallet_id);
         let addr = object::object_address(&account);
@@ -509,10 +519,21 @@ module moneyfi::wallet_account {
         assert!(total < 10000, error::invalid_argument(E_INVALID_ARGUMENT));
     }
 
+    /// Deprecated by get_referrers
     public fun get_referrer_addresses(
         account: &Object<WalletAccount>, max: u8
-    ): vector<address> acquires WalletAccount {
+    ): vector<address> {
+        // Deprecated, function retained for upgrade compatibility
+        abort(E_DEPRECATED);
+        vector[]
+    }
+
+    // returns (address[], share_percent[])
+    public fun get_referrers(
+        account: &Object<WalletAccount>, max: u8
+    ): (vector<address>, vector<Option<u64>>) acquires WalletAccount {
         let referrers = vector[];
+        let percents = vector[];
 
         let i = 0;
         let addr = object::object_address(account);
@@ -525,12 +546,21 @@ module moneyfi::wallet_account {
                 break;
             };
             addr = get_wallet_account_object_address(account.referrer_wallet_id);
-            vector::push_back(&mut referrers, addr);
+            let percent = option::none();
+            if (object::object_exists<WalletAccount>(addr)) {
+                let acc = borrow_global<WalletAccount>(addr);
+                if (acc.referral_percents.length() > (i as u64)) {
+                    percent = option::some(*acc.referral_percents.borrow(i as u64))
+                }
+            };
+
+            referrers.push_back(addr);
+            percents.push_back(percent);
 
             i = i + 1;
         };
 
-        referrers
+        (referrers, percents)
     }
 
     fun get_asset_mut(self: &mut WalletAccount, addr: &Object<Metadata>): &mut AccountAsset {

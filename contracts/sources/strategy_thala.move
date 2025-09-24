@@ -204,7 +204,7 @@ module moneyfi::strategy_thala {
                 );
                 if (object::object_address(asset)
                     != object::object_address(&staked_lpt::get_reward_metadata(reward_id))) {
-                    if (amount > 0) {
+                    if (amount > 1000) {
                         let lp_path: vector<address> = vector[
                             @0x692ba87730279862aa1a93b5fef9a175ea0cccc1f29dfc84d3ec7fbe1561aef3,
                             @0x925660b8618394809f89f8002e2926600c775221f43bf1919782b297a79400d8
