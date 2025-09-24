@@ -134,6 +134,10 @@ module lending::lending {
         0
     }
 
+    public fun shares_to_coins(arg0: object::Object<Market>, arg1: u64): u64 {
+        0
+    }
+
     public fun exchange_rate(arg0: object::Object<Market>): (u64, u64) {
         (0, 0)
     }

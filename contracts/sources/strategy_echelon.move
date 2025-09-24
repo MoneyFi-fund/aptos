@@ -203,28 +203,7 @@ module moneyfi::strategy_echelon {
     ): u64 acquires Vault, Strategy {
         let vault = get_vault_mut(&get_vault(name));
         let vault_addr = get_vault_address(vault.name);
-        let loan_amount = vault.get_loan_amount();
-        if (loan_amount == 0 || withdraw_amount == 0) {
-            return 0;
-        };
-        let (_, deposited_amount) = vault.get_deposited_amount();
-        if (withdraw_amount >= deposited_amount) {
-            return loan_amount;
-        };
-        let max_borrow_after_withdraw =
-            calc_borrow_amount(
-                deposited_amount - withdraw_amount,
-                lending::market_asset_mantissa(vault.market),
-                lending::asset_price(vault.market),
-                lending::account_market_collateral_factor_bps(vault_addr, vault.market),
-                lending::market_asset_mantissa(vault.borrow_market),
-                lending::asset_price(vault.borrow_market),
-                vault.health_factor
-            );
-        if (max_borrow_after_withdraw >= loan_amount) { 0 }
-        else {
-            loan_amount - max_borrow_after_withdraw + 1
-        }
+        vault.estimate_repay_amount_from_withdraw_amount_inline(vault_addr, withdraw_amount)
     }
 
     /// deposit fund from wallet account to strategy vault
@@ -273,8 +252,98 @@ module moneyfi::strategy_echelon {
         amount: u64,
         gas_fee: u64,
         hook_data: vector<u8>
-    ) {
-        //TODO
+    ) acquires Strategy, Vault, RewardInfo {
+        assert!(amount > 0);
+        access_control::must_be_service_account(sender);
+        let strategy_addr = get_strategy_address();
+        let strategy = borrow_global_mut<Strategy>(strategy_addr);
+        let strategy_signer = strategy.get_account_signer();
+
+        let object_vault = get_vault(vault_name);
+        let vault = get_vault_mut(&object_vault);
+        let vault_addr = get_vault_address(vault.name);
+        assert!(!vault.paused);
+        
+        let account = &wallet_account::get_wallet_account(wallet_id);
+        let account_data = get_account_data(account);
+        let account_vault_data = account_data.get_account_data_for_vault(vault_addr);
+
+        let deposited_amount = amount;
+        let pending_amount = vault.get_pending_amount(account);
+        if (amount > pending_amount) {
+            // need compound tapp reward first if borrow and deposit to tapp
+            assert!(vault.is_compound_rewards());
+            let withdraw_amount = amount - pending_amount;
+            amount = pending_amount;
+            deposited_amount = amount;
+            let (total_deposit_shares, _) = vault.get_deposited_amount();
+            let deposit_shares = lending::coins_to_shares(vault.market, withdraw_amount);
+            let vault_shares =
+                vault.get_vault_shares_from_deposit_shares(
+                    deposit_shares, total_deposit_shares
+                );
+            if (vault_shares > account_vault_data.vault_shares) {
+                vault_shares = account_vault_data.vault_shares;
+                deposit_shares = vault.get_deposit_shares_from_vault_shares(
+                    vault_shares, total_deposit_shares
+                );
+                withdraw_amount = if (deposit_shares > 0){
+                    lending::shares_to_coins(vault.market, deposit_shares)
+                } else {0};
+            };
+            if (vault_shares > 0 && withdraw_amount > 0) {
+                let (withdrawn_amount, _, _, _) = vault.withdraw_from_echelon(withdraw_amount);
+
+                let dep_amount =
+                    math128::mul_div(
+                        account_vault_data.deposited_amount as u128,
+                        vault_shares,
+                        account_vault_data.vault_shares
+                    ) as u64;
+
+                account_vault_data.deposited_amount =
+                    if (account_vault_data.deposited_amount > dep_amount) {
+                        account_vault_data.deposited_amount - dep_amount
+                    } else { 0 };
+
+                vault.total_shares =
+                    if (vault.total_shares > vault_shares) {
+                        vault.total_shares - vault_shares
+                    } else { 0 };
+
+                account_vault_data.vault_shares =
+                    if (account_vault_data.vault_shares > vault_shares) {
+                        account_vault_data.vault_shares - vault_shares
+                    } else { 0 };
+
+                deposited_amount = deposited_amount + dep_amount;
+                amount = amount + withdrawn_amount;
+                vault.update_pending_amount(account, withdrawn_amount, 0);
+            }
+        };
+        let account_addr = object::object_address(account);
+        primary_fungible_store::transfer(
+            &vault.get_vault_signer(),
+            vault.asset,
+            account_addr,
+            amount
+        );
+        vault.update_pending_amount(account, 0, amount);
+        vault.available_amount = vault.available_amount - amount;
+        vault.total_withdrawn_amount = vault.total_withdrawn_amount + (amount as u128);
+
+        wallet_account::set_strategy_data(account, account_data);
+
+        moneyfi_vault::withdrawn_from_strategy_with_hook_data<Strategy>(
+            &strategy_signer,
+            wallet_id,
+            vault.asset,
+            deposited_amount,
+            amount,
+            0,
+            gas_fee,
+            hook_data
+        );
     }
 
     /// Deposits fund from vault to Echelon
@@ -350,15 +419,32 @@ module moneyfi::strategy_echelon {
 
     // Return actual borrowed amounts
     // pass amount = U64_MAX to borrow all available borrow amounts
-    public(friend) fun borrow(): u64 {
-        0
-    } //TODO
+    public(friend) fun borrow(name: String, borrow_amount: u64): u64 acquires Strategy, Vault, RewardInfo {
+        let vault = get_vault_mut(&get_vault(name));
+        assert!(!vault.paused);
+        assert!(vault.is_compound_rewards());
+        let avail_borrow_amount = vault.borrowable_amount_given_health_factor(vault.health_factor);
+        let amount = math64::min(borrow_amount, avail_borrow_amount);
+        let actual_borrow_amount = if (amount > 0) {
+            borrow_from_echelon_impl(
+                &vault.get_vault_signer(),
+                &vault.borrow_market,
+                &lending::market_asset_metadata(vault.borrow_market),
+                amount
+            )
+        }else {0};
+        actual_borrow_amount
+    }
 
     // Return actual repaid amounts
     // pass amount = U64_MAX to repay all
-    public(friend) fun repay(): u64 {
-        0
-    } //TODO
+    public(friend) fun repay(name: String, repay_amount: u64): u64 acquires Strategy, Vault, RewardInfo {
+        let vault = get_vault_mut(&get_vault(name));
+        assert!(!vault.paused);
+        assert!(vault.is_compound_rewards());
+        let (actual_repay_amount, _) = vault.repay_echelon(&vault.get_vault_signer(), repay_amount);
+        actual_repay_amount
+    }
 
     // Compound rewards of colab protocol
     // Rewards has been swaped to asset first
@@ -368,12 +454,6 @@ module moneyfi::strategy_echelon {
         if (amount > 0) {
             vault.deposit_to_echelon(amount);
         };
-
-        // deposit all avail amount to echelon
-        let avail_amount = vault.get_avail_amount_without_pending_amount();
-        if (avail_amount > 0) {
-            vault.deposit_to_echelon(avail_amount);
-        }
     }
 
     fun init_strategy_account(): address {
@@ -415,31 +495,46 @@ module moneyfi::strategy_echelon {
     /// Withdraw asset from Echelon back to vault
     /// Assumes vault has been compounded
     /// Return received amount, burned shares, total shares before withdraw, repaied_amount
-    fun withdraw_from_echelon(self: &mut Vault, amount: u64): (u64, u64, u64, u64) acquires Strategy {
+    fun withdraw_from_echelon(self: &mut Vault, amount: u64): (u64, u64, u64, u64) acquires Strategy, RewardInfo {
         let vault_signer = self.get_vault_signer();
         let loan_amount = self.get_loan_amount();
         let repaid_amount = 0;
         if (loan_amount > 0) {
             let repay_amount =
-                self.estimate_repay_amount_from_withdraw_amount(self.name, amount);
+                self.estimate_repay_amount_from_withdraw_amount_inline(signer::address_of(&vault_signer),amount);
             if (repay_amount > 0) {
-                (_repaid_amount, swapped_amount) = self.repay_echelon(
-                    vault_signer, repay_amount
+                let (_repaid_amount, _) = self.repay_echelon(
+                    &vault_signer, repay_amount
                 );
+                repaid_amount = _repaid_amount;
             }
         };
-    }
+        let (shares_before, _) = self.get_deposited_amount();
+        let actual_withdraw_amount =
+            withdraw_from_echelon_impl(
+                &vault_signer,
+                &self.market,
+                &self.asset,
+                amount
+            );
+        let (shares_after, _) = self.get_deposited_amount();
+        assert!(shares_before >= shares_after);
+        let shares = shares_before - shares_after;
+        self.available_amount = self.available_amount + amount;
 
+        (actual_withdraw_amount, shares, shares_before, repaid_amount)
+    }
+    // Return actual repaid amount, swapped amount
     fun repay_echelon(
         self: &mut Vault, vault_signer: &signer, repay_amount: u64
-    ): (u64, u64) {
+    ): (u64, u64) acquires Strategy, RewardInfo {
         assert!(self.is_compound_rewards());
         let pending_borrow_amount = if (self.market == self.borrow_market) {
             let balance = primary_fungible_store::balance(signer::address_of(vault_signer), self.asset);
             let avail_borrow_amount = balance - self.get_total_pending_amount();
             avail_borrow_amount
         } else {
-            primary_fungible_store::balance(signer::address_of(vault_signer), lending::market_asset_metadata(self.borrow_market));
+            primary_fungible_store::balance(signer::address_of(vault_signer), lending::market_asset_metadata(self.borrow_market))
         };
 
         let req_amount = if (repay_amount > pending_borrow_amount) {
@@ -449,9 +544,43 @@ module moneyfi::strategy_echelon {
         };
 
         let swapped_amount = if (req_amount > 0) {
-            
-        }
-
+            let amount_in = get_amount_in(&self.asset, &lending::market_asset_metadata(self.borrow_market), req_amount);
+            math64::ceil_div(amount_in * (10000 + 50), 10000)
+        }else {
+            0
+        };
+        let actual_withdraw_amount =
+            withdraw_from_echelon_impl(
+                vault_signer,
+                &self.market,
+                &self.asset,
+                swapped_amount
+            );
+        assert!(actual_withdraw_amount >= swapped_amount);
+        if (swapped_amount > 0) {
+            let amount_out =
+                swap_with_hyperion(
+                    vault_signer,
+                    &lending::market_asset_metadata(self.borrow_market),
+                    &self.asset,
+                    swapped_amount
+                );
+            assert!(amount_out >= req_amount);
+        };
+        let actual_repay_amount =
+            repay_to_echelon_impl(
+                vault_signer,
+                &self.borrow_market,
+                &lending::market_asset_metadata(self.borrow_market),
+                repay_amount
+            );
+        assert!(actual_repay_amount <= repay_amount);
+        let avail_amount = primary_fungible_store::balance(signer::address_of(vault_signer), self.asset) - self.get_total_pending_amount();
+        if (avail_amount > 0){
+            self.available_amount = self.available_amount + avail_amount;
+        };
+        self.compound_vault_rewards();
+        (actual_repay_amount, swapped_amount)
     }
 
     // return actual deposited amount
@@ -677,6 +806,35 @@ module moneyfi::strategy_echelon {
         lending::account_liability(vault_addr, self.borrow_market)
     }
 
+    fun estimate_repay_amount_from_withdraw_amount_inline(
+        self: &Vault,
+        vault_addr: address, 
+        withdraw_amount: u64
+    ): u64 acquires Strategy{
+        let loan_amount = self.get_loan_amount();
+        if (loan_amount == 0 || withdraw_amount == 0) {
+            return 0;
+        };
+        let (_, deposited_amount) = self.get_deposited_amount();
+        if (withdraw_amount >= deposited_amount) {
+            return loan_amount;
+        };
+        let max_borrow_after_withdraw =
+            calc_borrow_amount(
+                deposited_amount - withdraw_amount,
+                lending::market_asset_mantissa(self.market),
+                lending::asset_price(self.market),
+                lending::account_market_collateral_factor_bps(vault_addr, self.market),
+                lending::market_asset_mantissa(self.borrow_market),
+                lending::asset_price(self.borrow_market),
+                self.health_factor
+            );
+        if (max_borrow_after_withdraw >= loan_amount) { 0 }
+        else {
+            loan_amount - max_borrow_after_withdraw + 1
+        }
+    }
+
     fun mint_vault_shares(
         self: &mut Vault, deposit_shares: u64, total_deposit_shares: u64
     ): u128 {
@@ -755,7 +913,7 @@ module moneyfi::strategy_echelon {
                 } else {
                     asset_amount =
                         asset_amount
-                            + swap_reward_with_hyperion(
+                            + swap_with_hyperion(
                                 &vault_signer,
                                 &asset,
                                 &object::address_to_object<Metadata>(reward_addr),
@@ -767,6 +925,12 @@ module moneyfi::strategy_echelon {
         );
         if (asset_amount > 0) {
             self.deposit_to_echelon(asset_amount);
+        };
+
+        // deposit all avail amount to echelon
+        let avail_amount = self.get_avail_amount_without_pending_amount();
+        if (avail_amount > 0) {
+            self.deposit_to_echelon(avail_amount);
         };
 
         asset_amount
@@ -909,7 +1073,7 @@ module moneyfi::strategy_echelon {
                     total_amount =
                         total_amount
                             + hyperion::router_v3::get_batch_amount_out(
-                                get_reward_path(&asset, &reward_token),
+                                get_path(&asset, &reward_token),
                                 claimable_amount,
                                 *option::borrow(&coin::paired_metadata<ThalaAPT>()),
                                 asset
@@ -922,15 +1086,18 @@ module moneyfi::strategy_echelon {
 
     /// Swap ThalaAPT reward to USDT/USDC using Hyperion
     /// Returns the amount of USDT/USDC received
-    fun swap_reward_with_hyperion(
+    fun swap_with_hyperion(
         caller: &signer,
         to: &Object<Metadata>,
         from: &Object<Metadata>,
         amount: u64
     ): u64 {
+        if (object::object_address(to) == object::object_address(from)) {
+            return amount;
+        };
         let caller_addr = signer::address_of(caller);
         let thala_apt_metadata = coin::paired_metadata<ThalaAPT>();
-        let reward_path = get_reward_path(to, from);
+        let reward_path = get_path(to, from);
         let balance_before = primary_fungible_store::balance(caller_addr, *to);
         let amount_out =
             hyperion::router_v3::get_batch_amount_out(reward_path, amount, *from, *to);
@@ -962,7 +1129,41 @@ module moneyfi::strategy_echelon {
         balance_after - balance_before
     }
 
-    fun get_reward_path(to: &Object<Metadata>, from: &Object<Metadata>): vector<address> {
+    fun get_amount_out(
+        to: &Object<Metadata>,
+        from: &Object<Metadata>,
+        amount: u64
+    ): u64 {
+        if (object::object_address(to) == object::object_address(from)) {
+            return amount;
+        };
+        if (amount == 0) {
+            return 0;
+        };
+        let path = get_path(to, from);
+        hyperion::router_v3::get_batch_amount_out(
+            path, amount, *from, *to
+        )
+    }
+
+    fun get_amount_in(
+        to: &Object<Metadata>,
+        from: &Object<Metadata>,
+        amount: u64
+    ): u64 {
+        if (object::object_address(to) == object::object_address(from)) {
+            return amount;
+        };
+        if (amount == 0) {
+            return 0;
+        };
+        let path = get_path(to, from);
+        hyperion::router_v3::get_batch_amount_in(
+            path, amount, *from, *to
+        )
+    }
+
+    fun get_path(to: &Object<Metadata>, from: &Object<Metadata>): vector<address> {
         if (object::object_address(to) == object::object_address(from)) {
             return vector::empty<address>()
         };
@@ -991,23 +1192,23 @@ module moneyfi::strategy_echelon {
     }
 
     fun borrowable_amount_given_health_factor(
-        vault: &Vault, health_factor: u64
+        self: &Vault, health_factor: u64
     ): u64 acquires Strategy {
         assert!(health_factor > HEALTH_FACTOR_DENOMINATOR, error::invalid_argument(4));
-        let vault_addr = get_vault_address(vault.name);
-        let total_deposit = lending::account_coins(vault_addr, vault.market);
-        let total_borrow = lending::account_liability(vault_addr, vault.borrow_market);
+        let vault_addr = get_vault_address(self.name);
+        let total_deposit = lending::account_coins(vault_addr, self.market);
+        let total_borrow = lending::account_liability(vault_addr, self.borrow_market);
         if (total_deposit == 0) {
             return 0;
         };
         let max_borrow =
             calc_borrow_amount(
                 total_deposit,
-                lending::market_asset_mantissa(vault.market),
-                lending::asset_price(vault.market),
-                lending::account_market_collateral_factor_bps(vault_addr, vault.market),
-                lending::market_asset_mantissa(vault.borrow_market),
-                lending::asset_price(vault.borrow_market),
+                lending::market_asset_mantissa(self.market),
+                lending::asset_price(self.market),
+                lending::account_market_collateral_factor_bps(vault_addr, self.market),
+                lending::market_asset_mantissa(self.borrow_market),
+                lending::asset_price(self.borrow_market),
                 health_factor
             );
         if (max_borrow <= total_borrow) {
