@@ -273,7 +273,9 @@ module moneyfi::strategy_echelon {
         amount: u64,
         gas_fee: u64,
         hook_data: vector<u8>
-    ) {}
+    ) {
+        //TODO
+    }
 
     /// Deposits fund from vault to Echelon
     /// Pass amount = U64_MAX to deposit all pending amount
@@ -347,12 +349,14 @@ module moneyfi::strategy_echelon {
     }
 
     // Return actual borrowed amounts
-    public(friend) fun borrow_echelon(): u64 {
+    // pass amount = U64_MAX to borrow all available borrow amounts
+    public(friend) fun borrow(): u64 {
         0
     } //TODO
 
     // Return actual repaid amounts
-    public(friend) fun repay_echelon(): u64 {
+    // pass amount = U64_MAX to repay all
+    public(friend) fun repay(): u64 {
         0
     } //TODO
 
@@ -364,6 +368,12 @@ module moneyfi::strategy_echelon {
         if (amount > 0) {
             vault.deposit_to_echelon(amount);
         };
+
+        // deposit all avail amount to echelon
+        let avail_amount = vault.get_avail_amount_without_pending_amount();
+        if (avail_amount > 0) {
+            vault.deposit_to_echelon(avail_amount);
+        }
     }
 
     fun init_strategy_account(): address {
@@ -400,6 +410,48 @@ module moneyfi::strategy_echelon {
         self.available_amount = self.available_amount - actual_deposit_amount;
 
         (actual_deposit_amount, shares, share_before)
+    }
+
+    /// Withdraw asset from Echelon back to vault
+    /// Assumes vault has been compounded
+    /// Return received amount, burned shares, total shares before withdraw, repaied_amount
+    fun withdraw_from_echelon(self: &mut Vault, amount: u64): (u64, u64, u64, u64) acquires Strategy {
+        let vault_signer = self.get_vault_signer();
+        let loan_amount = self.get_loan_amount();
+        let repaid_amount = 0;
+        if (loan_amount > 0) {
+            let repay_amount =
+                self.estimate_repay_amount_from_withdraw_amount(self.name, amount);
+            if (repay_amount > 0) {
+                (_repaid_amount, swapped_amount) = self.repay_echelon(
+                    vault_signer, repay_amount
+                );
+            }
+        };
+    }
+
+    fun repay_echelon(
+        self: &mut Vault, vault_signer: &signer, repay_amount: u64
+    ): (u64, u64) {
+        assert!(self.is_compound_rewards());
+        let pending_borrow_amount = if (self.market == self.borrow_market) {
+            let balance = primary_fungible_store::balance(signer::address_of(vault_signer), self.asset);
+            let avail_borrow_amount = balance - self.get_total_pending_amount();
+            avail_borrow_amount
+        } else {
+            primary_fungible_store::balance(signer::address_of(vault_signer), lending::market_asset_metadata(self.borrow_market));
+        };
+
+        let req_amount = if (repay_amount > pending_borrow_amount) {
+            repay_amount - pending_borrow_amount
+        } else {
+            0
+        };
+
+        let swapped_amount = if (req_amount > 0) {
+            
+        }
+
     }
 
     // return actual deposited amount
@@ -555,6 +607,10 @@ module moneyfi::strategy_echelon {
         if (self.pending_amount.contains(&account_addr)) {
             *self.pending_amount.borrow(&account_addr)
         } else { 0 }
+    }
+
+    fun get_avail_amount_without_pending_amount(self: &Vault): u64 {
+        self.available_amount - self.get_total_pending_amount()
     }
 
     fun update_pending_amount(
@@ -745,7 +801,17 @@ module moneyfi::strategy_echelon {
             ok
         };
 
-        (all_below_threshold && all_rewards_zero)
+        let all_avail_amount_zero = {
+            let ok = true;
+            if (self.get_avail_amount_without_pending_amount() > 0) {
+                ok = false;
+            };
+            ok
+        };
+
+        (all_below_threshold
+            && all_rewards_zero
+            && all_avail_amount_zero)
     }
 
     fun claim_rewards(self: &mut Vault) acquires Strategy, RewardInfo {
