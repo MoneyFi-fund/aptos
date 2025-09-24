@@ -5,6 +5,7 @@ module moneyfi::vault_test {
     use std::error;
     use std::option::{Self, Option};
     use std::string::{Self, String};
+    use aptos_framework::ordered_map::{Self, OrderedMap};
     use aptos_framework::account;
     use aptos_framework::timestamp;
     use aptos_framework::object::{Self, Object, ObjectCore, ExtendRef};
@@ -172,5 +173,92 @@ module moneyfi::vault_test {
         let lp_token = vault::get_lp_token();
         let lp_balance = primary_fungible_store::balance(wallet1_addr, lp_token);
         assert!(lp_balance == 10_000_000 - burn_lp_amount);
+    }
+
+    struct FakeStrategy has copy, drop {}
+
+    #[test(deployer = @moneyfi, wallet1 = @0x111, wallet2 = @0x222)]
+    fun test_deposit_withdraw_from_strategy(
+        deployer: &signer, wallet1: &signer, wallet2: &signer
+    ) {
+        let (usdc, mint_ref) = setup(deployer, wallet1, wallet2);
+
+        vault::configure(
+            deployer,
+            true,
+            true,
+            2000,
+            vector[1000],
+            @moneyfi
+        );
+
+        let acc1 =
+            wallet_account::create_wallet_account_for_test(
+                wallet1, b"wallet1", 0, vector[]
+            );
+        let acc2 =
+            wallet_account::create_wallet_account_for_test(
+                wallet2, b"wallet2", 0, b"wallet1"
+            );
+
+        vault::register_strategy_for_test<FakeStrategy>(@moneyfi);
+
+        vault::deposit(wallet2, usdc, 10_000);
+        vault::deposit_to_strategy_vault<FakeStrategy>(deployer, b"wallet2", usdc, 2_000);
+
+        // assert vault state
+        let (total_amount, total_lp_amount, total_distributed_amount) =
+            vault::get_asset(usdc);
+        assert!(total_amount == 10_000);
+        assert!(total_lp_amount == 10_000_000);
+        assert!(total_distributed_amount == 2_000);
+
+        vault::withdrawn_from_strategy<FakeStrategy>(
+            deployer, b"wallet2", usdc, 1_000, 1_100, 10, 20
+        );
+
+        // assert vault state
+        let (total_amount, total_lp_amount, total_distributed_amount) =
+            vault::get_asset(usdc);
+        assert!(total_amount == 10_070);
+        assert!(total_lp_amount == 10_000_000);
+        assert!(total_distributed_amount == 1_000);
+
+        // assert fee
+        let (total, pending) = vault::get_fee(usdc);
+        assert!(total == 13);
+        assert!(pending == 13);
+
+        let fees = vault::get_pending_referral_fees(b"wallet1");
+        assert!(
+            fees
+                == ordered_map::new_from(
+                    vector[object::object_address(&usdc)],
+                    vector[1]
+                )
+        );
+
+        // customize fee config
+        wallet_account::config_fee(deployer, acc2, option::some(5000), vector[]);
+        wallet_account::config_fee(deployer, acc1, option::none(), vector[2000]);
+
+        vault::withdrawn_from_strategy<FakeStrategy>(
+            deployer, b"wallet2", usdc, 1_000, 1_100, 0, 0
+        );
+
+        // assert fee
+        let (total, pending) = vault::get_fee(usdc);
+        std::debug::print(&total);
+        assert!(total == 53);
+        assert!(pending == 53);
+
+        let fees = vault::get_pending_referral_fees(b"wallet1");
+        assert!(
+            fees
+                == ordered_map::new_from(
+                    vector[object::object_address(&usdc)],
+                    vector[11]
+                )
+        );
     }
 }

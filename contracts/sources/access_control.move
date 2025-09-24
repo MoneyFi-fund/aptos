@@ -1,6 +1,5 @@
 module moneyfi::access_control {
     use std::signer;
-    use std::vector;
     use std::error;
     use aptos_framework::ordered_map::{Self, OrderedMap};
     use aptos_framework::object::{Self, ObjectCore};
@@ -24,7 +23,7 @@ module moneyfi::access_control {
     const E_ALREADY_INITIALIZED: u64 = 1;
     const E_NOT_AUTHORIZED: u64 = 2;
     const E_EMPTY_ROLES: u64 = 3;
-    const E_ACCOUNT_CANNOT_BE_REMOVED: u64 = 4;
+    const E_INVALID_REGISTRY_STATE: u64 = 4;
     const E_CONFLICT_ROLES: u64 = 5;
     const E_REGISTRY_LOCKED: u64 = 6;
 
@@ -55,6 +54,7 @@ module moneyfi::access_control {
 
     fun init_module(sender: &signer) {
         let addr = signer::address_of(sender);
+        assert!(addr == @moneyfi);
         assert!(
             !exists<Registry>(addr),
             error::already_exists(E_ALREADY_INITIALIZED)
@@ -89,8 +89,7 @@ module moneyfi::access_control {
     ) acquires Registry {
         let addr = signer::address_of(sender);
         let registry = borrow_global_mut<Registry>(@moneyfi);
-        let count = registry.count_role(ROLE_ROLE_MANAGER);
-        if (count == 0) {
+        if (registry.accounts.length() == 1) {
             // allow admin to add the first role manager
             assert!(
                 registry.has_role(&addr, ROLE_ADMIN),
@@ -103,21 +102,26 @@ module moneyfi::access_control {
             )
         };
 
-        // TODO: remove duplicated values
-        let valid_roles = vector::filter(roles, |v| *v <= ROLE_COUNT);
-        assert!(
-            !vector::is_empty(&valid_roles), error::invalid_argument(E_EMPTY_ROLES)
-        );
+        let valid_roles = vector<u8>[];
+        roles.for_each(|v| {
+            if (v <= ROLE_COUNT && !valid_roles.contains(&v)) {
+                valid_roles.push_back(v);
+            }
+        });
+        assert!(!valid_roles.is_empty(), error::invalid_argument(E_EMPTY_ROLES));
 
-        let is_admin = vector::contains(&valid_roles, &ROLE_ADMIN);
-        let is_manager = vector::contains(&valid_roles, &ROLE_ROLE_MANAGER);
-        assert!(!is_admin || !is_manager, error::permission_denied(E_CONFLICT_ROLES));
+        let is_admin = valid_roles.contains(&ROLE_ADMIN);
+        let is_manager = valid_roles.contains(&ROLE_ROLE_MANAGER);
+        assert!(!(is_admin && is_manager), error::permission_denied(E_CONFLICT_ROLES));
 
         ensure_registry_is_unlocked(registry);
 
         ordered_map::upsert(&mut registry.accounts, account, valid_roles);
+        registry.validate_state();
 
-        event::emit(UpdateAccountEvent { account, roles, timestamp: now_seconds() });
+        event::emit(
+            UpdateAccountEvent { account, roles: valid_roles, timestamp: now_seconds() }
+        );
     }
 
     public entry fun remove_account(sender: &signer, account: address) acquires Registry {
@@ -126,9 +130,9 @@ module moneyfi::access_control {
         let registry = borrow_global_mut<Registry>(@moneyfi);
         ensure_registry_is_unlocked(registry);
         assert!(ordered_map::contains(&registry.accounts, &account));
-        ensure_account_is_safe_to_remove(registry, &account);
 
         ordered_map::remove(&mut registry.accounts, &account);
+        registry.validate_state();
 
         event::emit(RemoveAccountEvent { account, timestamp: now_seconds() });
     }
@@ -139,13 +143,10 @@ module moneyfi::access_control {
     public fun get_accounts(): vector<AccountItem> acquires Registry {
         let registry = borrow_global<Registry>(@moneyfi);
         let keys = ordered_map::keys(&registry.accounts);
-        vector::map_ref(
-            &keys,
-            |k| {
-                let roles = ordered_map::borrow(&registry.accounts, k);
-                AccountItem { account: *k, roles: *roles }
-            }
-        )
+        keys.map_ref(|k| {
+            let roles = ordered_map::borrow(&registry.accounts, k);
+            AccountItem { account: *k, roles: *roles }
+        })
     }
 
     // -- Public
@@ -196,35 +197,32 @@ module moneyfi::access_control {
     fun has_role(self: &Registry, addr: &address, role: u8): bool {
         if (ordered_map::contains(&self.accounts, addr)) {
             let roles = ordered_map::borrow(&self.accounts, addr);
-            vector::contains(roles, &role)
+            roles.contains(&role)
         } else { false }
     }
 
     fun count_role(self: &Registry, role: u8): u8 {
         let n = 0;
         let values = ordered_map::values(&self.accounts);
-        vector::for_each_ref(
-            &values,
-            |v| {
-                if (vector::contains(v, &role)) {
-                    n = n + 1;
-                }
+        values.for_each_ref(|v| {
+            if (v.contains(&role)) {
+                n = n + 1;
             }
-        );
+        });
         n
     }
 
-    fun ensure_account_is_safe_to_remove(
-        registry: &Registry, account: &address
-    ) {
-        if (has_role(registry, account, ROLE_ADMIN)) {
-            let count = registry.count_role(ROLE_ADMIN);
-            assert!(count > 1, error::permission_denied(E_ACCOUNT_CANNOT_BE_REMOVED));
-        };
+    fun validate_state(self: &Registry) {
+        assert!(
+            self.count_role(ROLE_ADMIN) > 0,
+            error::invalid_state(E_INVALID_REGISTRY_STATE)
+        );
 
-        if (has_role(registry, account, ROLE_ROLE_MANAGER)) {
-            let count = registry.count_role(ROLE_ROLE_MANAGER);
-            assert!(count > 1, error::permission_denied(E_ACCOUNT_CANNOT_BE_REMOVED));
+        if (self.accounts.length() > 1) {
+            assert!(
+                self.count_role(ROLE_ROLE_MANAGER) > 0,
+                error::invalid_state(E_INVALID_REGISTRY_STATE)
+            );
         }
     }
 
