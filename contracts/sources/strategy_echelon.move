@@ -440,9 +440,10 @@ module moneyfi::strategy_echelon {
     // pass amount = U64_MAX to repay all
     public(friend) fun repay(name: String, repay_amount: u64): u64 acquires Strategy, Vault, RewardInfo {
         let vault = get_vault_mut(&get_vault(name));
+        let vault_signer = vault.get_vault_signer();
         assert!(!vault.paused);
         assert!(vault.is_compound_rewards());
-        let (actual_repay_amount, _) = vault.repay_echelon(&vault.get_vault_signer(), repay_amount);
+        let (actual_repay_amount, _) = vault.repay_echelon(&vault_signer, repay_amount);
         actual_repay_amount
     }
 
