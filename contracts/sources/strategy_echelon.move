@@ -25,6 +25,8 @@ module moneyfi::strategy_echelon {
     use moneyfi::vault as moneyfi_vault;
     use moneyfi::wallet_account::{Self, WalletAccount};
 
+    friend moneyfi::strategy_echelon_tapp;
+
     const STRATEGY_ACCOUNT_SEED: vector<u8> = b"strategy_echelon::STRATEGY_ACCOUNT";
 
     const U64_MAX: u64 = 18446744073709551615;
@@ -201,9 +203,38 @@ module moneyfi::strategy_echelon {
     public fun estimate_repay_amount_from_withdraw_amount(
         name: String, withdraw_amount: u64
     ): u64 acquires Vault, Strategy {
-        let vault = get_vault_mut(&get_vault(name));
-        let vault_addr = get_vault_address(vault.name);
+        let vault = get_vault_data(&get_vault(name));
+        let vault_addr = vault_address(vault.name);
         vault.estimate_repay_amount_from_withdraw_amount_inline(vault_addr, withdraw_amount)
+    }
+
+    #[view]
+    public fun vault_address(name: String): address acquires Strategy {
+        object::object_address(&get_vault(name))
+    }
+
+    #[view]
+    public fun vault_asset(name: String): Object<Metadata> acquires Strategy, Vault {
+        let vault = get_vault_data(&get_vault(name));
+        vault.asset
+    }
+
+    #[view]
+    public fun vault_borrow_asset(name: String): Object<Metadata> acquires Strategy, Vault {
+        let vault = get_vault_data(&get_vault(name));
+        lending::market_asset_metadata(vault.borrow_market)
+    }
+
+    #[view]
+    public fun max_borrowable_amount(name: String): u64 acquires Strategy, Vault {
+        let vault = get_vault_data(&get_vault(name));
+        vault.borrowable_amount_given_health_factor(vault.health_factor)
+    }
+
+    #[view]
+    public fun vault_borrow_amount(name: String): u64 acquires Strategy, Vault {
+        let vault = get_vault_data(&get_vault(name));
+        vault.get_loan_amount()
     }
 
     /// deposit fund from wallet account to strategy vault
@@ -261,7 +292,7 @@ module moneyfi::strategy_echelon {
 
         let object_vault = get_vault(vault_name);
         let vault = get_vault_mut(&object_vault);
-        let vault_addr = get_vault_address(vault.name);
+        let vault_addr = vault_address(vault.name);
         assert!(!vault.paused);
         
         let account = &wallet_account::get_wallet_account(wallet_id);
@@ -272,7 +303,7 @@ module moneyfi::strategy_echelon {
         let pending_amount = vault.get_pending_amount(account);
         if (amount > pending_amount) {
             // need compound tapp reward first if borrow and deposit to tapp
-            assert!(vault.is_compound_rewards());
+            vault.compound_vault_rewards();
             let withdraw_amount = amount - pending_amount;
             amount = pending_amount;
             deposited_amount = amount;
@@ -357,7 +388,7 @@ module moneyfi::strategy_echelon {
         let vault = get_vault_mut(&object_vault);
         assert!(!vault.paused);
         // need compound tapp reward first if borrow and deposit to tapp
-        assert!(vault.is_compound_rewards());
+        vault.compound_vault_rewards();
 
         let total_pending_amount = vault.get_total_pending_amount();
         if (amount > total_pending_amount) {
@@ -384,7 +415,7 @@ module moneyfi::strategy_echelon {
         total_pending_amount: u64,
         vault_shares: u128
     ) acquires Strategy {
-        let vault_addr = get_vault_address(self.name);
+        let vault_addr = vault_address(self.name);
 
         let remaining_amount = deposited_amount;
         self.pending_amount.for_each_mut(
@@ -419,10 +450,11 @@ module moneyfi::strategy_echelon {
 
     // Return actual borrowed amounts
     // pass amount = U64_MAX to borrow all available borrow amounts
-    public(friend) fun borrow(name: String, borrow_amount: u64): u64 acquires Strategy, Vault, RewardInfo {
+    public(friend) fun borrow(sender: &signer, name: String, borrow_amount: u64): u64 acquires Strategy, Vault, RewardInfo {
+        access_control::must_be_service_account(sender);
         let vault = get_vault_mut(&get_vault(name));
         assert!(!vault.paused);
-        assert!(vault.is_compound_rewards());
+        vault.compound_vault_rewards();
         let avail_borrow_amount = vault.borrowable_amount_given_health_factor(vault.health_factor);
         let amount = math64::min(borrow_amount, avail_borrow_amount);
         let actual_borrow_amount = if (amount > 0) {
@@ -438,11 +470,12 @@ module moneyfi::strategy_echelon {
 
     // Return actual repaid amounts
     // pass amount = U64_MAX to repay all
-    public(friend) fun repay(name: String, repay_amount: u64): u64 acquires Strategy, Vault, RewardInfo {
+    public(friend) fun repay(sender: &signer, name: String, repay_amount: u64): u64 acquires Strategy, Vault, RewardInfo {
+        access_control::must_be_service_account(sender);
         let vault = get_vault_mut(&get_vault(name));
         let vault_signer = vault.get_vault_signer();
         assert!(!vault.paused);
-        assert!(vault.is_compound_rewards());
+        vault.compound_vault_rewards();
         let (actual_repay_amount, _) = vault.repay_echelon(&vault_signer, repay_amount);
         actual_repay_amount
     }
@@ -455,6 +488,11 @@ module moneyfi::strategy_echelon {
         if (amount > 0) {
             vault.deposit_to_echelon(amount);
         };
+    }
+
+    public(friend) fun get_signer(name: String): signer acquires Strategy, Vault {
+        let vault = get_vault_data(&get_vault(name));
+        vault.get_vault_signer()
     }
 
     fun init_strategy_account(): address {
@@ -668,10 +706,6 @@ module moneyfi::strategy_echelon {
         storage::get_child_object_address(STRATEGY_ACCOUNT_SEED)
     }
 
-    fun get_vault_address(name: String): address acquires Strategy {
-        object::object_address(&get_vault(name))
-    }
-
     fun get_vault(name: String): Object<Vault> acquires Strategy {
         let strategy_addr = get_strategy_address();
         let strategy = borrow_global<Strategy>(strategy_addr);
@@ -685,12 +719,16 @@ module moneyfi::strategy_echelon {
         object::generate_signer_for_extending(&self.extend_ref)
     }
 
-    public(friend) fun get_vault_signer(self: &Vault): signer {
+    fun get_vault_signer(self: &Vault): signer {
         object::generate_signer_for_extending(&self.extend_ref)
     }
 
     inline fun get_vault_mut(vault: &Object<Vault>): &mut Vault acquires Vault {
         borrow_global_mut<Vault>(object::object_address(vault))
+    }
+
+    inline fun get_vault_data(vault: &Object<Vault>): &Vault acquires Vault {
+        borrow_global<Vault>(object::object_address(vault))
     }
 
     fun get_account_data(account: &Object<WalletAccount>): AccountData {
@@ -795,7 +833,7 @@ module moneyfi::strategy_echelon {
 
     /// Returns shares and current asset amount
     fun get_deposited_amount(self: &Vault): (u64, u64) acquires Strategy {
-        let vault_addr = get_vault_address(self.name);
+        let vault_addr = vault_address(self.name);
         let shares = lending::account_shares(vault_addr, self.market);
         let asset_amount = lending::account_coins(vault_addr, self.market);
         (shares, asset_amount)
@@ -803,7 +841,7 @@ module moneyfi::strategy_echelon {
 
     /// Returns current loan
     fun get_loan_amount(self: &Vault): u64 acquires Strategy {
-        let vault_addr = get_vault_address(self.name);
+        let vault_addr = vault_address(self.name);
         lending::account_liability(vault_addr, self.borrow_market)
     }
 
@@ -1014,7 +1052,7 @@ module moneyfi::strategy_echelon {
     fun claimable_rewards(
         self: &Vault
     ): (vector<Object<Metadata>>, vector<String>, vector<u64>) acquires Strategy, RewardInfo {
-        let vault_addr = get_vault_address(self.name);
+        let vault_addr = vault_address(self.name);
         let reward_info = borrow_global<RewardInfo>(vault_addr);
         let reward_tokens = vector::empty<Object<Metadata>>();
         let farming_identifiers = vector::empty<String>();
@@ -1196,7 +1234,7 @@ module moneyfi::strategy_echelon {
         self: &Vault, health_factor: u64
     ): u64 acquires Strategy {
         assert!(health_factor > HEALTH_FACTOR_DENOMINATOR, error::invalid_argument(4));
-        let vault_addr = get_vault_address(self.name);
+        let vault_addr = vault_address(self.name);
         let total_deposit = lending::account_coins(vault_addr, self.market);
         let total_borrow = lending::account_liability(vault_addr, self.borrow_market);
         if (total_deposit == 0) {
