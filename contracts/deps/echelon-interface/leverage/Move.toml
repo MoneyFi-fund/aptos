@@ -1,0 +1,18 @@
+[package]
+name = "Leverage"
+version = "1.0.0"
+authors = []
+
+[addresses]
+leverage = "86b77933b4eaa313d49fac1ae371204d2faf2efcb0a4de9542c1d7840b958fbe"
+
+[dependencies.AptosFramework]
+git = "https://github.com/aptos-labs/aptos-core.git"
+rev = "mainnet"
+subdir = "aptos-move/framework/aptos-framework"
+
+[dependencies.Lending]
+local = "../lending"
+
+[dependencies.ThalaSwapV2]
+local = "../../thala-interface/swap"
