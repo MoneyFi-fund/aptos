@@ -432,6 +432,7 @@ module moneyfi::vault {
         let account_signer = wallet_account::get_wallet_account_signer(&account);
 
         primary_fungible_store::transfer(&account_signer, asset, wallet_addr, amount);
+        assert!(amount >= pending_referral_fee);
         let withdraw_amount = amount - pending_referral_fee;
         let lp_amount = wallet_account::withdraw(&account, &asset, withdraw_amount);
         burn_lp(wallet_addr, lp_amount);
