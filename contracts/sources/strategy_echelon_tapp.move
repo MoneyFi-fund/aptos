@@ -48,6 +48,11 @@ module moneyfi::strategy_echelon_tapp {
         amount: u64
     }
 
+    struct PoolAmountPair has copy, drop, store {
+        pool_address: address,
+        amount: u64
+    }
+
     public entry fun deposit(
         sender: &signer,
         vault_name: String,
@@ -64,25 +69,97 @@ module moneyfi::strategy_echelon_tapp {
         amount: u64,
         gas_fee: u64,
         hook_data: vector<u8>
-    ) {
-
-    }
-
-    public entry fun vault_deposit_echelon(
-        sender: &signer,
-        vault_name: String,
-        amount: u64,
     ) acquires TappData {
         let vault_signer = strategy_echelon::get_signer(vault_name);
         let vault_addr = signer::address_of(&vault_signer);
         let tapp_data = get_vault_tapp_data(vault_addr);
-        if(!tapp_data.is_empty()){
-            tapp_data.for_each_ref( |pool, _| {
-                let reward_amount = claim_tapp_reward(&vault_signer, strategy_echelon::vault_asset(vault_name), *pool);
-                if (reward_amount > 0){
-                    strategy_echelon::compound_rewards(vault_name, reward_amount);
+        let total_borrow_amount = strategy_echelon::vault_borrow_amount(vault_name);
+
+        // Claim TAPP rewards if vault has TAPP positions and borrows
+        if (!tapp_data.is_empty() && total_borrow_amount > 0) {
+            let withdraw_amount =
+                strategy_echelon::estimate_repay_amount_from_account_withdraw_amount(
+                    vault_name, wallet_id, amount
+                );
+
+            // If we need to repay some borrowed amount, try to get funds from TAPP first
+            if (withdraw_amount > 0) {
+                let claimed_total = 0;
+
+                // Claim rewards from all TAPP positions
+                tapp_data.for_each_ref(
+                    |pool, _| {
+                        let reward_amount =
+                            claim_tapp_reward(
+                                &vault_signer,
+                                strategy_echelon::vault_asset(vault_name),
+                                *pool
+                            );
+                        if (reward_amount > 0) {
+                            claimed_total = claimed_total + reward_amount;
+                        }
+                    }
+                );
+
+                // Compound claimed rewards
+                if (claimed_total > 0) {
+                    strategy_echelon::compound_rewards(vault_name, claimed_total);
+                };
+
+                // Handle TAPP withdrawal with proper sorting and logic
+                handle_tapp_withdrawal(
+                    &vault_signer,
+                    &vault_name,
+                    &tapp_data,
+                    withdraw_amount,
+                    total_borrow_amount
+                );
+            } else {
+                // Even if no repayment needed, still claim rewards for compounding
+                tapp_data.for_each_ref(
+                    |pool, _| {
+                        let reward_amount =
+                            claim_tapp_reward(
+                                &vault_signer,
+                                strategy_echelon::vault_asset(vault_name),
+                                *pool
+                            );
+                        if (reward_amount > 0) {
+                            strategy_echelon::compound_rewards(vault_name, reward_amount);
+                        };
+                    }
+                );
+            };
+        };
+
+        // Proceed with the actual withdrawal from the main strategy
+        strategy_echelon::withdraw(
+            sender,
+            vault_name,
+            wallet_id,
+            amount,
+            gas_fee,
+            hook_data
+        );
+    }
+
+    public entry fun vault_deposit_echelon(
+        sender: &signer, vault_name: String, amount: u64
+    ) acquires TappData {
+        let vault_signer = strategy_echelon::get_signer(vault_name);
+        let vault_addr = signer::address_of(&vault_signer);
+        let tapp_data = get_vault_tapp_data(vault_addr);
+        if (!tapp_data.is_empty()) {
+            tapp_data.for_each_ref(
+                |pool, _| {
+                    let reward_amount =
+                        claim_tapp_reward(
+                            &vault_signer, strategy_echelon::vault_asset(vault_name), *pool
+                        );
+                    if (reward_amount > 0) {
+                        strategy_echelon::compound_rewards(vault_name, reward_amount);
+                    }
                 }
-            }
             )
         };
         strategy_echelon::vault_deposit_echelon(sender, vault_name, amount);
@@ -95,19 +172,23 @@ module moneyfi::strategy_echelon_tapp {
         amount: u64
     ) acquires TappData {
         let borrowable_amount = strategy_echelon::max_borrowable_amount(vault_name);
-        if(borrowable_amount == 0){
+        if (borrowable_amount == 0) {
             return;
         };
         let vault_signer = strategy_echelon::get_signer(vault_name);
         let vault_addr = signer::address_of(&vault_signer);
         let tapp_data = get_vault_tapp_data(vault_addr);
-        if(!tapp_data.is_empty()){
-            tapp_data.for_each_ref( |pool, _| {
-                let reward_amount = claim_tapp_reward(&vault_signer, strategy_echelon::vault_asset(vault_name), *pool);
-                if (reward_amount > 0){
-                    strategy_echelon::compound_rewards(vault_name, reward_amount);
+        if (!tapp_data.is_empty()) {
+            tapp_data.for_each_ref(
+                |pool, _| {
+                    let reward_amount =
+                        claim_tapp_reward(
+                            &vault_signer, strategy_echelon::vault_asset(vault_name), *pool
+                        );
+                    if (reward_amount > 0) {
+                        strategy_echelon::compound_rewards(vault_name, reward_amount);
+                    }
                 }
-            }
             )
         };
         let borrowed_amount = strategy_echelon::borrow(sender, vault_name, amount);
@@ -126,15 +207,19 @@ module moneyfi::strategy_echelon_tapp {
         let vault_signer = strategy_echelon::get_signer(vault_name);
         let vault_addr = signer::address_of(&vault_signer);
         let tapp_data = get_vault_tapp_data(vault_addr);
-        if(!tapp_data.is_empty()){
-            tapp_data.for_each_ref( |pool, _| {
-                let reward_amount = claim_tapp_reward(&vault_signer, strategy_echelon::vault_asset(vault_name), *pool);
-                if (reward_amount > 0){
-                    strategy_echelon::compound_rewards(vault_name, reward_amount);
+        if (!tapp_data.is_empty()) {
+            tapp_data.for_each_ref(
+                |pool, _| {
+                    let reward_amount =
+                        claim_tapp_reward(
+                            &vault_signer, strategy_echelon::vault_asset(vault_name), *pool
+                        );
+                    if (reward_amount > 0) {
+                        strategy_echelon::compound_rewards(vault_name, reward_amount);
+                    }
                 }
-            }
             )
-        }else {
+        } else {
             assert!(false, error::invalid_argument(E_TAPP_POSITION_NOT_EXISTS));
         };
         let total_borrow_amount = strategy_echelon::vault_borrow_amount(vault_name);
@@ -146,33 +231,32 @@ module moneyfi::strategy_echelon_tapp {
                 min_amount
             );
 
-        let repay_amount = if (min_amount >= total_borrow_amount){
-            U64_MAX
-        }else{
-            total_withdrawn_amount
-        };
+        let repay_amount =
+            if (min_amount >= total_borrow_amount) {
+                U64_MAX
+            } else {
+                total_withdrawn_amount
+            };
         if (total_withdrawn_amount > 0) {
-            let repaid_amount =
-                strategy_echelon::repay(sender, vault_name, repay_amount);
+            let repaid_amount = strategy_echelon::repay(sender, vault_name, repay_amount);
             if (repaid_amount < total_withdrawn_amount) {
                 let profit = total_withdrawn_amount - repaid_amount;
-                let (amount_out, _) = swap_with_hyperion(
-                    &vault_signer,
-                    &strategy_echelon::vault_borrow_asset(vault_name),
-                    &strategy_echelon::vault_asset(vault_name),
-                    profit,
-                    false
-                );
+                let (amount_out, _) =
+                    swap_with_hyperion(
+                        &vault_signer,
+                        &strategy_echelon::vault_borrow_asset(vault_name),
+                        &strategy_echelon::vault_asset(vault_name),
+                        profit,
+                        false
+                    );
                 strategy_echelon::compound_rewards(vault_name, amount_out);
             };
         };
     }
 
-    fun get_vault_tapp_data(
-        vault_addr: address
-    ): OrderedMap<address, Position> acquires TappData {
-        if(!exists<TappData>(vault_addr)){
-           return ordered_map::new<address, Position>()
+    fun get_vault_tapp_data(vault_addr: address): OrderedMap<address, Position> acquires TappData {
+        if (!exists<TappData>(vault_addr)) {
+            return ordered_map::new<address, Position>()
         };
         let tapp_data = borrow_global<TappData>(vault_addr);
         tapp_data.pools
@@ -267,6 +351,173 @@ module moneyfi::strategy_echelon_tapp {
         position.amount = position.amount + actual_amount;
         set_position_data(caller, pool, position);
         actual_amount
+    }
+
+    // Collect all pools with their amounts from TAPP data
+    fun collect_pool_amounts(
+        vault_signer: &signer, tapp_data: &OrderedMap<address, Position>
+    ): vector<PoolAmountPair> acquires TappData {
+        let pool_amounts = vector::empty<PoolAmountPair>();
+
+        tapp_data.for_each_ref(
+            |pool, _| {
+                let position_data = get_position_data(vault_signer, *pool);
+                if (position_data.amount > 0) {
+                    let pair =
+                        PoolAmountPair { pool_address: *pool, amount: position_data.amount };
+                    vector::push_back(&mut pool_amounts, pair);
+                };
+            }
+        );
+
+        pool_amounts
+    }
+
+    // Sort pools by amount (smallest first) using bubble sort
+    fun sort_pools_by_amount_asc(
+        pool_amounts: &mut vector<PoolAmountPair>
+    ) {
+        let len = vector::length(pool_amounts);
+        if (len <= 1) return;
+
+        let i = 0;
+        while (i < len) {
+            let j = 0;
+            while (j < len - 1 - i) {
+                let amount1 = vector::borrow(pool_amounts, j).amount;
+                let amount2 = vector::borrow(pool_amounts, j + 1).amount;
+                if (amount1 > amount2) {
+                    vector::swap(pool_amounts, j, j + 1);
+                };
+                j = j + 1;
+            };
+            i = i + 1;
+        };
+    }
+
+    // Sort pools by amount (largest first) using bubble sort
+    fun sort_pools_by_amount_desc(
+        pool_amounts: &mut vector<PoolAmountPair>
+    ) {
+        let len = vector::length(pool_amounts);
+        if (len <= 1) return;
+
+        let i = 0;
+        while (i < len) {
+            let j = 0;
+            while (j < len - 1 - i) {
+                let amount1 = vector::borrow(pool_amounts, j).amount;
+                let amount2 = vector::borrow(pool_amounts, j + 1).amount;
+                if (amount1 < amount2) {
+                    vector::swap(pool_amounts, j, j + 1);
+                };
+                j = j + 1;
+            };
+            i = i + 1;
+        };
+    }
+
+    // Calculate total amount across all pools
+    fun calculate_total_pool_amount(
+        pool_amounts: &vector<PoolAmountPair>
+    ): u64 {
+        let total = 0u64;
+        let i = 0;
+        let len = vector::length(pool_amounts);
+
+        while (i < len) {
+            let pair = vector::borrow(pool_amounts, i);
+            total = total + pair.amount;
+            i = i + 1;
+        };
+
+        total
+    }
+
+    // Withdraw from multiple pools in order
+    fun withdraw_from_pools_sequential(
+        vault_signer: &signer,
+        vault_name: &String,
+        pool_amounts: &vector<PoolAmountPair>,
+        target_amount: u64,
+        withdraw_all: bool
+    ): u64 acquires TappData {
+        let total_withdrawn = 0;
+        let remaining_needed = target_amount;
+        let i = 0;
+        let len = vector::length(pool_amounts);
+
+        while (i < len && (withdraw_all || total_withdrawn < target_amount)) {
+            let pair = vector::borrow(pool_amounts, i);
+
+            let withdraw_from_this_pool =
+                if (withdraw_all) {
+                    pair.amount // Withdraw everything
+                } else {
+                    math64::min(remaining_needed, pair.amount)
+                };
+
+            if (withdraw_from_this_pool > 0) {
+                let (_, actual_withdrawn) =
+                    withdraw_from_tapp_impl(
+                        vault_signer,
+                        &strategy_echelon::vault_borrow_asset(*vault_name),
+                        pair.pool_address,
+                        withdraw_from_this_pool
+                    );
+
+                // Add to total withdrawn (no conversion needed as position.asset == borrow_asset)
+                total_withdrawn = total_withdrawn + actual_withdrawn;
+                if (!withdraw_all) {
+                    remaining_needed =
+                        if (remaining_needed > actual_withdrawn) {
+                            remaining_needed - actual_withdrawn
+                        } else { 0 };
+                };
+            };
+
+            i = i + 1;
+        };
+
+        total_withdrawn
+    }
+
+    /// Main function to handle TAPP withdrawal with sorting
+    fun handle_tapp_withdrawal(
+        vault_signer: &signer,
+        vault_name: &String,
+        tapp_data: &OrderedMap<address, Position>,
+        withdraw_amount: u64,
+        total_borrow_amount: u64
+    ): u64 acquires TappData {
+        let should_withdraw_all = withdraw_amount >= total_borrow_amount;
+
+        if (!should_withdraw_all && withdraw_amount == 0) {
+            return 0; // No need to withdraw from TAPP
+        };
+
+        // Collect and sort pools
+        let pool_amounts = collect_pool_amounts(vault_signer, tapp_data);
+        sort_pools_by_amount_asc(&mut pool_amounts); // Sort smallest first
+
+        let target_amount =
+            if (should_withdraw_all) {
+                U64_MAX
+            } else {
+                withdraw_amount
+            };
+
+        // Withdraw from pools
+        let withdrawn_amount =
+            withdraw_from_pools_sequential(
+                vault_signer,
+                vault_name,
+                &pool_amounts,
+                target_amount,
+                should_withdraw_all
+            );
+
+        withdrawn_amount
     }
 
     // Return deposited_amount, withdrawn_amount
@@ -371,7 +622,9 @@ module moneyfi::strategy_echelon_tapp {
     }
 
     // Return reward_amounts to asset
-    fun claim_tapp_reward(caller: &signer, asset: Object<Metadata>, pool: address): u64 acquires TappData {
+    fun claim_tapp_reward(
+        caller: &signer, asset: Object<Metadata>, pool: address
+    ): u64 acquires TappData {
         let tapp_data = ensure_tapp_data(caller);
         if (!exists_tapp_position(tapp_data, pool)) {
             return 0
@@ -448,9 +701,7 @@ module moneyfi::strategy_echelon_tapp {
         // Call integration to add liquidity
         let (position_idx, position_addr) = integration::add_liquidity(caller, payload);
         assert!(position.position == position_addr);
-        let balance_before = primary_fungible_store::balance(
-            caller_addr, asset
-        );
+        let balance_before = primary_fungible_store::balance(caller_addr, asset);
         //Swap all reward tokens to asset
         vector::for_each(
             active_rewards,
