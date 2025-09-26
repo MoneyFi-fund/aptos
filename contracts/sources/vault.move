@@ -398,9 +398,10 @@ module moneyfi::vault {
         let account_signer = vault.get_vault_signer();
         let asset_data = vault.get_vault_asset_mut(&asset);
 
+        let withdraw_amount = amount;
         // transfer pending referral fee to wallet account first
         let pending_referral_fee = asset_data.get_pending_referral_fee(&account);
-        if (pending_referral_fee > 0) {
+        if (pending_referral_fee > 0 && amount >= pending_referral_fee) {
             primary_fungible_store::transfer(
                 &account_signer,
                 asset,
@@ -416,10 +417,15 @@ module moneyfi::vault {
                     timestamp: now_seconds()
                 }
             );
+
+            withdraw_amount = withdraw_amount - pending_referral_fee;
         };
 
         let balance = primary_fungible_store::balance(account_addr, asset);
         if (amount > balance) {
+            if (withdraw_amount < amount) {
+                withdraw_amount = balance - pending_referral_fee
+            };
             amount = balance;
         };
 
@@ -432,10 +438,6 @@ module moneyfi::vault {
         let account_signer = wallet_account::get_wallet_account_signer(&account);
         primary_fungible_store::transfer(&account_signer, asset, wallet_addr, amount);
         let lp_amount = 0;
-        let withdraw_amount =
-            if (amount > pending_referral_fee) {
-                amount - pending_referral_fee
-            } else { 0 };
         if (withdraw_amount > 0) {
             lp_amount = wallet_account::withdraw(&account, &asset, withdraw_amount);
             burn_lp(wallet_addr, lp_amount);
