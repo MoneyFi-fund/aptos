@@ -432,14 +432,15 @@ module moneyfi::vault {
         let account_signer = wallet_account::get_wallet_account_signer(&account);
 
         primary_fungible_store::transfer(&account_signer, asset, wallet_addr, amount);
-        let lp_amount = wallet_account::withdraw(&account, &asset, amount);
+        let withdraw_amount = amount - pending_referral_fee;
+        let lp_amount = wallet_account::withdraw(&account, &asset, withdraw_amount);
         burn_lp(wallet_addr, lp_amount);
 
         assert!(asset_data.total_lp_amount >= (lp_amount as u128));
-        assert!(asset_data.total_amount >= (amount as u128));
+        assert!(asset_data.total_amount >= (withdraw_amount as u128));
 
         asset_data.total_lp_amount = asset_data.total_lp_amount - (lp_amount as u128);
-        asset_data.total_amount = asset_data.total_amount - (amount as u128);
+        asset_data.total_amount = asset_data.total_amount - (withdraw_amount as u128);
 
         event::emit(
             WithdrawnEvent {
