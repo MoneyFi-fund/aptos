@@ -443,11 +443,12 @@ module moneyfi::vault {
             burn_lp(wallet_addr, lp_amount);
 
             assert!(asset_data.total_lp_amount >= (lp_amount as u128));
-            assert!(asset_data.total_amount >= (amount as u128));
+            assert!(asset_data.total_amount >= (withdraw_amount as u128));
 
             asset_data.total_lp_amount = asset_data.total_lp_amount
                 - (lp_amount as u128);
-            asset_data.total_amount = asset_data.total_amount - (amount as u128);
+            asset_data.total_amount = asset_data.total_amount
+                - (withdraw_amount as u128);
         };
 
         event::emit(
