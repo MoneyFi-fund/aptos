@@ -430,18 +430,23 @@ module moneyfi::vault {
         );
 
         let account_signer = wallet_account::get_wallet_account_signer(&account);
-
         primary_fungible_store::transfer(&account_signer, asset, wallet_addr, amount);
-        assert!(amount >= pending_referral_fee);
-        let withdraw_amount = amount - pending_referral_fee;
-        let lp_amount = wallet_account::withdraw(&account, &asset, withdraw_amount);
-        burn_lp(wallet_addr, lp_amount);
+        let lp_amount = 0;
+        let withdraw_amount =
+            if (amount > pending_referral_fee) {
+                amount - pending_referral_fee
+            } else { 0 };
+        if (withdraw_amount > 0) {
+            lp_amount = wallet_account::withdraw(&account, &asset, withdraw_amount);
+            burn_lp(wallet_addr, lp_amount);
 
-        assert!(asset_data.total_lp_amount >= (lp_amount as u128));
-        assert!(asset_data.total_amount >= (withdraw_amount as u128));
+            assert!(asset_data.total_lp_amount >= (lp_amount as u128));
+            assert!(asset_data.total_amount >= (amount as u128));
 
-        asset_data.total_lp_amount = asset_data.total_lp_amount - (lp_amount as u128);
-        asset_data.total_amount = asset_data.total_amount - (withdraw_amount as u128);
+            asset_data.total_lp_amount = asset_data.total_lp_amount
+                - (lp_amount as u128);
+            asset_data.total_amount = asset_data.total_amount - (amount as u128);
+        };
 
         event::emit(
             WithdrawnEvent {
@@ -1047,11 +1052,11 @@ module moneyfi::vault {
         *registry.strategies.borrow(&vault_type)
     }
 
-    // -- Private
-
-    fun get_vault_address(): address {
+    public fun get_vault_address(): address {
         storage::get_child_object_address(VAULT_SEED)
     }
+
+    // -- Private
 
     fun init_vault() {
         let account_addr = storage::get_child_object_address(VAULT_SEED);
@@ -1359,5 +1364,16 @@ module moneyfi::vault {
         assert!(!registry.strategies.contains(&vault_type));
 
         registry.strategies.add(vault_type, deposit_addr);
+    }
+
+    #[test_only]
+    public fun set_referral_fees(
+        asset: &Object<Metadata>, referral_fees: &OrderedMap<address, u64>
+    ) acquires Vault {
+        let vault_addr = get_vault_address();
+        let vault = borrow_global_mut<Vault>(vault_addr);
+        let asset_data = vault.get_vault_asset_mut(asset);
+
+        asset_data.add_referral_fees(referral_fees);
     }
 }
