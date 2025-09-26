@@ -254,6 +254,54 @@ module moneyfi::strategy_echelon_tapp {
         };
     }
 
+    // Returns (pending_amount, deposited_amount, estimate_withdrawable_amount)
+    #[view]
+    public fun get_account_state(
+        vault_name: String, wallet_id: vector<u8>
+    ): (u64, u64, u64) acquires TappData {
+        let (
+            pending_amount,
+            deposited_amount,
+            estimate_withdrawable_amount,
+            user_shares,
+            total_shares
+        ) = strategy_echelon::get_account_state(vault_name, wallet_id);
+        if (exists<TappData>(strategy_echelon::vault_address(vault_name))) {
+            let asset = strategy_echelon::vault_asset(vault_name);
+            let borrow_asset = strategy_echelon::vault_borrow_asset(vault_name);
+            let borrow_amount = strategy_echelon::vault_borrow_amount(vault_name);
+            let total_tapp_amount =
+                get_estimate_withdrawable_amount_to_asset(vault_name, &borrow_asset);
+            let (interest_amount, loss_amount) =
+                if (total_tapp_amount > borrow_amount) {
+                    let profit = total_tapp_amount - borrow_amount;
+                    let amount_out = get_amount_out(&borrow_asset, &asset, profit);
+                    (amount_out, 0)
+                } else {
+                    let loss = borrow_amount - total_tapp_amount;
+                    let amount_out = get_amount_out(&borrow_asset, &asset, loss);
+                    (0, amount_out)
+                };
+            let (user_interest, user_loss) =
+                if (total_shares > 0 && user_shares > 0) {
+                    (
+                        math128::ceil_div(
+                            (interest_amount as u128) * (user_shares as u128),
+                            (total_shares as u128)
+                        ) as u64,
+                        math128::ceil_div(
+                            (loss_amount as u128) * (user_shares as u128),
+                            (total_shares as u128)
+                        ) as u64
+                    )
+                } else { (0, 0) };
+            estimate_withdrawable_amount =
+                estimate_withdrawable_amount + user_interest - user_loss
+        };
+        (pending_amount, deposited_amount, estimate_withdrawable_amount)
+
+    }
+
     fun get_vault_tapp_data(vault_addr: address): OrderedMap<address, Position> acquires TappData {
         if (!exists<TappData>(vault_addr)) {
             return ordered_map::new<address, Position>()
@@ -728,6 +776,71 @@ module moneyfi::strategy_echelon_tapp {
         position.lp_amount = stable_views::position_shares(pool, position_idx) as u128;
         set_position_data(caller, pool, position);
         (primary_fungible_store::balance(caller_addr, asset) - balance_before)
+    }
+
+    fun get_estimate_withdrawable_amount_to_asset(
+        vault_name: String, asset: &Object<Metadata>
+    ): u64 acquires TappData {
+        let vault_addr = strategy_echelon::vault_address(vault_name);
+        if (!exists<TappData>(vault_addr)) {
+            return 0;
+        };
+        let tapp_data = borrow_global<TappData>(vault_addr);
+        let total_amount = 0;
+        tapp_data.pools.for_each_ref(
+            |pool, position| {
+                let amount = get_estimate_withdrawable_amount(*pool, position, asset);
+                total_amount = total_amount + amount;
+            }
+        );
+        total_amount
+    }
+
+    fun get_estimate_withdrawable_amount(
+        pool: address, position: &Position, asset: &Object<Metadata>
+    ): u64 {
+        if (position.lp_amount == 0) {
+            return 0
+        };
+        let (active_rewards, reward_amounts) = get_active_rewards(pool, position);
+        let assets = hook_factory::pool_meta_assets(&hook_factory::pool_meta(pool));
+        let amounts = stable_views::calc_ratio_amounts(pool, position.lp_amount as u256);
+        let total_amount = 0;
+        let i = 0;
+        while (i < vector::length(&assets)) {
+            let token_addr = *vector::borrow(&assets, i);
+            let amount = *vector::borrow(&amounts, i) as u64;
+            if (token_addr == object::object_address(asset)) {
+                total_amount = total_amount + amount;
+            } else {
+                let amount_out =
+                    get_amount_out(
+                        &object::address_to_object<Metadata>(token_addr),
+                        asset,
+                        amount
+                    );
+                total_amount = total_amount + amount_out;
+            };
+            i = i + 1;
+        };
+        let j = 0;
+        while (j < vector::length(&active_rewards)) {
+            let reward_token_addr = *vector::borrow(&active_rewards, j);
+            let reward_amount = *vector::borrow(&reward_amounts, j);
+            if (reward_token_addr == object::object_address(asset)) {
+                total_amount = total_amount + reward_amount;
+            } else {
+                let amount_out =
+                    get_amount_out(
+                        &object::address_to_object<Metadata>(reward_token_addr),
+                        asset,
+                        reward_amount
+                    );
+                total_amount = total_amount + amount_out;
+            };
+            j = j + 1;
+        };
+        total_amount
     }
 
     fun create_or_get_exist_position(

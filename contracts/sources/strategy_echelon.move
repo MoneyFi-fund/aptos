@@ -214,6 +214,51 @@ module moneyfi::strategy_echelon {
         };
     }
 
+    // Returns (pending_amount, deposited_amount, estimate_withdrawable_amount, user_shares, total_shares)
+    public fun get_account_state(
+        vault_name: String, wallet_id: vector<u8>
+    ): (u64, u64, u64, u128, u128) acquires Strategy, Vault, RewardInfo {
+        let object_vault = get_vault_object(vault_name);
+        let vault = get_vault_data(&object_vault);
+        let account = &wallet_account::get_wallet_account(wallet_id);
+        let account_data = get_account_data(account);
+
+        let pending_amount = vault.get_pending_amount(account);
+        let (deposited_amount, user_shares) =
+            account_data.get_raw_account_data_for_vault(&object_vault);
+        let total_shares = vault.total_shares;
+
+        let deposited_echelon_amount =
+            if (user_shares > 0 && total_shares > 0) {
+                let (total_deposit_shares, _) = vault.get_deposited_amount();
+                let user_deposit_shares =
+                    vault.get_deposit_shares_from_vault_shares(
+                        user_shares, total_deposit_shares
+                    );
+                if (user_deposit_shares > 0) {
+                    lending::shares_to_coins(vault.market, user_deposit_shares)
+                } else { 0 }
+            } else { 0 };
+
+        let account_reward_amount =
+            if (user_shares > 0 && total_shares > 0) {
+                let total_reward_amount =
+                    vault.get_amount_out_claimable_reward_to_asset();
+                math128::mul_div(total_reward_amount as u128, user_shares, total_shares) as u64
+            } else { 0 };
+
+        let estimate_withdrawable_amount =
+            pending_amount + deposited_echelon_amount + account_reward_amount;
+
+        (
+            pending_amount,
+            deposited_amount,
+            estimate_withdrawable_amount,
+            user_shares,
+            total_shares
+        )
+    }
+
     public fun estimate_repay_amount_from_withdraw_amount(
         name: String, withdraw_amount: u64
     ): u64 acquires Vault, Strategy {
@@ -293,10 +338,12 @@ module moneyfi::strategy_echelon {
         let strategy = borrow_global<Strategy>(strategy_addr);
         let addresses = vector::empty<address>();
         let names = vector::empty<String>();
-        strategy.vaults.for_each_ref(|k, v| {
-            vector::push_back(&mut addresses, object::object_address(v));
-            vector::push_back(&mut names, *k);
-        });
+        strategy.vaults.for_each_ref(
+            |k, v| {
+                vector::push_back(&mut addresses, object::object_address(v));
+                vector::push_back(&mut names, *k);
+            }
+        );
 
         (addresses, names)
     }
@@ -311,18 +358,21 @@ module moneyfi::strategy_echelon {
         );
         let vault_addr = vault_address(name);
         let vault = get_vault_data(&get_vault_object(name));
-        (vault_addr, VaultData{
-            name: vault.name,
-            asset: vault.asset,
-            borrow_asset: lending::market_asset_metadata(vault.borrow_market),
-            deposit_cap: vault.deposit_cap,
-            total_deposited_amount: vault.total_deposited_amount,
-            total_withdrawn_amount: vault.total_withdrawn_amount,
-            available_amount: vault.available_amount,
-            pending_amount: vault.pending_amount,
-            health_factor: vault.health_factor,
-            paused: vault.paused
-        })
+        (
+            vault_addr,
+            VaultData {
+                name: vault.name,
+                asset: vault.asset,
+                borrow_asset: lending::market_asset_metadata(vault.borrow_market),
+                deposit_cap: vault.deposit_cap,
+                total_deposited_amount: vault.total_deposited_amount,
+                total_withdrawn_amount: vault.total_withdrawn_amount,
+                available_amount: vault.available_amount,
+                pending_amount: vault.pending_amount,
+                health_factor: vault.health_factor,
+                paused: vault.paused
+            }
+        )
     }
 
     // Returns (current_tvl, total_deposited, total_withdrawn)
@@ -334,27 +384,29 @@ module moneyfi::strategy_echelon {
         let total_deposited = 0;
         let total_withdrawn = 0;
         let current_tvl = 0;
-        strategy.vaults.for_each_ref(|_, v| {
-            let vault = get_vault_data(v);
-            if (&vault.asset == &asset) {
-                total_deposited = total_deposited + vault.total_deposited_amount;
-                total_withdrawn = total_withdrawn + vault.total_withdrawn_amount;
-                let borrow_tvl = {
-                    let loan_amount = vault.get_loan_amount();
-                    let amount_out =
-                        if (loan_amount > 0) {
-                            get_amount_out(
-                                &lending::market_asset_metadata(vault.borrow_market),
-                                &vault.asset,
-                                loan_amount
-                            )
-                        } else { 0 };
-                    amount_out as u128
+        strategy.vaults.for_each_ref(
+            |_, v| {
+                let vault = get_vault_data(v);
+                if (&vault.asset == &asset) {
+                    total_deposited = total_deposited + vault.total_deposited_amount;
+                    total_withdrawn = total_withdrawn + vault.total_withdrawn_amount;
+                    let borrow_tvl = {
+                        let loan_amount = vault.get_loan_amount();
+                        let amount_out =
+                            if (loan_amount > 0) {
+                                get_amount_out(
+                                    &lending::market_asset_metadata(vault.borrow_market),
+                                    &vault.asset,
+                                    loan_amount
+                                )
+                            } else { 0 };
+                        amount_out as u128
+                    };
+                    let (_, asset_amount) = vault.get_deposited_amount();
+                    current_tvl = current_tvl + (asset_amount as u128) + borrow_tvl;
                 };
-                let (_, asset_amount) = vault.get_deposited_amount();
-                current_tvl = current_tvl + (asset_amount as u128) + borrow_tvl;
-            };
-        });
+            }
+        );
 
         (current_tvl, total_deposited, total_withdrawn)
     }
@@ -670,7 +722,7 @@ module moneyfi::strategy_echelon {
     }
 
     /// Return actual amount and shares, total shares before deposit
-    fun deposit_to_echelon(self: &mut Vault, amount: u64): (u64, u64, u64) acquires Strategy {
+    fun deposit_to_echelon(self: &mut Vault, amount: u64): (u64, u64, u64) {
         let vault_signer = self.get_vault_signer();
         let (share_before, _) = self.get_deposited_amount();
         let actual_deposit_amount =
@@ -1003,22 +1055,22 @@ module moneyfi::strategy_echelon {
     }
 
     /// Returns shares and current asset amount
-    fun get_deposited_amount(self: &Vault): (u64, u64) acquires Strategy {
-        let vault_addr = vault_address(self.name);
+    fun get_deposited_amount(self: &Vault): (u64, u64) {
+        let vault_addr = object::address_from_extend_ref(&self.extend_ref);
         let shares = lending::account_shares(vault_addr, self.market);
         let asset_amount = lending::account_coins(vault_addr, self.market);
         (shares, asset_amount)
     }
 
     /// Returns current loan
-    fun get_loan_amount(self: &Vault): u64 acquires Strategy {
-        let vault_addr = vault_address(self.name);
+    fun get_loan_amount(self: &Vault): u64 {
+        let vault_addr = object::address_from_extend_ref(&self.extend_ref);
         lending::account_liability(vault_addr, self.borrow_market)
     }
 
     fun estimate_repay_amount_from_withdraw_amount_inline(
         self: &Vault, vault_addr: address, withdraw_amount: u64
-    ): u64 acquires Strategy {
+    ): u64 {
         let loan_amount = self.get_loan_amount();
         if (loan_amount == 0 || withdraw_amount == 0) {
             return 0;
