@@ -155,10 +155,17 @@ module moneyfi::vault_test {
         wallet_account::collected_fund(&acc, &usdc, 5000, 9000, 5000, 1000);
         primary_fungible_store::mint(&mint_ref, wallet1_addr, 4000);
 
+        // simulate referral fee
+        vault::set_referral_fees(
+            &usdc,
+            &ordered_map::new_from(vector[acc_addr], vector[100])
+        );
+        primary_fungible_store::mint(&mint_ref, vault::get_vault_address(), 100);
+
         let balance_before = primary_fungible_store::balance(wallet1_addr, usdc);
         let acc_balance_before = primary_fungible_store::balance(acc_addr, usdc);
         let withdraw_amount = 2000;
-        let burn_lp_amount = 2000 * 1000 * 10_000 / 14000;
+        let burn_lp_amount = 1900 * 1000 * 10_000 / 14000;
         vault::withdraw(wallet1, usdc, withdraw_amount);
         let balance_after = primary_fungible_store::balance(wallet1_addr, usdc);
         assert!(
@@ -167,7 +174,7 @@ module moneyfi::vault_test {
 
         let acc_balance_after = primary_fungible_store::balance(acc_addr, usdc);
         assert!(
-            acc_balance_after == acc_balance_before - withdraw_amount
+            acc_balance_after == acc_balance_before - withdraw_amount + 100
         );
 
         let lp_token = vault::get_lp_token();
