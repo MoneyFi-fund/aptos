@@ -37,6 +37,7 @@ module moneyfi::strategy_echelon {
     const E_EXCEED_CAPACITY: u64 = 2;
     const E_UNSUPPORTED_ASSET: u64 = 3;
     const E_POOL_NOT_EXIST: u64 = 4;
+    const E_VAULT_NOT_EXISTS: u64 = 5;
 
     #[resource_group_member(group = aptos_framework::object::ObjectGroup)]
     struct Strategy has key {
@@ -64,6 +65,19 @@ module moneyfi::strategy_echelon {
         // shares minted by vault for wallet account
         total_shares: u128,
         // config health factor for borrow
+        health_factor: u64,
+        paused: bool
+    }
+
+    struct VaultData has copy, store, drop {
+        name: String,
+        asset: Object<Metadata>,
+        borrow_asset: Object<Metadata>,
+        deposit_cap: u64,
+        total_deposited_amount: u128,
+        total_withdrawn_amount: u128,
+        available_amount: u64,
+        pending_amount: OrderedMap<address, u64>,
         health_factor: u64,
         paused: bool
     }
@@ -176,7 +190,7 @@ module moneyfi::strategy_echelon {
         paused: bool
     ) acquires Strategy, Vault {
         access_control::must_be_service_account(sender);
-        let object_vault = get_vault(name);
+        let object_vault = get_vault_object(name);
         let vault = get_vault_mut(&object_vault);
         let vault_signer = vault.get_vault_signer();
 
@@ -203,7 +217,7 @@ module moneyfi::strategy_echelon {
     public fun estimate_repay_amount_from_withdraw_amount(
         name: String, withdraw_amount: u64
     ): u64 acquires Vault, Strategy {
-        let vault = get_vault_data(&get_vault(name));
+        let vault = get_vault_data(&get_vault_object(name));
         let vault_addr = vault_address(vault.name);
         vault.estimate_repay_amount_from_withdraw_amount_inline(
             vault_addr, withdraw_amount
@@ -213,7 +227,7 @@ module moneyfi::strategy_echelon {
     public fun estimate_repay_amount_from_account_withdraw_amount(
         name: String, wallet_id: vector<u8>, withdraw_amount: u64
     ): u64 acquires Vault, Strategy {
-        let vault = get_vault_data(&get_vault(name));
+        let vault = get_vault_data(&get_vault_object(name));
         let vault_addr = vault_address(vault.name);
 
         // Get account data
@@ -269,31 +283,108 @@ module moneyfi::strategy_echelon {
     }
 
     #[view]
+    public fun get_strategy_address(): address {
+        storage::get_child_object_address(STRATEGY_ACCOUNT_SEED)
+    }
+
+    #[view]
+    public fun get_vaults(): (vector<address>, vector<String>) acquires Strategy {
+        let strategy_addr = get_strategy_address();
+        let strategy = borrow_global<Strategy>(strategy_addr);
+        let addresses = vector::empty<address>();
+        let names = vector::empty<String>();
+        strategy.vaults.for_each_ref(|k, v| {
+            vector::push_back(&mut addresses, object::object_address(v));
+            vector::push_back(&mut names, *k);
+        });
+
+        (addresses, names)
+    }
+
+    #[view]
+    public fun get_vault(name: String): (address, VaultData) acquires Strategy, Vault {
+        let strategy_addr = get_strategy_address();
+        let strategy = borrow_global<Strategy>(strategy_addr);
+        assert!(
+            ordered_map::contains(&strategy.vaults, &name),
+            error::not_found(E_VAULT_NOT_EXISTS)
+        );
+        let vault_addr = vault_address(name);
+        let vault = get_vault_data(&get_vault_object(name));
+        (vault_addr, VaultData{
+            name: vault.name,
+            asset: vault.asset,
+            borrow_asset: lending::market_asset_metadata(vault.borrow_market),
+            deposit_cap: vault.deposit_cap,
+            total_deposited_amount: vault.total_deposited_amount,
+            total_withdrawn_amount: vault.total_withdrawn_amount,
+            available_amount: vault.available_amount,
+            pending_amount: vault.pending_amount,
+            health_factor: vault.health_factor,
+            paused: vault.paused
+        })
+    }
+
+    // Returns (current_tvl, total_deposited, total_withdrawn)
+    #[view]
+    public fun get_strategy_stats(asset: Object<Metadata>): (u128, u128, u128) acquires Strategy, Vault {
+        let strategy_addr = get_strategy_address();
+        let strategy = borrow_global<Strategy>(strategy_addr);
+
+        let total_deposited = 0;
+        let total_withdrawn = 0;
+        let current_tvl = 0;
+        strategy.vaults.for_each_ref(|_, v| {
+            let vault = get_vault_data(v);
+            if (&vault.asset == &asset) {
+                total_deposited = total_deposited + vault.total_deposited_amount;
+                total_withdrawn = total_withdrawn + vault.total_withdrawn_amount;
+                let borrow_tvl = {
+                    let loan_amount = vault.get_loan_amount();
+                    let amount_out =
+                        if (loan_amount > 0) {
+                            get_amount_out(
+                                &lending::market_asset_metadata(vault.borrow_market),
+                                &vault.asset,
+                                loan_amount
+                            )
+                        } else { 0 };
+                    amount_out as u128
+                };
+                let (_, asset_amount) = vault.get_deposited_amount();
+                current_tvl = current_tvl + (asset_amount as u128) + borrow_tvl;
+            };
+        });
+
+        (current_tvl, total_deposited, total_withdrawn)
+    }
+
+    #[view]
     public fun vault_address(name: String): address acquires Strategy {
-        object::object_address(&get_vault(name))
+        object::object_address(&get_vault_object(name))
     }
 
     #[view]
     public fun vault_asset(name: String): Object<Metadata> acquires Strategy, Vault {
-        let vault = get_vault_data(&get_vault(name));
+        let vault = get_vault_data(&get_vault_object(name));
         vault.asset
     }
 
     #[view]
     public fun vault_borrow_asset(name: String): Object<Metadata> acquires Strategy, Vault {
-        let vault = get_vault_data(&get_vault(name));
+        let vault = get_vault_data(&get_vault_object(name));
         lending::market_asset_metadata(vault.borrow_market)
     }
 
     #[view]
     public fun max_borrowable_amount(name: String): u64 acquires Strategy, Vault {
-        let vault = get_vault_data(&get_vault(name));
+        let vault = get_vault_data(&get_vault_object(name));
         vault.borrowable_amount_given_health_factor(vault.health_factor)
     }
 
     #[view]
     public fun vault_borrow_amount(name: String): u64 acquires Strategy, Vault {
-        let vault = get_vault_data(&get_vault(name));
+        let vault = get_vault_data(&get_vault_object(name));
         vault.get_loan_amount()
     }
 
@@ -309,7 +400,7 @@ module moneyfi::strategy_echelon {
         let strategy_addr = get_strategy_address();
         let strategy = borrow_global_mut<Strategy>(strategy_addr);
         let strategy_signer = strategy.get_account_signer();
-        let object_vault = get_vault(vault_name);
+        let object_vault = get_vault_object(vault_name);
         let vault = get_vault_mut(&object_vault);
         assert!(!vault.paused);
         let account = wallet_account::get_wallet_account(wallet_id);
@@ -350,7 +441,7 @@ module moneyfi::strategy_echelon {
         let strategy = borrow_global_mut<Strategy>(strategy_addr);
         let strategy_signer = strategy.get_account_signer();
 
-        let object_vault = get_vault(vault_name);
+        let object_vault = get_vault_object(vault_name);
         let vault = get_vault_mut(&object_vault);
         let vault_addr = vault_address(vault.name);
         assert!(!vault.paused);
@@ -446,7 +537,7 @@ module moneyfi::strategy_echelon {
     ) acquires Strategy, Vault, RewardInfo {
         assert!(amount > 0);
         access_control::must_be_service_account(sender);
-        let object_vault = get_vault(vault_name);
+        let object_vault = get_vault_object(vault_name);
         let vault = get_vault_mut(&object_vault);
         assert!(!vault.paused);
         // need compound tapp reward first if borrow and deposit to tapp
@@ -516,7 +607,7 @@ module moneyfi::strategy_echelon {
         sender: &signer, name: String, borrow_amount: u64
     ): u64 acquires Strategy, Vault, RewardInfo {
         access_control::must_be_service_account(sender);
-        let vault = get_vault_mut(&get_vault(name));
+        let vault = get_vault_mut(&get_vault_object(name));
         assert!(!vault.paused);
         vault.compound_vault_rewards();
         let avail_borrow_amount =
@@ -540,7 +631,7 @@ module moneyfi::strategy_echelon {
         sender: &signer, name: String, repay_amount: u64
     ): u64 acquires Strategy, Vault, RewardInfo {
         access_control::must_be_service_account(sender);
-        let vault = get_vault_mut(&get_vault(name));
+        let vault = get_vault_mut(&get_vault_object(name));
         let vault_signer = vault.get_vault_signer();
         assert!(!vault.paused);
         vault.compound_vault_rewards();
@@ -551,7 +642,7 @@ module moneyfi::strategy_echelon {
     // Compound rewards of colab protocol
     // Rewards has been swaped to asset first
     public(friend) fun compound_rewards(name: String, amount: u64) acquires Strategy, Vault, RewardInfo {
-        let vault = get_vault_mut(&get_vault(name));
+        let vault = get_vault_mut(&get_vault_object(name));
         vault.compound_vault_rewards();
         if (amount > 0) {
             vault.deposit_to_echelon(amount);
@@ -559,7 +650,7 @@ module moneyfi::strategy_echelon {
     }
 
     public(friend) fun get_signer(name: String): signer acquires Strategy, Vault {
-        let vault = get_vault_data(&get_vault(name));
+        let vault = get_vault_data(&get_vault_object(name));
         vault.get_vault_signer()
     }
 
@@ -786,11 +877,7 @@ module moneyfi::strategy_echelon {
         balance_before - balance_after
     }
 
-    fun get_strategy_address(): address {
-        storage::get_child_object_address(STRATEGY_ACCOUNT_SEED)
-    }
-
-    fun get_vault(name: String): Object<Vault> acquires Strategy {
+    fun get_vault_object(name: String): Object<Vault> acquires Strategy {
         let strategy_addr = get_strategy_address();
         let strategy = borrow_global<Strategy>(strategy_addr);
         assert!(ordered_map::contains(&strategy.vaults, &name));

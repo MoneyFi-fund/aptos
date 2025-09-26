@@ -220,7 +220,7 @@ module moneyfi::strategy_echelon_tapp {
                 }
             )
         } else {
-            assert!(false, error::invalid_argument(E_TAPP_POSITION_NOT_EXISTS));
+            assert!(false, error::invalid_argument(E_POOL_NOT_EXIST));
         };
         let total_borrow_amount = strategy_echelon::vault_borrow_amount(vault_name);
         let (_, total_withdrawn_amount) =
@@ -832,6 +832,20 @@ module moneyfi::strategy_echelon_tapp {
             }
         );
         (active_reward, active_reward_amount)
+    }
+
+    fun get_amount_out(
+        from: &Object<Metadata>, to: &Object<Metadata>, amount_in: u64
+    ): u64 {
+        if (amount_in == 0) {
+            return 0;
+        };
+        if (object::object_address(from) == object::object_address(to)) {
+            return amount_in;
+        };
+        let (pool, _, _) = get_hyperion_pool(from, to);
+        let (amount_out, _) = hyperion::pool_v3::get_amount_out(pool, *from, amount_in);
+        amount_out
     }
 
     /// return (pool, fee_tier, slippage)
