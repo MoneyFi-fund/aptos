@@ -450,7 +450,7 @@ module moneyfi::strategy_echelon {
         assert!(!vault.paused);
         let account = wallet_account::get_wallet_account(wallet_id);
         assert!(
-            amount + vault.available_amount + amount <= vault.deposit_cap,
+            amount + vault.available_amount <= vault.deposit_cap,
             error::permission_denied(E_EXCEED_CAPACITY)
         );
         moneyfi_vault::deposit_to_strategy_vault<Strategy>(
@@ -765,7 +765,7 @@ module moneyfi::strategy_echelon {
         let (shares_after, _) = self.get_deposited_amount();
         assert!(shares_before >= shares_after);
         let shares = shares_before - shares_after;
-        self.available_amount = self.available_amount + amount;
+        self.available_amount = self.available_amount + actual_withdraw_amount;
 
         (actual_withdraw_amount, shares, shares_before, repaid_amount)
     }
@@ -1143,7 +1143,7 @@ module moneyfi::strategy_echelon {
     fun get_vault_shares_from_deposit_shares(
         self: &Vault, deposit_shares: u64, total_deposit_shares: u64
     ): u128 {
-        if (total_deposit_shares == 0) {
+        if (total_deposit_shares == 0 || self.total_shares == 0) {
             (deposit_shares as u128) * math128::pow(10, SHARE_DECIMALS as u128)
         } else {
             math128::mul_div(
@@ -1161,19 +1161,21 @@ module moneyfi::strategy_echelon {
             self.rewards.keys(),
             |reward_addr| {
                 let reward_amount = self.get_reward_mut(reward_addr);
-                if (reward_addr == object::object_address(&asset)) {
-                    asset_amount = asset_amount + *reward_amount;
-                } else {
-                    asset_amount =
-                        asset_amount
-                            + swap_with_hyperion(
-                                &vault_signer,
-                                &asset,
-                                &object::address_to_object<Metadata>(reward_addr),
-                                *reward_amount
-                            )
+                if(*reward_amount > 0) {
+                    if (reward_addr == object::object_address(&asset)) {
+                        asset_amount = asset_amount + *reward_amount;
+                    } else {
+                        asset_amount =
+                            asset_amount
+                                + swap_with_hyperion(
+                                    &vault_signer,
+                                    &asset,
+                                    &object::address_to_object<Metadata>(reward_addr),
+                                    *reward_amount
+                                )
+                    };
+                    *reward_amount = 0;
                 };
-                *reward_amount = 0;
             }
         );
         if (asset_amount > 0) {

@@ -318,12 +318,12 @@ module moneyfi::strategy_echelon_tapp {
     ): u64 acquires TappData {
         let position = create_or_get_exist_position(caller, asset, pool);
         let caller_address = signer::address_of(caller);
-        let amount_pair_in = math128::mul_div(amount_in as u128, 1, 1000) as u64;
+        let amount_pair_in = math64::max(100000,math128::mul_div(amount_in as u128, 1, 1000) as u64);
         let balance_asset_before_swap =
-            primary_fungible_store::balance<Metadata>(caller_address, position.asset);
+            primary_fungible_store::balance(caller_address, position.asset);
         let balance_pair_before_swap =
-            primary_fungible_store::balance<Metadata>(caller_address, position.pair);
-
+            primary_fungible_store::balance(caller_address, position.pair);
+        
         swap_with_hyperion(
             caller,
             &position.pair,
@@ -334,11 +334,11 @@ module moneyfi::strategy_echelon_tapp {
 
         let actual_amount_asset_swap =
             balance_asset_before_swap
-                - primary_fungible_store::balance<Metadata>(
+                - primary_fungible_store::balance(
                     caller_address, position.asset
                 );
         let actual_amount_pair =
-            primary_fungible_store::balance<Metadata>(caller_address, position.pair)
+            primary_fungible_store::balance(caller_address, position.pair)
                 - balance_pair_before_swap;
 
         let assets = hook_factory::pool_meta_assets(&hook_factory::pool_meta(pool));
@@ -389,7 +389,7 @@ module moneyfi::strategy_echelon_tapp {
 
         let actual_amount =
             balance_asset_before_swap
-                - primary_fungible_store::balance<Metadata>(
+                - primary_fungible_store::balance(
                     caller_address, position.asset
                 );
 
@@ -859,8 +859,11 @@ module moneyfi::strategy_echelon_tapp {
                 let pair =
                     if (token_a == object::object_address(asset)) {
                         token_b
-                    } else {
+                    } else if (token_b == object::object_address(asset)) {
                         token_a
+                    } else {
+                        assert!(false, error::invalid_argument(E_INVALID_ASSET));
+                        token_a // to satisfy the type checker
                     };
                 let new_position = Position {
                     position: ZERO_ADDRESS,
@@ -965,6 +968,10 @@ module moneyfi::strategy_echelon_tapp {
     fun get_hyperion_pool(
         asset_0: &Object<Metadata>, asset_1: &Object<Metadata>
     ): (Object<hyperion::pool_v3::LiquidityPoolV3>, u8, u64) {
+        assert!(
+            object::object_address(asset_0) != object::object_address(asset_1),
+            error::invalid_argument(E_INVALID_ASSET)
+        );
         let addr_0 = object::object_address(asset_0);
         let addr_1 = object::object_address(asset_1);
         let (fee_tier, slippage) =
@@ -979,7 +986,6 @@ module moneyfi::strategy_echelon_tapp {
 
         let pool =
             object::address_to_object<hyperion::pool_v3::LiquidityPoolV3>(pool_addr);
-
         (pool, fee_tier, slippage)
     }
 
@@ -1007,7 +1013,6 @@ module moneyfi::strategy_echelon_tapp {
                 amount_out = math64::mul_div(amount_out, (10000 - slippage), 10000);
                 (amount, amount_out)
             };
-
         // ignore price impact
         let sqrt_price_limit =
             if (hyperion::utils::is_sorted(*from, *to)) {
@@ -1015,7 +1020,6 @@ module moneyfi::strategy_echelon_tapp {
             } else {
                 79226673515401279992447579055 // max sqrt price
             };
-
         let balance_in_before = primary_fungible_store::balance(caller_addr, *from);
         let balance_out_before = primary_fungible_store::balance(caller_addr, *to);
         if (exact_out) {
