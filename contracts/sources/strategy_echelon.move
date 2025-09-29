@@ -387,23 +387,16 @@ module moneyfi::strategy_echelon {
         strategy.vaults.for_each_ref(
             |_, v| {
                 let vault = get_vault_data(v);
-                if (&vault.asset == &asset) {
+                if (vault.asset == asset) {
                     total_deposited = total_deposited + vault.total_deposited_amount;
                     total_withdrawn = total_withdrawn + vault.total_withdrawn_amount;
-                    let borrow_tvl = {
-                        let loan_amount = vault.get_loan_amount();
-                        let amount_out =
-                            if (loan_amount > 0) {
-                                get_amount_out(
-                                    &lending::market_asset_metadata(vault.borrow_market),
-                                    &vault.asset,
-                                    loan_amount
-                                )
-                            } else { 0 };
-                        amount_out as u128
-                    };
                     let (_, asset_amount) = vault.get_deposited_amount();
-                    current_tvl = current_tvl + (asset_amount as u128) + borrow_tvl;
+                    current_tvl = current_tvl + (asset_amount as u128);
+                };
+
+                if(lending::market_asset_metadata(vault.borrow_market) == asset) {
+                    let borrow_amount = vault.get_loan_amount();
+                    current_tvl = current_tvl + (borrow_amount as u128);
                 };
             }
         );
