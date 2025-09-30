@@ -323,11 +323,11 @@ module moneyfi::strategy_echelon_tapp {
             primary_fungible_store::balance(caller_address, position.asset);
         let balance_pair_before_swap =
             primary_fungible_store::balance(caller_address, position.pair);
-        
+
         swap_with_hyperion(
             caller,
-            &position.pair,
             &position.asset,
+            &position.pair,
             amount_pair_in,
             false
         );
