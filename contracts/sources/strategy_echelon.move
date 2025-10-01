@@ -690,7 +690,12 @@ module moneyfi::strategy_echelon {
         let vault = get_vault_mut(&get_vault_object(name));
         vault.compound_vault_rewards();
         if (amount > 0) {
-            vault.deposit_to_echelon(amount);
+            deposit_to_echelon_impl(
+                &vault.get_vault_signer(),
+                &vault.market,
+                &vault.asset,
+                amount
+            );
         };
     }
 
@@ -789,12 +794,14 @@ module moneyfi::strategy_echelon {
                     lending::market_asset_metadata(self.borrow_market)
                 )
             };
-
+        let total_borrow_amount = self.get_loan_amount();
+        if(repay_amount > total_borrow_amount) {
+            repay_amount = total_borrow_amount;
+        };
         let req_amount =
             if (repay_amount > pending_borrow_amount) {
                 repay_amount - pending_borrow_amount
             } else { 0 };
-
         let swapped_amount =
             if (req_amount > 0) {
                 let amount_in =
@@ -803,7 +810,7 @@ module moneyfi::strategy_echelon {
                         &lending::market_asset_metadata(self.borrow_market),
                         req_amount
                     );
-                math64::ceil_div(amount_in * (10000 + 50), 10000)
+                (math128::ceil_div((amount_in as u128) * 10050, 10000) as u64)
             } else { 0 };
         let actual_withdraw_amount =
             withdraw_from_echelon_impl(
@@ -872,10 +879,11 @@ module moneyfi::strategy_echelon {
         if (shares == 0) {
             return 0;
         };
+
         if (shares >= lending::account_shares(caller_addr, *market)) {
             scripts::withdraw_all_fa(caller, *market);
         } else {
-            scripts::withdraw_fa(caller, *market, shares);
+            scripts::withdraw_fa(caller, *market, shares + 1); // up rounding
         };
         let balance_after = primary_fungible_store::balance(caller_addr, *asset);
 
@@ -1179,7 +1187,12 @@ module moneyfi::strategy_echelon {
             }
         );
         if (asset_amount > 0) {
-            self.deposit_to_echelon(asset_amount);
+            deposit_to_echelon_impl(
+                &vault_signer,
+                &self.market,
+                &self.asset,
+                asset_amount
+            );
         };
 
         // deposit all avail amount to echelon
