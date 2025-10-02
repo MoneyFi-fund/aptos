@@ -384,22 +384,20 @@ module moneyfi::strategy_echelon {
         let total_deposited = 0;
         let total_withdrawn = 0;
         let current_tvl = 0;
-        strategy.vaults.for_each_ref(
-            |_, v| {
-                let vault = get_vault_data(v);
-                if (vault.asset == asset) {
-                    total_deposited = total_deposited + vault.total_deposited_amount;
-                    total_withdrawn = total_withdrawn + vault.total_withdrawn_amount;
-                    let (_, asset_amount) = vault.get_deposited_amount();
-                    current_tvl = current_tvl + (asset_amount as u128);
-                };
+        strategy.vaults.for_each_ref(|_, v| {
+            let vault = get_vault_data(v);
+            if (vault.asset == asset) {
+                total_deposited = total_deposited + vault.total_deposited_amount;
+                total_withdrawn = total_withdrawn + vault.total_withdrawn_amount;
+                let (_, asset_amount) = vault.get_deposited_amount();
+                current_tvl = current_tvl + (asset_amount as u128);
+            };
 
-                if(lending::market_asset_metadata(vault.borrow_market) == asset) {
-                    let borrow_amount = vault.get_loan_amount();
-                    current_tvl = current_tvl + (borrow_amount as u128);
-                };
-            }
-        );
+            if (lending::market_asset_metadata(vault.borrow_market) == asset) {
+                let borrow_amount = vault.get_loan_amount();
+                current_tvl = current_tvl + (borrow_amount as u128);
+            };
+        });
 
         (current_tvl, total_deposited, total_withdrawn)
     }
@@ -795,7 +793,7 @@ module moneyfi::strategy_echelon {
                 )
             };
         let total_borrow_amount = self.get_loan_amount();
-        if(repay_amount > total_borrow_amount) {
+        if (repay_amount > total_borrow_amount) {
             repay_amount = total_borrow_amount;
         };
         let req_amount =
@@ -1169,7 +1167,7 @@ module moneyfi::strategy_echelon {
             self.rewards.keys(),
             |reward_addr| {
                 let reward_amount = self.get_reward_mut(reward_addr);
-                if(*reward_amount > 0) {
+                if (*reward_amount > 0) {
                     if (reward_addr == object::object_address(&asset)) {
                         asset_amount = asset_amount + *reward_amount;
                     } else {
@@ -1291,35 +1289,40 @@ module moneyfi::strategy_echelon {
                 let reward_metadata = object::address_to_object<Metadata>(*reward_addr);
                 let token_name = fungible_asset::name(reward_metadata);
                 //supply reward
-                let supply_farming_id =
-                    farming::farming_identifier(
-                        object::object_address(&self.market), reward_info.supply_reward_id
-                    );
-                let claimable_amount =
-                    farming::claimable_reward_amount(
-                        vault_addr, token_name, supply_farming_id
-                    );
-                if (claimable_amount > 0) {
-                    vector::push_back(&mut reward_tokens, reward_metadata);
-                    vector::push_back(&mut farming_identifiers, supply_farming_id);
-                    vector::push_back(&mut claimable_amounts, claimable_amount);
-                };
-                //borrow reward
-                if (self.get_loan_amount() > 0) {
-                    let borrow_farming_id =
+                if (reward_info.supply_reward_id > 0) {
+                    let supply_farming_id =
                         farming::farming_identifier(
-                            object::object_address(&self.borrow_market),
-                            reward_info.borrow_reward_id
+                            object::object_address(&self.market),
+                            reward_info.supply_reward_id
                         );
                     let claimable_amount =
                         farming::claimable_reward_amount(
-                            vault_addr, token_name, borrow_farming_id
+                            vault_addr, token_name, supply_farming_id
                         );
                     if (claimable_amount > 0) {
                         vector::push_back(&mut reward_tokens, reward_metadata);
-                        vector::push_back(&mut farming_identifiers, borrow_farming_id);
+                        vector::push_back(&mut farming_identifiers, supply_farming_id);
                         vector::push_back(&mut claimable_amounts, claimable_amount);
-                    }
+                    };
+                };
+                //borrow reward
+                if (self.get_loan_amount() > 0) {
+                    if (reward_info.borrow_reward_id > 0) {
+                        let borrow_farming_id =
+                            farming::farming_identifier(
+                                object::object_address(&self.borrow_market),
+                                reward_info.borrow_reward_id
+                            );
+                        let claimable_amount =
+                            farming::claimable_reward_amount(
+                                vault_addr, token_name, borrow_farming_id
+                            );
+                        if (claimable_amount > 0) {
+                            vector::push_back(&mut reward_tokens, reward_metadata);
+                            vector::push_back(&mut farming_identifiers, borrow_farming_id);
+                            vector::push_back(&mut claimable_amounts, claimable_amount);
+                        }
+                    };
                 };
             }
         );
