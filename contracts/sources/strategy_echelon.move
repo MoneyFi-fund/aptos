@@ -214,6 +214,31 @@ module moneyfi::strategy_echelon {
         };
     }
 
+    public entry fun config_vault_rewards(
+        sender: &signer,
+        name: String,
+        reward: vector<address>, // reward token addresses
+        supply_reward_id: u64,
+        borrow_reward_id: u64
+    ) acquires Vault, RewardInfo, Strategy {
+        access_control::must_be_service_account(sender);
+        let object_vault = get_vault_object(name);
+        let vault = get_vault_mut(&object_vault);
+        let reward_info =
+            borrow_global_mut<RewardInfo>(object::object_address(&object_vault));
+
+        let reward_map = ordered_map::new();
+        vector::for_each(
+            reward,
+            |reward_addr| {
+                ordered_map::add(&mut reward_map, reward_addr, 0);
+            }
+        );
+        vault.rewards = reward_map;
+        reward_info.supply_reward_id = supply_reward_id;
+        reward_info.borrow_reward_id = borrow_reward_id;
+    }
+
     // Returns (pending_amount, deposited_amount, estimate_withdrawable_amount, user_shares, total_shares)
     public fun get_account_state(
         vault_name: String, wallet_id: vector<u8>
