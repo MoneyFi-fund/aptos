@@ -121,8 +121,8 @@ module moneyfi::strategy_echelon {
         asset: Object<Metadata>,
         borrow_market: Object<Market>,
         reward: vector<address>, // reward token addresses
-        supply_reward_id: u64,
-        borrow_reward_id: u64,
+        supply_reward_id: u64, // = 0 if no supply reward
+        borrow_reward_id: u64, // = 0 if no borrow reward
         health_factor: u64
     ) acquires Strategy {
         access_control::must_be_service_account(sender);
