@@ -318,7 +318,11 @@ module moneyfi::strategy_echelon_tapp {
     ): u64 acquires TappData {
         let position = create_or_get_exist_position(caller, asset, pool);
         let caller_address = signer::address_of(caller);
-        let amount_pair_in = math64::max(100000,math128::mul_div(amount_in as u128, 1, 1000) as u64);
+        let amount_pair_in =
+            math64::max(
+                100000,
+                math128::mul_div(amount_in as u128, 1, 1000) as u64
+            );
         let balance_asset_before_swap =
             primary_fungible_store::balance(caller_address, position.asset);
         let balance_pair_before_swap =
@@ -334,9 +338,7 @@ module moneyfi::strategy_echelon_tapp {
 
         let actual_amount_asset_swap =
             balance_asset_before_swap
-                - primary_fungible_store::balance(
-                    caller_address, position.asset
-                );
+                - primary_fungible_store::balance(caller_address, position.asset);
         let actual_amount_pair =
             primary_fungible_store::balance(caller_address, position.pair)
                 - balance_pair_before_swap;
@@ -389,9 +391,7 @@ module moneyfi::strategy_echelon_tapp {
 
         let actual_amount =
             balance_asset_before_swap
-                - primary_fungible_store::balance(
-                    caller_address, position.asset
-                );
+                - primary_fungible_store::balance(caller_address, position.asset);
 
         // Update position data
         position.position = position_addr;
@@ -404,15 +404,16 @@ module moneyfi::strategy_echelon_tapp {
     // Collect all pools with their amounts from TAPP data
     fun collect_pool_amounts(
         vault_signer: &signer, tapp_data: &OrderedMap<address, Position>
-    ): vector<PoolAmountPair> acquires TappData {
+    ): vector<PoolAmountPair> {
         let pool_amounts = vector::empty<PoolAmountPair>();
 
         tapp_data.for_each_ref(
-            |pool, _| {
-                let position_data = get_position_data(vault_signer, *pool);
-                if (position_data.amount > 0) {
-                    let pair =
-                        PoolAmountPair { pool_address: *pool, amount: position_data.amount };
+            |pool, position| {
+                if (position.amount > 0) {
+                    let pair = PoolAmountPair {
+                        pool_address: *pool,
+                        amount: position.amount
+                    };
                     vector::push_back(&mut pool_amounts, pair);
                 };
             }
