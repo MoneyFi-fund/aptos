@@ -14,7 +14,6 @@ module moneyfi::strategy {
     friend moneyfi::vault;
 
     const STRATEGY_HYPERION: u8 = 1;
-    const STRATEGY_ARIES: u8 = 2;
     const STRATEGY_THALA: u8 = 3;
     const STRATEGY_TAPP: u8 = 4;
 
@@ -40,7 +39,6 @@ module moneyfi::strategy {
             let (v1, v2, v3) = strategy_tapp::get_strategy_stats(asset);
             vector::append(&mut stats, vector[v1, v2, v3]);
         };
-
         stats
     }
 
