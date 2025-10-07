@@ -456,6 +456,21 @@ module moneyfi::strategy_echelon {
         vault.get_loan_amount()
     }
 
+    #[view]
+    public fun estimate_borrowable_amount(name: String, supply_amount: u64): u64 acquires Strategy, Vault {
+        let vault = get_vault_data(&get_vault_object(name));
+        let vault_addr = vault_address(vault.name);
+        calc_borrow_amount(
+            supply_amount,
+            lending::market_asset_mantissa(vault.market),
+            lending::asset_price(vault.market),
+            lending::account_market_collateral_factor_bps(vault_addr, vault.market),
+            lending::market_asset_mantissa(vault.borrow_market),
+            lending::asset_price(vault.borrow_market),
+            vault.health_factor
+        )
+    }
+
     /// deposit fund from wallet account to strategy vault
     public(friend) fun deposit(
         sender: &signer,
