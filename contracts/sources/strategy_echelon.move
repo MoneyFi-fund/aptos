@@ -25,6 +25,8 @@ module moneyfi::strategy_echelon {
     use moneyfi::vault as moneyfi_vault;
     use moneyfi::wallet_account::{Self, WalletAccount};
 
+    friend moneyfi::strategy_echelon_tapp;
+
     const STRATEGY_ACCOUNT_SEED: vector<u8> = b"strategy_echelon::STRATEGY_ACCOUNT";
 
     const U64_MAX: u64 = 18446744073709551615;
@@ -455,9 +457,7 @@ module moneyfi::strategy_echelon {
     }
 
     #[view]
-    public fun estimate_borrowable_amount(
-        name: String, supply_amount: u64
-    ): u64 acquires Strategy, Vault {
+    public fun estimate_borrowable_amount(name: String, supply_amount: u64): u64 acquires Strategy, Vault {
         let vault = get_vault_data(&get_vault_object(name));
         let vault_addr = vault_address(vault.name);
         calc_borrow_amount(
@@ -472,7 +472,7 @@ module moneyfi::strategy_echelon {
     }
 
     /// deposit fund from wallet account to strategy vault
-    public fun deposit(
+    public(friend) fun deposit(
         sender: &signer,
         vault_name: String,
         wallet_id: vector<u8>,
@@ -510,7 +510,7 @@ module moneyfi::strategy_echelon {
 
     /// Withdraw fund from strategy vault to wallet account
     /// Pass amount = U64_MAX to withdraw all
-    public fun withdraw(
+    public(friend) fun withdraw(
         sender: &signer,
         vault_name: String,
         wallet_id: vector<u8>,
@@ -615,7 +615,7 @@ module moneyfi::strategy_echelon {
 
     /// Deposits fund from vault to Echelon
     /// Pass amount = U64_MAX to deposit all pending amount
-    public fun vault_deposit_echelon(
+    public(friend) fun vault_deposit_echelon(
         sender: &signer, vault_name: String, amount: u64
     ) acquires Strategy, Vault, RewardInfo {
         assert!(amount > 0);
@@ -686,7 +686,7 @@ module moneyfi::strategy_echelon {
 
     // Return actual borrowed amounts
     // pass amount = U64_MAX to borrow all available borrow amounts
-    public fun borrow(
+    public(friend) fun borrow(
         sender: &signer, name: String, borrow_amount: u64
     ): u64 acquires Strategy, Vault, RewardInfo {
         access_control::must_be_service_account(sender);
@@ -710,7 +710,7 @@ module moneyfi::strategy_echelon {
 
     // Return actual repaid amounts
     // pass amount = U64_MAX to repay all
-    public fun repay(
+    public(friend) fun repay(
         sender: &signer, name: String, repay_amount: u64
     ): u64 acquires Strategy, Vault, RewardInfo {
         access_control::must_be_service_account(sender);
@@ -724,10 +724,7 @@ module moneyfi::strategy_echelon {
 
     // Compound rewards of colab protocol
     // Rewards has been swaped to asset first
-    public fun compound_rewards(
-        sender: &signer, name: String, amount: u64
-    ) acquires Strategy, Vault, RewardInfo {
-        access_control::must_be_service_account(sender);
+    public(friend) fun compound_rewards(name: String, amount: u64) acquires Strategy, Vault, RewardInfo {
         let vault = get_vault_mut(&get_vault_object(name));
         vault.compound_vault_rewards();
         if (amount > 0) {
@@ -740,8 +737,7 @@ module moneyfi::strategy_echelon {
         };
     }
 
-    public fun get_signer(sender: &signer, name: String): signer acquires Strategy, Vault {
-        access_control::must_be_service_account(sender);
+    public(friend) fun get_signer(name: String): signer acquires Strategy, Vault {
         let vault = get_vault_data(&get_vault_object(name));
         vault.get_vault_signer()
     }

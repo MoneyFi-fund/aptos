@@ -70,7 +70,7 @@ module moneyfi::strategy_echelon_tapp {
         gas_fee: u64,
         hook_data: vector<u8>
     ) acquires TappData {
-        let vault_signer = strategy_echelon::get_signer(sender, vault_name);
+        let vault_signer = strategy_echelon::get_signer(vault_name);
         let vault_addr = signer::address_of(&vault_signer);
         let tapp_data = get_vault_tapp_data(vault_addr);
         let total_borrow_amount = strategy_echelon::vault_borrow_amount(vault_name);
@@ -103,7 +103,7 @@ module moneyfi::strategy_echelon_tapp {
 
                 // Compound claimed rewards
                 if (claimed_total > 0) {
-                    strategy_echelon::compound_rewards(sender, vault_name, claimed_total);
+                    strategy_echelon::compound_rewards(vault_name, claimed_total);
                 };
 
                 // Handle TAPP withdrawal with proper sorting and logic
@@ -125,9 +125,7 @@ module moneyfi::strategy_echelon_tapp {
                                 *pool
                             );
                         if (reward_amount > 0) {
-                            strategy_echelon::compound_rewards(
-                                sender, vault_name, reward_amount
-                            );
+                            strategy_echelon::compound_rewards(vault_name, reward_amount);
                         };
                     }
                 );
@@ -148,7 +146,7 @@ module moneyfi::strategy_echelon_tapp {
     public entry fun vault_deposit_echelon(
         sender: &signer, vault_name: String, amount: u64
     ) acquires TappData {
-        let vault_signer = strategy_echelon::get_signer(sender, vault_name);
+        let vault_signer = strategy_echelon::get_signer(vault_name);
         let vault_addr = signer::address_of(&vault_signer);
         let tapp_data = get_vault_tapp_data(vault_addr);
         if (!tapp_data.is_empty()) {
@@ -159,9 +157,7 @@ module moneyfi::strategy_echelon_tapp {
                             &vault_signer, strategy_echelon::vault_asset(vault_name), *pool
                         );
                     if (reward_amount > 0) {
-                        strategy_echelon::compound_rewards(
-                            sender, vault_name, reward_amount
-                        );
+                        strategy_echelon::compound_rewards(vault_name, reward_amount);
                     }
                 }
             )
@@ -179,7 +175,7 @@ module moneyfi::strategy_echelon_tapp {
         if (borrowable_amount == 0) {
             return;
         };
-        let vault_signer = strategy_echelon::get_signer(sender, vault_name);
+        let vault_signer = strategy_echelon::get_signer(vault_name);
         let vault_addr = signer::address_of(&vault_signer);
         let tapp_data = get_vault_tapp_data(vault_addr);
         if (!tapp_data.is_empty()) {
@@ -190,9 +186,7 @@ module moneyfi::strategy_echelon_tapp {
                             &vault_signer, strategy_echelon::vault_asset(vault_name), *pool
                         );
                     if (reward_amount > 0) {
-                        strategy_echelon::compound_rewards(
-                            sender, vault_name, reward_amount
-                        );
+                        strategy_echelon::compound_rewards(vault_name, reward_amount);
                     }
                 }
             )
@@ -210,7 +204,7 @@ module moneyfi::strategy_echelon_tapp {
         pool: address,
         min_amount: u64
     ) acquires TappData {
-        let vault_signer = strategy_echelon::get_signer(sender, vault_name);
+        let vault_signer = strategy_echelon::get_signer(vault_name);
         let vault_addr = signer::address_of(&vault_signer);
         let tapp_data = get_vault_tapp_data(vault_addr);
         if (!tapp_data.is_empty()) {
@@ -221,9 +215,7 @@ module moneyfi::strategy_echelon_tapp {
                             &vault_signer, strategy_echelon::vault_asset(vault_name), *pool
                         );
                     if (reward_amount > 0) {
-                        strategy_echelon::compound_rewards(
-                            sender, vault_name, reward_amount
-                        );
+                        strategy_echelon::compound_rewards(vault_name, reward_amount);
                     }
                 }
             )
@@ -257,7 +249,7 @@ module moneyfi::strategy_echelon_tapp {
                         profit,
                         false
                     );
-                strategy_echelon::compound_rewards(sender, vault_name, amount_out);
+                strategy_echelon::compound_rewards(vault_name, amount_out);
             };
         };
     }
