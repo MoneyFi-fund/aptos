@@ -2,10 +2,7 @@ module moneyfi::strategy_echelon_tapp {
     use std::signer;
     use std::string::String;
     use aptos_std::math128;
-    use aptos_std::math64;
     use aptos_std::ordered_map::OrderedMap;
-    use aptos_framework::object::Object;
-    use aptos_framework::fungible_asset::Metadata;
 
     use moneyfi::strategy_echelon;
     use moneyfi::strategy_tapp;
