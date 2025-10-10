@@ -1,5 +1,5 @@
 [package]
-name = "moneyfi_lending_dex"
+name = "moneyfi_strategy_lending_dex"
 version = "0.0.1"
 authors = []
 
