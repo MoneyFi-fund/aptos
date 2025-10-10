@@ -1,0 +1,7 @@
+[package]
+name = "moneyfi_strategy_echelon"
+version = "0.0.1"
+authors = []
+
+[addresses]
+strategy_echelon = "0x123"

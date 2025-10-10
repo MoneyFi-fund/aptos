@@ -1,0 +1,14 @@
+[package]
+name = "moneyfi_lending_dex"
+version = "0.0.1"
+authors = []
+
+[addresses]
+strategy_lending_dex = "_"
+moneyfi_lending = "_"
+moneyfi_dex = "_"
+
+
+[dependencies]
+moneyfi_lending = { local = "../interfaces/lending" }
+moneyfi_dex = { local = "../interfaces/dex" }

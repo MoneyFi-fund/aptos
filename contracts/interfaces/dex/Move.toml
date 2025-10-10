@@ -1,0 +1,7 @@
+[package]
+name = "moneyfi_dex"
+version = "0.0.1"
+authors = []
+
+[addresses]
+dex = "0x222"

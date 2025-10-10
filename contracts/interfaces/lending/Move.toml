@@ -1,0 +1,7 @@
+[package]
+name = "moneyfi_lending"
+version = "0.0.1"
+authors = []
+
+[addresses]
+lending = "0x111"
