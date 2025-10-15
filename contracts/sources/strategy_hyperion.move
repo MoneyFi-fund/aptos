@@ -180,6 +180,18 @@ module moneyfi::strategy_hyperion {
             } else {
                 (position.lp_amount, true)
             };
+        let remaining_withdrawn = 0;
+        if(position.remaining_amount > 0 ){
+            if(!is_full_withdraw){
+                remaining_withdrawn = math128::ceil_div(
+                    (position.remaining_amount as u128) * (amount_min as u128),
+                    (position.amount as u128)
+                ) as u64;
+            }
+            else{
+                remaining_withdrawn = position.remaining_amount;
+            }
+        };
         let (interest) = claim_fees_and_rewards_single(account, position);
         let wallet_signer = wallet_account::get_wallet_account_signer(account);
         let wallet_address = signer::address_of(&wallet_signer);
@@ -194,13 +206,13 @@ module moneyfi::strategy_hyperion {
         );
         let balance_after = primary_fungible_store::balance(wallet_address, *asset);
         let total_withdrawn_amount =
-            balance_after - balance_before + position.remaining_amount + interest;
+            balance_after - balance_before + remaining_withdrawn + interest;
         let (strategy_data, total_deposited_amount) =
             if (!is_full_withdraw) {
                 let total = amount_min;
                 position.amount = position.amount - total;
                 position.interest_amount = 0;
-                position.remaining_amount = 0;
+                position.remaining_amount = position.remaining_amount - remaining_withdrawn;
                 position.lp_amount = position_v3::get_liquidity(position.position);
                 (set_position_data(account, extra_data.pool, position), total)
             } else {
